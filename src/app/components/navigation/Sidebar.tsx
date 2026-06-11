@@ -17,6 +17,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../components/ui/utils";
 import { useData } from "../../contexts/DataContext";
+import logoUrl from "../../assets/logo.png";
 
 const navigation = [
   { name: "Dashboard", path: "/", icon: LayoutDashboard },
@@ -37,7 +38,7 @@ export function Sidebar() {
       {/* Logo Premium */}
       <div className="p-8 border-b border-slate-100 dark:border-slate-800/50">
         <div className="flex items-center gap-4">
-          <img src="/logo.png" alt="ControlHub" className="h-10 w-auto" />
+          <img src={logoUrl} alt="ControlHub" className="h-10 w-auto object-contain" />
           <div>
             <h1 className="font-black text-xl text-slate-900 dark:text-white tracking-tighter">
               ControlHub

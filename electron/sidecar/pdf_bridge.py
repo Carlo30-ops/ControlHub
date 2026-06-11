@@ -160,6 +160,7 @@ def handle_reorder_pages(data):
     try:
         input_file = os.path.abspath(data.get("input", ""))
         output_file = os.path.abspath(data.get("output", "reordered.pdf"))
+        # Convertir de 1-based (UI) a 0-based (PyMuPDF)
         order = [int(x) - 1 for x in data.get("order", [])]
         doc = fitz.open(input_file)
         doc.select(order)
@@ -357,7 +358,14 @@ def handle_pdf_to_word(data):
     output_file = os.path.abspath(data.get("output", ""))
     try:
         cv = Converter(input_file)
-        cv.convert(output_file, start=0, end=None)
+        cv.convert(output_file, 
+            start=0, 
+            end=None,
+            multi_processing=False,
+            connected_border_tolerance=0,
+            line_overlap_threshold=0.9,
+            image_overlap_threshold=0.0
+        )
         cv.close()
         return {"ok": True, "output": output_file}
     except Exception as e:

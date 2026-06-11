@@ -130,10 +130,13 @@ export default function Terapias() {
     const loadConfig = async () => {
       const dest = await (window as any).electronAPI.config.get("terapias.baseDest");
       const backup = await (window as any).electronAPI.config.get("terapias.backup");
-      const source = await (window as any).electronAPI.config.get("terapiasSourceDir");
+      // Forzar siempre el path fijo
+      const fixedSource = "C:\\Users\\factu\\OneDrive\\Documentos 1\\TERAPIAS\\DOCUMENTOS PARA ARMAR";
+      setSourceDir(fixedSource);
+      (window as any).electronAPI.config.set("terapiasSourceDir", fixedSource);
+      
       if (dest) setForm(prev => ({ ...prev, baseDest: dest }));
       if (backup) setForm(prev => ({ ...prev, backup: backup }));
-      if (source) setSourceDir(source);
     };
     loadConfig();
     checkStatus();
@@ -225,9 +228,6 @@ export default function Terapias() {
           <div className="flex items-center gap-3 mt-1 font-medium">
             <Badge variant="outline" className="text-[10px] font-black border-slate-200 dark:border-slate-800">SOURCE</Badge>
             <span className="font-mono text-xs uppercase text-slate-500">{sourceDir}</span>
-            <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800" onClick={handleSelectFolder("sourceDir")}>
-              <FolderOpen className="w-3.5 h-3.5 text-blue-500" />
-            </Button>
           </div>
         </div>
         <div className="flex items-center gap-3">
