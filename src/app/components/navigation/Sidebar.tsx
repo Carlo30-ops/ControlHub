@@ -17,7 +17,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../components/ui/utils";
 import { useData } from "../../contexts/DataContext";
-import logoUrl from "../../assets/logo.png";
+import logoUrl from "../../../assets/logo.png";
 
 const navigation = [
   { name: "Dashboard", path: "/", icon: LayoutDashboard },

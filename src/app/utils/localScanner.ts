@@ -351,60 +351,22 @@ function parseCOPNumber(raw: string): number {
 // Estrategia: 11 patrones explícitos en orden de especificidad → fallback a mayor valor
 // ─────────────────────────────────────────────────────────────────────────────
 function extractAmountFromText(text: string): number {
-  // Preprocesar: eliminar NITs comunes para evitar confusión con montos
-  const cleanText = text.replace(/\bNIT\s*[:\.]?\s*[\d.]+(-\d)?\b/gi, 'NIT_ID');
-
-  // Fix Falla Crítica 3: NUM estricto. (1 a 3 dígitos + separadores de miles) O (4+ dígitos sin separador). Asegura que "1" no hace match.
-  const NUM = `(\\d{1,3}(?:[.,]\\d{3})+(?:[.,]\\d{1,2})?|\\d{4,}(?:[.,]\\d{1,2})?)`;
-
-  // Fix Falla Crítica 2 / Falla 4: matchAll + saltos de línea y texto irrelevante ignorado pero no infinito.
-  // [^0-9]{0,40}? ignora hasta 40 letras (ej. IVA, $, saltos de línea) hasta encontrar el número.
-  const explicitPatterns: RegExp[] = [
-    new RegExp(`T\\s*O\\s*T\\s*A\\s*L\\s+V\\s*E\\s*N\\s*T\\s*A[^0-9]{0,40}?${NUM}`, 'gi'),
-    new RegExp(`TOTAL\\s+(?:A\\s+PAGAR|NETO|FACTURA|GENERAL)[^0-9]{0,40}?${NUM}`, 'gi'),
-    new RegExp(`VALOR\\s+(?:TOTAL|A\\s+PAGAR|NETO|DE\\s+LA\\s+P[ÓO]LIZA)[^0-9]{0,40}?${NUM}`, 'gi'),
-    new RegExp(`PRIMA\\s+(?:TOTAL|NETA|BRUTA|A\\s+PAGAR)[^0-9]{0,40}?${NUM}`, 'gi'),
-    // "TOTAL" solo es peligroso, requiere que el valor esté más cerca, y no seguido de porcentajes o días
-    new RegExp(`TOTAL[^0-9]{0,10}?(?!\\s*%|\\s*d[ií]as)[^0-9]{0,20}?${NUM}`, 'gi'),
-    new RegExp(`(?:SALDO\\s+)?A\\s+PAGAR[^0-9]{0,40}?${NUM}`, 'gi'),
-    new RegExp(`NETO\\s+A\\s+PAGAR[^0-9]{0,40}?${NUM}`, 'gi'),
-    new RegExp(`IMPORTE\\s+(?:TOTAL|NETO|A\\s+PAGAR)?[^0-9]{0,40}?${NUM}`, 'gi'),
-    new RegExp(`SUBTOTAL[^0-9]{0,40}?${NUM}`, 'gi'),
-    new RegExp(`\\$\\s*${NUM}`, 'gi'),
-    new RegExp(`COP\\s*${NUM}`, 'gi'),
+  // Acepta: 1.234.567, 1234567, 1,234,567, $1.234.567
+  const amountPatterns = [
+    /\$\s*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)/,
+    /TOTAL[^\d]*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)/i,
+    /VALOR[^\d]*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)/i,
+    /(?:^|\s)([\d]{6,12})(?:\s|$)/m
   ];
 
-  for (const pattern of explicitPatterns) {
-    const matches = [...cleanText.matchAll(pattern)];
-    for (const match of matches) {
+  for (const pattern of amountPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
       const value = parseCOPNumber(match[1]);
       if (!isNaN(value) && value >= 1_000 && value <= 500_000_000) return value;
     }
   }
 
-  // Fallback Falla 5: Encontrar TODOS los montos con formato correcto, ordenarlos, 
-  // e ignorar el mayor si es irrazonablemente gigante (>50M) asumiendo que es suma asegurada.
-  const fallbackMatches = [...cleanText.matchAll(/\b\d{1,3}(?:[.,]\d{3}){1,3}(?:[.,]\d{1,2})?\b/g)];
-  const validAmounts: number[] = [];
-  
-  for (const raw of fallbackMatches) {
-    const value = parseCOPNumber(raw[0]);
-    if (!isNaN(value) && value >= 10_000 && value <= 500_000_000) {
-      validAmounts.push(value);
-    }
-  }
-
-  validAmounts.sort((a, b) => b - a); // Descendente
-
-  if (validAmounts.length > 0) {
-    // Si el monto mayor es muy grande (>50M) y existe otro monto viable, retornamos el segundo
-    // (Ejemplo: Suma Asegurada $100.000.000 vs Prima $2.500.000)
-    if (validAmounts[0] > 50_000_000 && validAmounts.length > 1) {
-      return validAmounts[1];
-    }
-    return validAmounts[0];
-  }
-  
   return 0;
 }
 
@@ -700,7 +662,9 @@ export async function scanLocalDirectory(
 
         try {
           // ── PROBLEMA 0 Fix: Identificar cuál PDF es la factura ────────────
-          const identified = await identifyInvoicePdf(filePath);
+          // Fix #18: Pasar carpeta (dirPath) no el archivo completo
+          const folderPath = filePath.split(/[\\\/]/).slice(0, -1).join('\\');
+          const identified = await identifyInvoicePdf(folderPath);
 
           if (identified && window.electronAPI.parsePdf) {
             
@@ -710,7 +674,7 @@ export async function scanLocalDirectory(
 
             // Leer TODAS las páginas del PDF de factura identificado
             const res = await window.electronAPI.parsePdf(identified.invoicePath);
-            const text = res?.text;
+            const text = res?.text; // Soporta retorno {text, pageCount}
             invoice.invoicePdfPath = identified.invoicePath;
 
             if (text) {
@@ -775,21 +739,31 @@ export async function scanLocalDirectory(
 
   // Filtrar por rango de fechas
   const filteredInvoices = invoices.filter(invoice => {
-    const [dayStr, monthStr, yearStr] = invoice.date.split('/');
-    const invoiceDate = new Date(parseInt(yearStr), parseInt(monthStr) - 1, parseInt(dayStr), 12, 0, 0);
-    const startDate = new Date(dateRange.start.getFullYear(), dateRange.start.getMonth(), dateRange.start.getDate(), 0, 0, 0);
-    const endDate = new Date(dateRange.end.getFullYear(), dateRange.end.getMonth(), dateRange.end.getDate(), 23, 59, 59);
-    const inRange = invoiceDate >= startDate && invoiceDate <= endDate;
-    if (!inRange) stats.skippedByDateRange++;
-    return inRange;
+    try {
+      if (!invoice.date) return false;
+      const [dayStr, monthStr, yearStr] = invoice.date.split('/');
+      const invoiceDate = new Date(parseInt(yearStr), parseInt(monthStr) - 1, parseInt(dayStr), 12, 0, 0);
+      const startDate = new Date(dateRange.start.getFullYear(), dateRange.start.getMonth(), dateRange.start.getDate(), 0, 0, 0);
+      const endDate = new Date(dateRange.end.getFullYear(), dateRange.end.getMonth(), dateRange.end.getDate(), 23, 59, 59);
+      const inRange = invoiceDate >= startDate && invoiceDate <= endDate;
+      if (!inRange) stats.skippedByDateRange++;
+      return inRange;
+    } catch {
+      return false;
+    }
   });
 
   filteredInvoices.sort((a, b) => {
-    const [dA, mA, yA] = a.date.split('/').map(Number);
-    const [dB, mB, yB] = b.date.split('/').map(Number);
-    if (yA !== yB) return yA - yB;
-    if (mA !== mB) return mA - mB;
-    return dA - dB;
+    try {
+      if (!a.date || !b.date) return 0;
+      const [dA, mA, yA] = a.date.split('/').map(Number);
+      const [dB, mB, yB] = b.date.split('/').map(Number);
+      if (isNaN(dA) || isNaN(dB)) return 0;
+      // Ordenar por fecha descendente (más recientes primero)
+      return new Date(yB, mB - 1, dB).getTime() - new Date(yA, mA - 1, dA).getTime();
+    } catch {
+      return 0;
+    }
   });
 
   return { invoices: filteredInvoices, duration: performance.now() - startTime, stats };
