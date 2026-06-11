@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dist-electron/
+release/
+python-embed/
+*.pyc
+__pycache__/
+temp_test/
+.env
+*.log
+python-embed.zip
+input.json
+clean_input.json
+run_pdf_tests.py
+verify_delete.py
+remove_bg.py
+ts_errors.txt
