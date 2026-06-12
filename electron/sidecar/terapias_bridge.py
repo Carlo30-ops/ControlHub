@@ -51,13 +51,38 @@ MESES = {
 
 DEFAULT_SOURCE = r"C:\Users\factu\OneDrive\Documentos 1\TERAPIAS\DOCUMENTOS PARA ARMAR"
 
+# Referencia global para mantener Word "caliente"
+_word_app = None
+
+def get_word_app():
+    """Obtiene o crea una instancia persistente de Word."""
+    global _word_app
+    pythoncom.CoInitialize()
+    try:
+        if _word_app:
+            # Verificar si la instancia sigue viva
+            _word_app.Visible = False
+            return _word_app
+    except Exception:
+        _word_app = None
+
+    try:
+        # Dispatch busca una instancia existente o crea una nueva
+        _word_app = win32com.client.Dispatch("Word.Application")
+        _word_app.Visible = False
+        _word_app.DisplayAlerts = 0
+        return _word_app
+    except Exception as e:
+        logger.error(f"No se pudo iniciar Word: {str(e)}")
+        return None
+
 def handle_check_word():
     """Verifica si Word está disponible."""
-    success, message = check_word_install.check_word_com()
-    if success:
-        return {"ok": True, "message": message}
+    word = get_word_app()
+    if word:
+        return {"ok": True, "message": "Microsoft Word está listo y persistente"}
     else:
-        return {"ok": False, "error": message}
+        return {"ok": False, "error": "No se pudo conectar con Microsoft Word"}
 
 def handle_list_docs(data):
     """Lista archivos Word en la carpeta origen ordenados por mtime desc."""
@@ -158,20 +183,18 @@ def handle_finalize(data):
 
         pdf_path = os.path.splitext(doc_path)[0] + ".pdf"
 
-        # 1. Conversión Word -> PDF vía COM
-        pythoncom.CoInitialize()
+        # 1. Conversión Word -> PDF vía instancia persistente
+        word = get_word_app()
+        if not word:
+            return {"ok": False, "error": "No se pudo obtener el motor de Microsoft Word"}
+
         try:
-            word = win32com.client.DispatchEx("Word.Application")
-            word.Visible = False
-            word.DisplayAlerts = 0
             doc = word.Documents.Open(doc_path, ReadOnly=False)
             doc.SaveAs(pdf_path, FileFormat=17) # 17 = wdFormatPDF
             doc.Close(SaveChanges=False)
-            word.Quit()
+            # NO llamar a word.Quit() para mantenerlo "caliente"
         except Exception as e:
-            return {"ok": False, "error": f"Error en conversión PDF (¿Word abierto?): {str(e)}"}
-        finally:
-            pythoncom.CoUninitialize()
+            return {"ok": False, "error": f"Error en conversión PDF: {str(e)}"}
 
         if not os.path.exists(pdf_path):
             return {"ok": False, "error": "El PDF no se generó correctamente."}

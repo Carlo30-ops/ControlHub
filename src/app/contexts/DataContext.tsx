@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { createContext, useContext, useState, ReactNode, useEffect, useMemo, useCallback } from "react";
 
 export interface Invoice {
   id: string;
@@ -58,6 +58,9 @@ export interface Settings {
   };
   // Aseguradoras adicionales definidas por el usuario
   customInsurers: { name: string; aliases: string }[];
+  operatorName?: string;
+  operatorEmail?: string;
+  terapiasDir?: string;
 }
 
 interface DataContextType {
@@ -96,6 +99,9 @@ const defaultSettings: Settings = {
     compactMode: false,
   },
   customInsurers: [],
+  operatorName: "Usuario Admin",
+  operatorEmail: "admin@cotu.com",
+  terapiasDir: "",
 };
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -113,17 +119,46 @@ export function DataProvider({ children }: { children: ReactNode }) {
       scanning: { ...defaultSettings.scanning, ...parsed.scanning },
       display: { ...defaultSettings.display, ...parsed.display },
       customInsurers: parsed.customInsurers ?? [],
+      operatorName: parsed.operatorName ?? defaultSettings.operatorName,
+      operatorEmail: parsed.operatorEmail ?? defaultSettings.operatorEmail,
+      terapiasDir: parsed.terapiasDir ?? defaultSettings.terapiasDir,
     };
   });
 
   const [history, setHistory] = useState<ScanResult[]>([]);
-
   const [currentScan, setCurrentScan] = useState<ScanResult | null>(null);
-
   const [sidecarStatus, setSidecarStatus] = useState<Record<string, 'running' | 'closed' | 'unknown'>>({
     Terapias: 'unknown',
     PDF: 'unknown',
   });
+
+  const checkSidecars = useCallback(async () => {
+    if (!(window as any).electronAPI) return;
+    
+    // Intentar ping a Terapias
+    try {
+      const resT = await (window as any).electronAPI.terapias.ping();
+      setSidecarStatus(prev => ({ ...prev, Terapias: resT.ok ? 'running' : 'closed' }));
+    } catch {
+      setSidecarStatus(prev => ({ ...prev, Terapias: 'closed' }));
+    }
+
+    // Intentar ping a PDF
+    try {
+      const resP = await (window as any).electronAPI.pdfTools.ping();
+      setSidecarStatus(prev => ({ ...prev, PDF: resP.ok ? 'running' : 'closed' }));
+    } catch {
+      setSidecarStatus(prev => ({ ...prev, PDF: 'closed' }));
+    }
+  }, []);
+
+  const reconnectSidecar = useCallback(async (name: string) => {
+    if (!(window as any).electronAPI) return;
+    setSidecarStatus(prev => ({ ...prev, [name]: 'unknown' }));
+    await (window as any).electronAPI.reconnectSidecar(name);
+    // Esperar un poco y chequear
+    setTimeout(checkSidecars, 1500);
+  }, [checkSidecars]);
 
   // Cargar historial y settings asincronamente desde DB (o localStorage en fallback)
   useEffect(() => {
@@ -131,6 +166,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (window.electronAPI?.getSettings) {
         try {
           const savedSettings = await window.electronAPI.getSettings();
+          
+          let terapiasDirStore = "";
+          let operatorNameStore = "Usuario Admin";
+          let operatorEmailStore = "admin@cotu.com";
+          
+          if (window.electronAPI?.config?.get) {
+            try {
+              terapiasDirStore = await window.electronAPI.config.get('settings.terapiasDir') || "";
+              operatorNameStore = await window.electronAPI.config.get('settings.operatorName') || "Usuario Admin";
+              operatorEmailStore = await window.electronAPI.config.get('settings.operatorEmail') || "admin@cotu.com";
+            } catch (err) {
+              console.error('[DataContext] Error leyendo de electron-store:', err);
+            }
+          }
+
           if (savedSettings) {
             setSettings(prev => ({
               ...prev,
@@ -139,6 +189,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
               scanning: { ...prev.scanning, ...(savedSettings.scanning || {}) },
               display: { ...prev.display, ...(savedSettings.display || {}) },
               customInsurers: savedSettings.customInsurers ?? prev.customInsurers,
+              terapiasDir: savedSettings.terapiasDir || terapiasDirStore || prev.terapiasDir,
+              operatorName: savedSettings.operatorName || operatorNameStore || prev.operatorName,
+              operatorEmail: savedSettings.operatorEmail || operatorEmailStore || prev.operatorEmail,
+            }));
+          } else {
+            setSettings(prev => ({
+              ...prev,
+              terapiasDir: terapiasDirStore || prev.terapiasDir,
+              operatorName: operatorNameStore || prev.operatorName,
+              operatorEmail: operatorEmailStore || prev.operatorEmail,
             }));
           }
         } catch (err) {
@@ -190,35 +250,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const checkSidecars = async () => {
-    if (!(window as any).electronAPI) return;
-    
-    // Intentar ping a Terapias
-    try {
-      const resT = await (window as any).electronAPI.terapias.ping();
-      setSidecarStatus(prev => ({ ...prev, Terapias: resT.ok ? 'running' : 'closed' }));
-    } catch {
-      setSidecarStatus(prev => ({ ...prev, Terapias: 'closed' }));
-    }
-
-    // Intentar ping a PDF
-    try {
-      const resP = await (window as any).electronAPI.pdfTools.ping();
-      setSidecarStatus(prev => ({ ...prev, PDF: resP.ok ? 'running' : 'closed' }));
-    } catch {
-      setSidecarStatus(prev => ({ ...prev, PDF: 'closed' }));
-    }
-  };
-
-  const reconnectSidecar = async (name: string) => {
-    if (!(window as any).electronAPI) return;
-    setSidecarStatus(prev => ({ ...prev, [name]: 'unknown' }));
-    await (window as any).electronAPI.reconnectSidecar(name);
-    // Esperar un poco y chequear
-    setTimeout(checkSidecars, 1500);
-  };
+  }, [checkSidecars]); // Added checkSidecars to deps
 
   useEffect(() => {
     localStorage.setItem("ordertrack-settings", JSON.stringify(settings));
@@ -227,9 +259,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
         console.error('[DataContext] Error guardando settings en IPC:', err);
       });
     }
+    if (window.electronAPI?.config?.set) {
+      if (settings.operatorName !== undefined) {
+        window.electronAPI.config.set('settings.operatorName', settings.operatorName).catch(console.error);
+      }
+      if (settings.operatorEmail !== undefined) {
+        window.electronAPI.config.set('settings.operatorEmail', settings.operatorEmail).catch(console.error);
+      }
+      if (settings.terapiasDir !== undefined) {
+        window.electronAPI.config.set('settings.terapiasDir', settings.terapiasDir).catch(console.error);
+      }
+    }
   }, [settings]);
 
-  const updateSettings = (newSettings: Partial<Settings>) => {
+  const updateSettings = useCallback((newSettings: Partial<Settings>) => {
     setSettings((prev) => ({
       ...prev,
       ...newSettings,
@@ -237,10 +280,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       scanning: { ...prev.scanning, ...(newSettings.scanning || {}) },
       display: { ...prev.display, ...(newSettings.display || {}) },
       customInsurers: newSettings.customInsurers ?? prev.customInsurers,
+      operatorName: newSettings.operatorName ?? prev.operatorName,
+      operatorEmail: newSettings.operatorEmail ?? prev.operatorEmail,
+      terapiasDir: newSettings.terapiasDir ?? prev.terapiasDir,
     }));
-  };
+  }, []);
 
-  const addToHistory = async (result: ScanResult) => {
+  const addToHistory = useCallback(async (result: ScanResult) => {
     if (window.electronAPI?.saveScan) {
       try {
         const updated = await window.electronAPI.saveScan(result);
@@ -261,9 +307,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return updated;
       });
     }
-  };
+  }, []);
 
-  const deleteFromHistory = async (id: string) => {
+  const deleteFromHistory = useCallback(async (id: string) => {
     if (window.electronAPI?.deleteScan) {
       try {
         const updated = await window.electronAPI.deleteScan(id);
@@ -283,9 +329,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return updated;
       });
     }
-  };
+  }, []);
 
-  const clearHistory = async () => {
+  const clearHistory = useCallback(async () => {
     if (window.electronAPI?.clearHistory) {
       try {
         await window.electronAPI.clearHistory();
@@ -299,10 +345,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem("ordertrack-history");
       setHistory([]);
     }
-  };
+  }, []);
 
-  // Fix #11: Trim de historial — conservar solo los últimos N escaneos
-  const trimHistory = async (keepCount: number): Promise<void> => {
+  const trimHistory = useCallback(async (keepCount: number): Promise<void> => {
     if (window.electronAPI?.trimHistory) {
       try {
         const updated = await window.electronAPI.trimHistory(keepCount);
@@ -318,25 +363,37 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return trimmed;
       });
     }
-  };
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    settings,
+    updateSettings,
+    history,
+    addToHistory,
+    deleteFromHistory,
+    clearHistory,
+    trimHistory,
+    currentScan,
+    setCurrentScan,
+    sidecarStatus,
+    checkSidecars,
+    reconnectSidecar,
+  }), [
+    settings,
+    updateSettings,
+    history,
+    addToHistory,
+    deleteFromHistory,
+    clearHistory,
+    trimHistory,
+    currentScan,
+    sidecarStatus,
+    checkSidecars,
+    reconnectSidecar,
+  ]);
 
   return (
-    <DataContext.Provider
-      value={{
-        settings,
-        updateSettings,
-        history,
-        addToHistory,
-        deleteFromHistory,
-        clearHistory,
-        trimHistory,
-        currentScan,
-        setCurrentScan,
-        sidecarStatus,
-        checkSidecars,
-        reconnectSidecar,
-      }}
-    >
+    <DataContext.Provider value={contextValue}>
       {children}
     </DataContext.Provider>
   );

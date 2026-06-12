@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useData } from "../contexts/DataContext";
 import { useNavigate } from "react-router";
 import {
@@ -13,10 +13,12 @@ import {
   Download,
   Search,
   ExternalLink,
-  ChevronLeft
+  ChevronLeft,
+  History as HistoryIcon
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,6 +54,7 @@ export function History() {
   const { history, clearHistory, deleteFromHistory, setCurrentScan } = useData();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const handleClearHistory = () => {
     clearHistory();
@@ -115,17 +118,46 @@ export function History() {
       .map(([name]) => name.split(" ")[0]);
   };
 
+  const filteredHistory = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return history;
+
+    return history.filter((scan) => {
+      const matchesSession =
+        scan.basePath.toLowerCase().includes(query) ||
+        scan.type.toLowerCase().includes(query) ||
+        scanTypeLabels[scan.type].toLowerCase().includes(query);
+
+      const matchesInvoice = scan.invoices.some((invoice) =>
+        invoice.invoiceNumber.toLowerCase().includes(query) ||
+        invoice.company.toLowerCase().includes(query)
+      );
+
+      return matchesSession || matchesInvoice;
+    });
+  }, [history, searchQuery]);
+
   if (history.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-120px)] space-y-6 animate-in fade-in duration-500">
-        <div className="w-24 h-24 rounded-3xl bg-white/50 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800 flex items-center justify-center shadow-xl">
-          <Clock className="w-10 h-10 text-slate-300" />
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8 animate-in fade-in duration-500">
+        <div className="w-20 h-20 rounded-3xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+          <HistoryIcon className="w-10 h-10" />
         </div>
-        <div className="text-center">
-          <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Historial vacío</h2>
-          <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">Tus auditorías aparecerán aquí</p>
+        <div className="text-center space-y-3 max-w-md">
+          <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Sin Historial</h2>
+          <p className="text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+            Aún no hay escaneos guardados. Completa tu primer escaneo para ver el historial aquí.
+          </p>
         </div>
-        <Button onClick={() => navigate("/scanner")} className="h-12 px-6 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white">Ir al Escáner</Button>
+        <Button
+          size="lg"
+          onClick={() => navigate("/scanner")}
+          className="h-14 px-10 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black shadow-xl shadow-purple-500/20 gap-3"
+        >
+          <Search className="w-5 h-5" />
+          INICIAR ESCANEO
+          <ChevronRight className="w-5 h-5 opacity-60" />
+        </Button>
       </div>
     );
   }
@@ -178,8 +210,19 @@ export function History() {
         </div>
       </div>
 
+      <div className="relative">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <Input
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="Buscar por ruta, tipo, factura o aseguradora..."
+          className="h-14 pl-12 rounded-2xl bg-white/60 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 shadow-lg font-bold"
+        />
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {history.map((scan, index) => {
+        {filteredHistory.map((scan) => {
+          const index = history.findIndex((item) => item.id === scan.id);
           const topCompanies = getTopCompanies(scan);
           return (
             <Card
@@ -284,6 +327,14 @@ export function History() {
           );
         })}
       </div>
+
+      {filteredHistory.length === 0 && (
+        <div className="py-16 text-center rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-950/30">
+          <Search className="w-10 h-10 text-slate-300 mx-auto mb-4" />
+          <p className="text-sm font-black uppercase tracking-widest text-slate-400">Sin coincidencias</p>
+          <p className="text-xs font-medium text-slate-500 mt-2">Ajusta el término de búsqueda para ver sesiones auditadas.</p>
+        </div>
+      )}
     </div>
   );
 }

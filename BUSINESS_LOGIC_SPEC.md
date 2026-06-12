@@ -1,6 +1,6 @@
 # 🏗️ ESPECIFICACIÓN BACKEND Y LÓGICA DE NEGOCIO
 
-## COTU Analytics v3.0.0 - Sistema de Análisis de Facturas
+## COTU Analytics v3.2.0 - Sistema de Análisis de Facturas
 
 ---
 
@@ -48,5 +48,22 @@ Implementado en `src/app/contexts/DataContext.tsx` y `src/app/utils/localScanner
 - Recharts utilizado para generación de KPIs ("Tendencia Mensual", "Distribución por Año", "Top Aseguradoras").
 - Generación local; Sin API REST implementada (Aplicación Client-side Desktop Port).
 
+## 4. CAMBIOS EN V3.2 (Refactorización Junio 2026)
+### 4.1 Dashboard — Ghost State
+- Si no hay datos, se muestra MOCK_DASHBOARD_DATA con blur/opacity/grayscale
+- CTA central con botón de escaneo premium
+### 4.2 Unificación de Interfaces
+- `Invoice`, `ScanResult`, `ScanStats` estandarizadas en DataContext.tsx
+- Compatible con contratos de @cotu-analytics** y @COTU_Analytics**
+### 4.3 Mejoras de Gráficas
+- `LineChart` reemplazado por `AreaChart` con gradiente azul en Tendencia Mensual
+- `yearData` BarChart horizontal activado (distribución por año)
+- Tooltip enriquecido en PieChart con nombre completo de aseguradora
+### 4.4 Fixes Críticos
+- Dark mode reactivo: `useTheme()` en DashboardView (eliminado snapshot DOM)
+- `window.location.reload()` eliminado: reemplazado por re-fetch IPC
+- `DEFAULT_TERAPIAS_DIR` dinámico via `os.homedir()`
+- Empty states en Reports.tsx e History.tsx
+
 **_NOTA ESTRATÉGICA_**
-Todo el sistema está alineado de forma pixel-perfect y logic-perfect con las restricciones dictadas por el documento de validación técnica COTU Analytics v3.0.0. No se implementaron optimizaciones extrañas ni se alteraron requerimientos documentados.
+Todo el sistema está alineado de forma pixel-perfect y logic-perfect con las restricciones dictadas por el documento de validación técnica COTU Analytics v3.2.0. No se implementaron optimizaciones extrañas ni se alteraron requerimientos documentados.

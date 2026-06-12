@@ -17,7 +17,6 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../components/ui/utils";
 import { useData } from "../../contexts/DataContext";
-import logoUrl from "../../../assets/logo.png";
 
 const navigation = [
   { name: "Dashboard", path: "/", icon: LayoutDashboard },
@@ -30,7 +29,9 @@ const navigation = [
 ];
 
 export function Sidebar() {
-  const { sidecarStatus, checkSidecars, reconnectSidecar } = useData();
+  const { sidecarStatus, checkSidecars, reconnectSidecar, settings } = useData();
+  const operatorName = settings?.operatorName || "Operador ControlHub";
+  const operatorEmail = settings?.operatorEmail || "Sin configurar";
 
   return (
     <aside className="w-72 bg-white/50 dark:bg-slate-950/40 backdrop-blur-2xl border-r border-slate-200 dark:border-slate-800 flex flex-col shadow-2xl z-50">
@@ -38,7 +39,7 @@ export function Sidebar() {
       {/* Logo Premium */}
       <div className="p-8 border-b border-slate-100 dark:border-slate-800/50">
         <div className="flex items-center gap-4">
-          <img src={logoUrl} alt="ControlHub" className="h-10 w-auto object-contain" />
+          <img src="/icon.png" alt="ControlHub" className="h-10 w-10 object-contain" />
           <div>
             <h1 className="font-black text-xl text-slate-900 dark:text-white tracking-tighter">
               ControlHub
@@ -138,10 +139,10 @@ export function Sidebar() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-black text-slate-900 dark:text-white truncate uppercase tracking-tight">
-              Usuario Admin
+              {operatorName}
             </p>
             <p className="text-[10px] font-bold text-slate-500 dark:text-slate-500 truncate">
-              admin@cotu.com
+              {operatorEmail}
             </p>
           </div>
         </div>

@@ -17,7 +17,8 @@ import {
   Scissors,
   CheckCircle2,
   LayoutGrid,
-  Database
+  Database,
+  User
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import { Label } from "../components/ui/label";
@@ -45,6 +46,14 @@ export function Settings() {
   const [dbStats, setDbStats] = useState<DbStats | null>(null);
   const [isTrimming, setIsTrimming] = useState(false);
   const TRIM_KEEP = 50;
+
+  const [operatorName, setOperatorName] = useState(settings.operatorName || "");
+  const [operatorEmail, setOperatorEmail] = useState(settings.operatorEmail || "");
+
+  useEffect(() => {
+    if (settings.operatorName) setOperatorName(settings.operatorName);
+    if (settings.operatorEmail) setOperatorEmail(settings.operatorEmail);
+  }, [settings.operatorName, settings.operatorEmail]);
 
   useEffect(() => {
     if (window.electronAPI?.getDbStats) {
@@ -187,6 +196,91 @@ export function Settings() {
                        }}><Trash2 className="w-4 h-4" /></Button>
                     </div>
                  ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Rutas del Sistema */}
+          <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl overflow-hidden">
+            <CardHeader className="p-8 bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-orange-500 text-white shadow-lg"><HardDrive className="w-5 h-5" /></div>
+                <CardTitle className="text-xl font-black">Rutas del Sistema</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="p-8 space-y-4">
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Ruta de Terapias</Label>
+                <div className="flex flex-col md:flex-row gap-3">
+                  <Input 
+                    value={settings.terapiasDir || "Sin configurar (usando home)"} 
+                    disabled 
+                    className="flex-1 h-12 rounded-xl bg-slate-100/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-500 font-bold"
+                  />
+                  <Button 
+                    variant="outline" 
+                    onClick={async () => {
+                      try {
+                        const newPath = await window.electronAPI.selectDirectory();
+                        if (newPath) {
+                          updateSettings({ terapiasDir: newPath });
+                          toast.success(`Carpeta de terapias cambiada con éxito`, {
+                            description: newPath,
+                          });
+                        }
+                      } catch (err) {
+                        toast.error("Error al seleccionar la carpeta");
+                      }
+                    }}
+                    className="h-12 px-6 rounded-xl font-bold border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/40 shrink-0"
+                  >
+                    Cambiar carpeta...
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Perfil del Operador */}
+          <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl overflow-hidden">
+            <CardHeader className="p-8 bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-indigo-505 bg-indigo-600 text-white shadow-lg"><User className="w-5 h-5" /></div>
+                <CardTitle className="text-xl font-black">Perfil del Operador</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="p-8 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nombre del Operador</Label>
+                  <Input 
+                    value={operatorName} 
+                    onChange={(e) => setOperatorName(e.target.value)} 
+                    placeholder="Ej: Usuario Admin"
+                    className="h-12 rounded-xl bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-bold text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Correo Electrónico</Label>
+                  <Input 
+                    type="email"
+                    value={operatorEmail} 
+                    onChange={(e) => setOperatorEmail(e.target.value)} 
+                    placeholder="Ej: admin@cotu.com"
+                    className="h-12 rounded-xl bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-bold text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end pt-2">
+                <Button 
+                  onClick={() => {
+                    updateSettings({ operatorName, operatorEmail });
+                    toast.success("Perfil del operador guardado con éxito");
+                  }}
+                  className="h-12 px-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black shadow-lg shadow-indigo-500/20"
+                >
+                  Guardar Cambios
+                </Button>
               </div>
             </CardContent>
           </Card>

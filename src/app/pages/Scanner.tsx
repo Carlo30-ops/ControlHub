@@ -7,6 +7,7 @@ import {
   HardDrive,
   AlertCircle,
   CheckCircle2,
+  DollarSign,
   Copy,
   FileX,
   CalendarRange,
@@ -47,12 +48,13 @@ import {
   ScanStats,
 } from "../utils/localScanner";
 import { useData } from "../contexts/DataContext";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
 import { toast } from "sonner";
 import { cn } from "../components/ui/utils";
 
 export function Scanner() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { addToHistory, setCurrentScan, settings } = useData();
   const [scanType, setScanType] = useState<"day" | "week" | "month" | "year" | "custom">("month");
   const [startDate, setStartDate] = useState<Date>();
@@ -104,7 +106,7 @@ export function Scanner() {
   const examplePaths = getExamplePaths();
   const isLocalScanSupported = isFileSystemAccessSupported();
 
-  const handleSelectDirectory = async () => {
+  const handleSelectDirectory = useCallback(async () => {
     try {
       const dirPath = await selectDirectoryFiles();
       if (dirPath) {
@@ -119,7 +121,14 @@ export function Scanner() {
     } catch (error) {
       toast.error("Error al seleccionar directorio");
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (location.state?.autoSelect) {
+      navigate(location.pathname, { replace: true, state: {} });
+      handleSelectDirectory();
+    }
+  }, [location.state, location.pathname, navigate, handleSelectDirectory]);
 
   const handleScan = async () => {
     if (useLocalScanner && !selectedFiles) {

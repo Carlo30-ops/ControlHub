@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useData } from "../../contexts/DataContext";
 import { 
   CheckCircle2, 
   AlertCircle, 
@@ -85,9 +86,8 @@ interface SearchResult {
   lastModified: number;
 }
 
-const DEFAULT_SOURCE = "C:\\Users\\factu\\OneDrive\\Documentos 1\\TERAPIAS\\DOCUMENTOS PARA ARMAR";
-
 export default function Terapias() {
+  const { settings, updateSettings, sidecarStatus } = useData();
   const [status, setStatus] = useState<SidecarStatus>({
     ping: false,
     word: false,
@@ -98,7 +98,7 @@ export default function Terapias() {
 
   const [availableDocs, setAvailableDocs] = useState<FileMetadata[]>([]);
   const [isListing, setIsListing] = useState(false);
-  const [sourceDir, setSourceDir] = useState<string>(DEFAULT_SOURCE);
+  const [sourceDir, setSourceDir] = useState<string>(settings.terapiasDir || "");
 
   const [form, setForm] = useState<FormState>({
     inputName: "",
@@ -124,7 +124,11 @@ export default function Terapias() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  const checkStatus = async () => {
+  const hasSourceDir = sourceDir.trim().length > 0;
+  const engineReady = !status.loading && status.ping === true;
+  const interactionsLocked = !hasSourceDir || !engineReady || isProcessing;
+
+  const checkStatus = async (activeSourceDir = sourceDir) => {
     setStatus(prev => ({ ...prev, loading: true, error: null }));
     try {
       const pingRes = await (window as any).electronAPI.terapias.ping();
@@ -139,7 +143,7 @@ export default function Terapias() {
       });
       
       if (pingRes.ok) {
-        fetchDocs();
+        fetchDocs(activeSourceDir);
         fetchHistory();
       }
     } catch (err: any) {
@@ -152,7 +156,12 @@ export default function Terapias() {
     }
   };
 
-  const fetchDocs = async () => {
+  const fetchDocs = async (activeSourceDir = sourceDir) => {
+    if (!activeSourceDir.trim()) {
+      setAvailableDocs([]);
+      return;
+    }
+
     setIsListing(true);
     try {
       const res = await (window as any).electronAPI.terapias.listDocs();
@@ -182,7 +191,7 @@ export default function Terapias() {
 
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
-    if (query.length < 3) {
+    if (query.length < 3 || !engineReady) {
       setSearchResults([]);
       return;
     }
@@ -205,18 +214,34 @@ export default function Terapias() {
 
   useEffect(() => {
     const loadConfig = async () => {
+      const source = await (window as any).electronAPI.config.get("settings.terapiasDir");
       const dest = await (window as any).electronAPI.config.get("terapias.baseDest");
       const backup = await (window as any).electronAPI.config.get("terapias.backup");
-      // Forzar siempre el path fijo
-      const fixedSource = "C:\\Users\\factu\\OneDrive\\Documentos 1\\TERAPIAS\\DOCUMENTOS PARA ARMAR";
-      setSourceDir(fixedSource);
-      (window as any).electronAPI.config.set("terapiasSourceDir", fixedSource);
+      
+      const activeSource = source || settings.terapiasDir || "";
+      setSourceDir(activeSource);
+      if (activeSource) {
+        await (window as any).electronAPI.config.set("settings.terapiasDir", activeSource);
+        await (window as any).electronAPI.config.set("terapiasSourceDir", activeSource);
+      }
       
       if (dest) setForm(prev => ({ ...prev, baseDest: dest }));
       if (backup) setForm(prev => ({ ...prev, backup: backup }));
+      return activeSource;
     };
-    loadConfig();
-    checkStatus();
+    
+    loadConfig().then((activeSource) => {
+      // Solo disparar checkStatus si el sidecar no reporta estar activo globalmente
+      if (sidecarStatus.Terapias !== 'running') {
+        checkStatus(activeSource || "");
+      } else {
+        // Si ya está activo, actualizar estado local y listar datos
+        setStatus(prev => ({ ...prev, ping: true, word: true, loading: false }));
+        fetchDocs(activeSource || "");
+        fetchHistory();
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSelectFolder = (field: "baseDest" | "backup" | "sourceDir") => async () => {
@@ -224,8 +249,10 @@ export default function Terapias() {
     if (path) {
       if (field === "sourceDir") {
         setSourceDir(path);
+        updateSettings({ terapiasDir: path });
+        (window as any).electronAPI.config.set("settings.terapiasDir", path);
         (window as any).electronAPI.config.set("terapiasSourceDir", path);
-        fetchDocs();
+        fetchDocs(path);
       } else {
         setForm(prev => ({ ...prev, [field]: path }));
         const configKey = field === "baseDest" ? "terapias.baseDest" : "terapias.backup";
@@ -235,20 +262,51 @@ export default function Terapias() {
   };
 
   const handlePrepare = async () => {
-    if (!form.inputName || !form.filename || !form.baseDest) {
-      toast.error("Completa el nombre, selecciona un archivo y destino");
+    if (!engineReady) {
+      toast.error("El motor de Terapias debe estar disponible");
       return;
     }
+
+    if (status.word !== true) {
+      toast.error("Microsoft Word no está disponible en este equipo.");
+      return;
+    }
+
+    if (!form.inputName || !form.baseDest) {
+      toast.error("Completa el nombre y selecciona el destino");
+      return;
+    }
+
+    if (!sourceDir) {
+      toast.error("Configura primero la carpeta origen de terapias");
+      return;
+    }
+
+    // Paso 1: Buscar automáticamente el archivo Word en sourceDir
+    const docFiles = await (window as any).electronAPI.listFiles(sourceDir, ['.docx', '.doc']);
+
+    if (docFiles.length === 0) {
+      toast.error("No se encontró ningún documento Word en la carpeta configurada.");
+      return;
+    }
+
+    if (docFiles.length > 1) {
+      toast.error("Hay más de un documento Word en la carpeta. Deja solo uno.");
+      return;
+    }
+
+    const filename = docFiles[0];
 
     setIsProcessing(true);
     try {
       const res = await (window as any).electronAPI.terapias.prepare({
         input_name: form.inputName,
-        filename: form.filename,
+        filename: filename,
         base_dest: form.baseDest
       });
       
       if (res.ok) {
+        setForm(prev => ({ ...prev, filename: filename }));
         setPrepareResult(res);
         setStep({
           current: 2,
@@ -268,6 +326,11 @@ export default function Terapias() {
   };
 
   const handleFinalize = async () => {
+    if (!engineReady) {
+      toast.error("El motor de Terapias y Microsoft Word deben estar disponibles");
+      return;
+    }
+
     if (!step.docPath || !form.backup) {
       toast.error("Falta la ruta del documento o la carpeta de respaldo");
       return;
@@ -283,10 +346,16 @@ export default function Terapias() {
       
       if (res.ok) {
         toast.success("PDF generado y archivo original respaldado");
+        
+        // Revelar en carpeta automáticamente
+        if (res.pdf_path) {
+          (window as any).electronAPI.shell.revealInFolder(res.pdf_path);
+        }
+
         setPrepareResult(null);
         setStep({ current: 1, docPath: null, patient: null, folder: null });
         setForm(prev => ({ ...prev, inputName: "", filename: "" }));
-        fetchDocs();
+        fetchDocs(sourceDir);
         fetchHistory();
       } else {
         toast.error("Error al finalizar: " + res.error);
@@ -323,7 +392,7 @@ export default function Terapias() {
           <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Organizador de Terapias</h1>
           <div className="flex items-center gap-3 mt-1 font-medium">
             <Badge variant="outline" className="text-[10px] font-black border-slate-200 dark:border-slate-800">SOURCE</Badge>
-            <span className="font-mono text-xs uppercase text-slate-500">{sourceDir}</span>
+            <span className="font-mono text-xs uppercase text-slate-500">{sourceDir || "Origen no configurado"}</span>
           </div>
         </div>
         
@@ -338,6 +407,7 @@ export default function Terapias() {
               placeholder="Buscar paciente antiguo..." 
               value={searchQuery}
               onChange={e => handleSearch(e.target.value)}
+              disabled={!engineReady}
               className="pl-10 h-10 rounded-xl bg-white/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 font-bold focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
@@ -387,6 +457,23 @@ export default function Terapias() {
         </div>
       </div>
 
+      {(!hasSourceDir || (!status.loading && !engineReady)) && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 flex flex-col md:flex-row md:items-center gap-4">
+          <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-black text-amber-700 dark:text-amber-400 uppercase tracking-wide">Flujo bloqueado</p>
+            <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mt-1">
+              {!hasSourceDir
+                ? "Configura la carpeta origen desde settings.terapiasDir para iniciar el Paso 1."
+                : "El motor de Terapias o Microsoft Word no esta disponible. Reintenta la conexion antes de continuar."}
+            </p>
+          </div>
+          <Button variant="outline" className="rounded-xl font-bold" onClick={handleSelectFolder("sourceDir")}>
+            <FolderOpen className="w-4 h-4 mr-2" /> Configurar origen
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Flujo Principal */}
         <div className="lg:col-span-8 space-y-8">
@@ -421,7 +508,8 @@ export default function Terapias() {
                    }}
                    onClear={() => setForm(prev => ({ ...prev, filename: "" }))}
                    accept=".docx,.doc"
-                   disabled={step.current !== 1}
+                   disabled={step.current !== 1 || interactionsLocked}
+                   defaultPath={sourceDir || ""}
                  />
               </div>
 
@@ -432,7 +520,7 @@ export default function Terapias() {
                     placeholder="Ej: Control 15-05 SS Maria Delgado" 
                     value={form.inputName}
                     onChange={e => setForm(prev => ({ ...prev, inputName: e.target.value }))}
-                    disabled={step.current !== 1}
+                    disabled={step.current !== 1 || interactionsLocked}
                     className="h-12 rounded-xl bg-slate-50/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-bold"
                   />
                 </div>
@@ -441,7 +529,7 @@ export default function Terapias() {
                   <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Destino de Almacenamiento</label>
                   <div className="flex gap-2">
                     <Input readOnly value={form.baseDest} placeholder="Selecciona destino..." className="h-12 rounded-xl bg-slate-50/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs" />
-                    <Button variant="secondary" className="h-12 w-12 rounded-xl" onClick={handleSelectFolder("baseDest")} disabled={step.current !== 1}>
+                    <Button variant="secondary" className="h-12 w-12 rounded-xl" onClick={handleSelectFolder("baseDest")} disabled={step.current !== 1 || interactionsLocked}>
                       <FolderOpen className="w-5 h-5" />
                     </Button>
                   </div>
@@ -451,7 +539,7 @@ export default function Terapias() {
               {step.current === 1 && (
                 <Button 
                   className="w-full h-16 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xl shadow-xl shadow-blue-500/20 gap-3 active:scale-[0.98] transition-all"
-                  disabled={isProcessing || !status.ping || !form.filename || !form.inputName}
+                  disabled={interactionsLocked || !form.inputName}
                   onClick={handlePrepare}
                 >
                   {isProcessing ? <RefreshCw className="w-8 h-8 animate-spin" /> : <><ChevronRight className="w-6 h-6" /> PREPARAR Y ABRIR WORD</>}
@@ -494,7 +582,7 @@ export default function Terapias() {
                 <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Carpeta de Respaldo Histórico</label>
                 <div className="flex gap-2">
                   <Input readOnly value={form.backup} placeholder="Ruta para copias Word..." className="h-12 rounded-xl bg-slate-50/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800" />
-                  <Button variant="secondary" className="h-12 px-6 rounded-xl font-bold" onClick={handleSelectFolder("backup")}>
+                  <Button variant="secondary" className="h-12 px-6 rounded-xl font-bold" onClick={handleSelectFolder("backup")} disabled={interactionsLocked || step.current !== 2}>
                     <HistoryIcon className="w-4 h-4 mr-2" /> Cambiar
                   </Button>
                 </div>
@@ -505,7 +593,7 @@ export default function Terapias() {
                   <AlertDialogTrigger asChild>
                     <Button 
                       className="w-full h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xl shadow-xl shadow-emerald-500/20 gap-3 active:scale-[0.98] transition-all"
-                      disabled={isProcessing}
+                      disabled={interactionsLocked || step.current !== 2 || !step.docPath || !form.backup}
                     >
                       {isProcessing ? <RefreshCw className="w-8 h-8 animate-spin" /> : <><Download className="w-6 h-6" /> GENERAR PDF Y FINALIZAR</>}
                     </Button>
@@ -535,12 +623,12 @@ export default function Terapias() {
                     </AlertDialogHeader>
                     <AlertDialogFooter className="pt-4">
                       <AlertDialogCancel className="rounded-xl font-bold">Volver a Word</AlertDialogCancel>
-                      <AlertDialogAction className="rounded-xl bg-emerald-600 hover:bg-emerald-700 font-black" onClick={handleFinalize}>CONFIRMAR Y CONVERTIR</AlertDialogAction>
+                      <AlertDialogAction className="rounded-xl bg-emerald-600 hover:bg-emerald-700 font-black" disabled={interactionsLocked || step.current !== 2 || !step.docPath || !form.backup} onClick={handleFinalize}>CONFIRMAR Y CONVERTIR</AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
                 
-                <Button variant="ghost" className="h-10 font-bold text-slate-400 hover:text-red-500 hover:bg-red-500/10" onClick={() => setStep({ current: 1, docPath: null, patient: null, folder: null })}>
+                <Button variant="ghost" className="h-10 font-bold text-slate-400 hover:text-red-500 hover:bg-red-500/10" disabled={interactionsLocked} onClick={() => setStep({ current: 1, docPath: null, patient: null, folder: null })}>
                   CANCELAR OPERACIÓN ACTUAL
                 </Button>
               </div>
@@ -629,23 +717,43 @@ export default function Terapias() {
                 <ScrollArea className="h-80">
                   <div className="divide-y divide-slate-100 dark:divide-slate-800">
                     {availableDocs.map(doc => (
-                      <button 
+                      <div 
                         key={doc.name} 
-                        className="w-full px-6 py-4 text-left hover:bg-blue-500/5 transition-colors flex items-center gap-3 group"
-                        onClick={() => setForm(f => ({ ...f, filename: doc.name }))}
+                        className="w-full px-6 py-4 flex items-center gap-3 group transition-colors hover:bg-blue-500/5"
                       >
-                        <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-900 group-hover:bg-blue-500/10 group-hover:text-blue-500 transition-colors">
-                          <FileText className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-black text-slate-600 dark:text-slate-300 truncate group-hover:text-blue-500 transition-colors">{doc.name}</p>
-                          <div className="flex items-center gap-3 mt-1 text-[9px] font-bold text-slate-400 uppercase">
-                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatRelativeDate(doc.modified)}</span>
-                            <span className="flex items-center gap-1"><Download className="w-3 h-3" /> {formatSize(doc.size)}</span>
+                        <div 
+                          className="flex-1 min-w-0 flex items-center gap-3 cursor-pointer"
+                          onClick={() => {
+                            if (interactionsLocked || step.current !== 1) return;
+                            setForm(f => ({ ...f, filename: doc.name }));
+                          }}
+                        >
+                          <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-900 group-hover:bg-blue-500/10 group-hover:text-blue-500 transition-colors">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-black text-slate-600 dark:text-slate-300 truncate group-hover:text-blue-500 transition-colors">{doc.name}</p>
+                            <div className="flex items-center gap-3 mt-1 text-[9px] font-bold text-slate-400 uppercase">
+                              <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatRelativeDate(doc.modified)}</span>
+                              <span className="flex items-center gap-1"><Download className="w-3 h-3" /> {formatSize(doc.size)}</span>
+                            </div>
                           </div>
                         </div>
-                        <ChevronRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-all" />
-                      </button>
+
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="h-8 rounded-lg font-bold text-[10px] gap-2 opacity-0 group-hover:opacity-100 transition-all border-slate-200 dark:border-slate-800 shrink-0"
+                          disabled={interactionsLocked || step.current !== 1}
+                          onClick={() => {
+                            if (interactionsLocked || step.current !== 1) return;
+                            (window as any).electronAPI.shell.openFile(`${sourceDir}\\${doc.name}`);
+                          }}
+                        >
+                          <FileText className="w-3.5 h-3.5 text-blue-500" /> 
+                          Abrir Word original
+                        </Button>
+                      </div>
                     ))}
                   </div>
                 </ScrollArea>
@@ -667,7 +775,7 @@ function GuideStep({ num, text }: { num: string, text: string }) {
   );
 }
 
-function DropZoneSimple({ file, onFiles, accept, disabled, onClear }: any) {
+function DropZoneSimple({ file, onFiles, accept, disabled, onClear, defaultPath }: any) {
   const [isOver, setIsOver] = useState(false);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -692,7 +800,7 @@ function DropZoneSimple({ file, onFiles, accept, disabled, onClear }: any) {
       onClick={async () => {
         if (disabled) return;
         const filters = accept ? [{ name: "Documentos", extensions: accept.replace(/\./g, '').split(',') }] : [];
-        const path = await (window as any).electronAPI.selectFile(filters);
+        const path = await (window as any).electronAPI.selectFile({ filters, defaultPath });
         if (path) onFiles([path]);
       }}
     >

@@ -115,7 +115,7 @@ function SortIcon({ col, sortKey, sortDir }: any) {
 
 export function Reports() {
   const navigate = useNavigate();
-  const { currentScan, settings } = useData();
+  const { currentScan, history, settings } = useData();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState<string>("all");
@@ -130,6 +130,188 @@ export function Reports() {
   const [previewPath, setPreviewPath] = useState<string | null>(null);
 
   const rowsPerPage = settings.display.rowsPerPage;
+
+  const handleExportCSV = async () => {
+    try {
+      const csvContent = buildCSV(filteredInvoices, settings.columns);
+      if (window.electronAPI?.exportFile) {
+        const res = await window.electronAPI.exportFile({
+          defaultFilename: `Reporte_Auditoria_COTU_${formatDate(new Date(), "yyyyMMdd")}.csv`,
+          content: csvContent,
+          filters: [{ name: "Archivo CSV", extensions: ["csv"] }],
+        });
+        if (res.success) toast.success("Reporte CSV exportado con éxito");
+      } else {
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `Reporte_Auditoria_COTU_${formatDate(new Date(), "yyyyMMdd")}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success("CSV descargado");
+      }
+    } catch (err) {
+      toast.error("Error al exportar CSV");
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      const data = filteredInvoices.map((inv) => ({
+        "N° Factura": inv.invoiceNumber,
+        "Compañía": inv.company,
+        "Día": getDayFromDate(inv.date),
+        "Mes": inv.month,
+        "Año": inv.year,
+        "Fecha": inv.date,
+        "Detalle": inv.detail,
+        "Monto (COP)": inv.amount,
+        "Ruta": inv.filePath,
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Resultados");
+      
+      const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+      
+      if (window.electronAPI?.exportFile) {
+        const res = await window.electronAPI.exportFile({
+          defaultFilename: `Reporte_Auditoria_COTU_${formatDate(new Date(), "yyyyMMdd")}.xlsx`,
+          content: new Uint8Array(excelBuffer),
+          filters: [{ name: "Libro de Excel", extensions: ["xlsx"] }],
+        });
+        if (res.success) toast.success("Reporte Excel exportado con éxito");
+      } else {
+        XLSX.writeFile(workbook, `Reporte_Auditoria_COTU_${formatDate(new Date(), "yyyyMMdd")}.xlsx`);
+        toast.success("Excel descargado");
+      }
+    } catch (err) {
+      toast.error("Error al exportar Excel");
+    }
+  };
+
+  const handleExportPDF = async () => {
+    setIsExportingPDF(true);
+    try {
+      const doc = new jsPDF();
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(20);
+      doc.setTextColor(30, 41, 59);
+      doc.text("REPORTE ANALÍTICO DE AUDITORÍA COTU", 20, 25);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139);
+      const dateStr = formatDate(new Date(), "dd/MM/yyyy HH:mm:ss");
+      doc.text(`Generado el: ${dateStr}`, 20, 32);
+      
+      doc.setDrawColor(226, 232, 240);
+      doc.line(20, 36, 190, 36);
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(15, 23, 42);
+      doc.text("Métricas Clave", 20, 48);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      doc.text(`Total Facturas Auditadas: ${filteredInvoices.length}`, 20, 56);
+      doc.text(`Monto Total: ${formatCOP(totalAmount)}`, 20, 64);
+      
+      const numCompanies = new Set(filteredInvoices.map(i => i.company)).size;
+      doc.text(`Aseguradoras Detectadas: ${numCompanies}`, 20, 72);
+      
+      const efficiency = filteredInvoices.length > 0
+        ? Math.round((filteredInvoices.filter(i => i.amount > 0).length / filteredInvoices.length) * 100)
+        : 0;
+      doc.text(`Tasa de Extracción Correcta: ${efficiency}%`, 20, 80);
+      
+      doc.line(20, 86, 190, 86);
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("Distribución por Aseguradora", 20, 98);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      
+      const companyStats = filteredInvoices.reduce((acc: Record<string, { count: number; total: number }>, inv) => {
+        if (!acc[inv.company]) acc[inv.company] = { count: 0, total: 0 };
+        acc[inv.company].count += 1;
+        acc[inv.company].total += inv.amount || 0;
+        return acc;
+      }, {});
+      
+      let y = 108;
+      Object.entries(companyStats)
+        .sort(([, a], [, b]) => b.count - a.count)
+        .slice(0, 8)
+        .forEach(([name, data]) => {
+          doc.text(`- ${name}: ${data.count} facturas (${formatCOP(data.total)})`, 25, y);
+          y += 8;
+        });
+      
+      doc.line(20, y + 2, 190, y + 2);
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("Detalle de Auditoría (Muestra de registros)", 20, y + 14);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      y = y + 24;
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("N° Factura", 20, y);
+      doc.text("Aseguradora", 55, y);
+      doc.text("Fecha", 110, y);
+      doc.text("Monto (COP)", 145, y);
+      doc.line(20, y + 2, 190, y + 2);
+      y += 8;
+      
+      doc.setFont("helvetica", "normal");
+      filteredInvoices.slice(0, 10).forEach((inv) => {
+        doc.text(inv.invoiceNumber, 20, y);
+        doc.text(inv.company.substring(0, 25), 55, y);
+        doc.text(inv.date, 110, y);
+        doc.text(inv.amount > 0 ? formatCOP(inv.amount) : "—", 145, y);
+        y += 7;
+      });
+      
+      if (filteredInvoices.length > 10) {
+        doc.setFont("helvetica", "italic");
+        doc.text(`... y ${filteredInvoices.length - 10} facturas más en el reporte general.`, 20, y + 4);
+      }
+      
+      const pdfArray = doc.output("arraybuffer");
+      
+      if (window.electronAPI?.exportFile) {
+        const res = await window.electronAPI.exportFile({
+          defaultFilename: `Reporte_Auditoria_COTU_${formatDate(new Date(), "yyyyMMdd")}.pdf`,
+          content: new Uint8Array(pdfArray),
+          filters: [{ name: "Documento PDF", extensions: ["pdf"] }],
+        });
+        if (res.success) {
+          toast.success("Reporte PDF exportado con éxito");
+        } else if (res.error) {
+          toast.error(`Error al guardar PDF: ${res.error}`);
+        }
+      } else {
+        doc.save(`Reporte_Auditoria_COTU_${formatDate(new Date(), "yyyyMMdd")}.pdf`);
+        toast.success("PDF descargado desde el navegador");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al generar el reporte PDF");
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
 
   const handleSort = (col: SortKey) => {
     if (sortKey === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -171,17 +353,29 @@ export function Reports() {
   const totalAmount = filteredInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
   const hasFilters = searchQuery || companyFilter !== "all" || yearFilter !== "all" || monthFilter !== "all" || minAmount || maxAmount || sortKey !== null;
 
-  if (!currentScan) {
+  const activeInvoices = currentScan?.invoices ?? (history.length > 0 ? history[0].invoices : null);
+
+  if (!activeInvoices || activeInvoices.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] space-y-6">
-        <div className="w-24 h-24 rounded-3xl bg-white/50 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800 flex items-center justify-center shadow-xl">
-           <FileText className="w-10 h-10 text-slate-300" />
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8 animate-in fade-in duration-500">
+        <div className="w-20 h-20 rounded-3xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
+          <FileText className="w-10 h-10" />
         </div>
-        <div className="text-center">
-           <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase">Sin resultados</h2>
-           <p className="text-slate-500 font-medium">Realiza un escaneo para ver los reportes</p>
+        <div className="text-center space-y-3 max-w-md">
+          <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Sin Reportes Disponibles</h2>
+          <p className="text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+            Aún no tienes facturas escaneadas. Realiza un escaneo primero para ver el reporte detallado.
+          </p>
         </div>
-        <Button onClick={() => navigate("/scanner")} className="h-12 px-6 rounded-xl font-bold bg-blue-600">Ir al Escáner</Button>
+        <Button
+          size="lg"
+          onClick={() => navigate("/scanner")}
+          className="h-14 px-10 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-xl shadow-blue-500/20 gap-3"
+        >
+          <Search className="w-5 h-5" />
+          IR AL ESCÁNER
+          <ChevronRight className="w-5 h-5 opacity-60" />
+        </Button>
       </div>
     );
   }
@@ -224,11 +418,25 @@ export function Reports() {
           <p className="text-slate-500 dark:text-slate-400 mt-1 font-medium text-lg">Visualización y exportación de hallazgos COTU</p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Button variant="outline" className="h-12 px-5 rounded-xl font-bold bg-white/50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 gap-2">
+          <Button 
+            variant="outline" 
+            className="h-12 px-5 rounded-xl font-bold bg-white/50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 gap-2"
+            onClick={handleExportCSV}
+          >
             <FileSpreadsheet className="w-4 h-4 text-emerald-500" /> CSV
           </Button>
-          <Button className="h-12 px-6 rounded-xl font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/20 gap-2">
-            <Download className="w-4 h-4" /> EXCEL (.XLSX)
+          <Button 
+            className="h-12 px-6 rounded-xl font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/20 gap-2"
+            onClick={handleExportExcel}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-white" /> EXCEL (.XLSX)
+          </Button>
+          <Button 
+            disabled={isExportingPDF}
+            className="h-12 px-6 rounded-xl font-black bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 gap-2"
+            onClick={handleExportPDF}
+          >
+            <Download className="w-4 h-4 text-white" /> {isExportingPDF ? "EXPORTANDO..." : "PDF"}
           </Button>
         </div>
       </div>

@@ -14,7 +14,13 @@ import { WorkerPool } from './workerPool';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const store = new Store();
-const DEFAULT_TERAPIAS_DIR = "C:\\Users\\factu\\OneDrive\\Documentos 1\\TERAPIAS\\DOCUMENTOS PARA ARMAR";
+const DEFAULT_TERAPIAS_DIR = (store.get('settings.terapiasDir') as string) || path.join(
+  os.homedir(),
+  "OneDrive",
+  "Documentos 1",
+  "TERAPIAS",
+  "DOCUMENTOS PARA ARMAR"
+);
 
 process.env.DIST = path.join(__dirname, '../dist');
 process.env.VITE_PUBLIC = app?.isPackaged
@@ -51,7 +57,7 @@ class SidecarManager {
   }
 
   start() {
-    console.log(`[main] Iniciando Sidecar ${this.name}:`, this.scriptPath);
+    console.log(`[Sidecar] proceso ${this.name} activo`);
     const pythonExe = getPythonExecutable();
     this.process = spawn(pythonExe, [this.scriptPath], {
       stdio: ["pipe", "pipe", "pipe"]
@@ -74,14 +80,14 @@ class SidecarManager {
             const resolver = this.pendingResolvers.shift();
             if (resolver) resolver(parsed);
           } catch {
-            console.error(`[${this.name}] JSON inválido o output inesperado:`, line);
+            console.error(`[Sidecar] ${this.name}: error de parseo en comunicación`);
           }
         }
       }
     });
 
     this.process.stderr?.on("data", (data) => {
-      console.error(`[${this.name} Error]`, data.toString());
+      console.error(`[Sidecar] ${this.name}: error interno detectado`);
     });
 
     this.process.on("error", (err) => {
@@ -204,9 +210,15 @@ ipcMain.handle('config:set', (_, key, value) => store.set(key, value));
 ipcMain.handle('dashboard:stats', async () => {
   try {
     const sourceDir = store.get('terapiasSourceDir', DEFAULT_TERAPIAS_DIR) as string;
-    if (!fs.existsSync(sourceDir)) return { pendingDocs: 0 };
     
-    const files = fs.readdirSync(sourceDir);
+    // Verificación asíncrona de existencia
+    try {
+      await fs.promises.access(sourceDir, fs.constants.F_OK);
+    } catch {
+      return { pendingDocs: 0 };
+    }
+    
+    const files = await fs.promises.readdir(sourceDir);
     const docxFiles = files.filter(f => f.toLowerCase().endsWith('.docx') || f.toLowerCase().endsWith('.doc'));
     
     return { pendingDocs: docxFiles.length };
@@ -304,17 +316,64 @@ ipcMain?.handle('dialog:selectDirectory', async () => {
   return canceled ? null : filePaths[0];
 });
 
-ipcMain?.handle('dialog:selectFile', async (_, filters) => {
+ipcMain?.handle('select-directory', async () => {
   if (!win) return null;
   const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    properties: ['openDirectory']
+  });
+  if (canceled || filePaths.length === 0) return null;
+  const dirPath = filePaths[0];
+  store.set('settings.terapiasDir', dirPath);
+  return dirPath;
+});
+
+ipcMain?.handle('dialog:selectFile', async (_, options) => {
+  if (!win) return null;
+  const filters = Array.isArray(options) ? options : options?.filters;
+  const defaultPath = options?.defaultPath;
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
     properties: ['openFile'],
-    filters: filters || []
+    filters: filters || [],
+    defaultPath
   });
   return canceled ? null : filePaths[0];
 });
 
+ipcMain.handle('fs:listFiles', async (_, dirPath, extensions) => {
+  try {
+    if (!fs.existsSync(dirPath)) return [];
+    const files = await fs.promises.readdir(dirPath);
+    return files.filter(f => 
+      extensions.some((ext: string) => f.toLowerCase().endsWith(ext.toLowerCase()))
+    );
+  } catch (err) {
+    console.error('[fs:listFiles] Error:', err);
+    return [];
+  }
+});
+
 ipcMain.handle('shell:openPath', (_, path) => {
   shell.openPath(path);
+});
+
+ipcMain.handle('open-file', async (_, filePath: string) => {
+  try {
+    if (!filePath) return { ok: false, error: 'Ruta no proporcionada' };
+    await shell.openPath(filePath);
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('reveal-in-folder', async (_, filePath: string) => {
+  try {
+    if (!filePath) return { ok: false, error: 'Ruta no proporcionada' };
+    shell.showItemInFolder(filePath);
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

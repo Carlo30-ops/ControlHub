@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useData } from "../contexts/DataContext";
+import { useTheme } from "../contexts/ThemeContext";
 import { useNavigate } from "react-router";
 import {
   TrendingUp,
-  TrendingDown,
   FileText,
   Building2,
   DollarSign,
@@ -13,18 +13,18 @@ import {
   RefreshCw,
   Heart,
   History,
-  CheckCircle2,
-  ChevronRight
+  ChevronRight,
+  BarChart2
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Separator } from "../components/ui/separator";
 import { Badge } from "../components/ui/badge";
 import {
+  AreaChart,
+  Area,
   BarChart,
   Bar,
-  LineChart,
-  Line,
   PieChart,
   Pie,
   Cell,
@@ -42,22 +42,7 @@ const COLORS = [
   "#84cc16", "#64748b",
 ];
 
-interface DashboardData {
-  totalInvoices: number;
-  uniqueCompanies: number;
-  topCompanyName: string;
-  topCompanyCount: number;
-  totalAmount: number;
-  topCompanies: { name: string; value: number; fullName: string }[];
-  companyPieData: { name: string; value: number; fullName: string }[];
-  yearData: { name: string; value: number }[];
-  monthlyTrend: { month: string; invoices: number }[];
-  prevTotal: number | null;
-  prevCompanies: number | null;
-  amountSuccess: number;
-  amountFailed: number;
-  extractionRate: number | null;
-}
+import { DashboardData, MOCK_DASHBOARD_DATA } from "../utils/mockAnalytics";
 
 function calcChange(current: number, prev: number | null): { text: string; positive: boolean | null } {
   if (prev === null || prev === 0) return { text: "—", positive: null };
@@ -91,32 +76,34 @@ const renderCustomPieLabel = ({
 export function Dashboard() {
   const navigate = useNavigate();
   const { history, currentScan } = useData();
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [stats, setStats] = useState({ pendingDocs: 0 });
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-  const tooltipStyle = isDark
-    ? { backgroundColor: "rgba(15,23,42,0.97)", border: "1px solid #334155", borderRadius: "12px", color: "#f1f5f9" }
-    : { backgroundColor: "rgba(255,255,255,0.97)", border: "1px solid #e2e8f0", borderRadius: "12px", color: "#0f172a" };
-  const gridStroke = isDark ? "#1e293b" : "#e2e8f0";
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const res = await (window as any).electronAPI.dashboard.getStats();
-        setStats(res);
-      } catch (err) {
-        console.error("Error fetching dashboard stats:", err);
-      }
-    };
-    fetchStats();
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await (window as any).electronAPI?.dashboard?.getStats?.();
+      if (res) setStats(res);
+    } catch (err) {
+      console.error("Error fetching dashboard stats:", err);
+    }
   }, []);
 
   useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await fetchStats();
+    // Re-trigger data computation by forcing state update
+    setTimeout(() => setIsRefreshing(false), 600);
+  }, [fetchStats]);
+
+  const dashboardData = useMemo(() => {
     const activeInvoices = currentScan?.invoices ?? (history.length > 0 ? history[0].invoices : null);
     const prevInvoices = history.length >= 2 ? history[1].invoices : null;
 
-    if (!activeInvoices) { setDashboardData(null); return; }
+    if (!activeInvoices) return null;
 
     const totalInvoices = activeInvoices.length;
     const prevTotal = prevInvoices ? prevInvoices.length : null;
@@ -183,7 +170,19 @@ export function Dashboard() {
       ? Math.round((amountSuccess / (amountSuccess + amountFailed)) * 100)
       : null;
 
-    setDashboardData({
+    let prevTopCompany: string | null = null;
+    if (prevInvoices && prevInvoices.length > 0) {
+      const prevCompanyStats = prevInvoices.reduce((acc: Record<string, number>, invoice) => {
+        acc[invoice.company] = (acc[invoice.company] || 0) + 1;
+        return acc;
+      }, {});
+      const sortedPrev = Object.entries(prevCompanyStats).sort(([, a], [, b]) => b - a);
+      if (sortedPrev.length > 0) {
+        prevTopCompany = sortedPrev[0][0];
+      }
+    }
+
+    return {
       totalInvoices,
       uniqueCompanies,
       topCompanyName: topCompanyEntry ? topCompanyEntry[0] : "N/A",
@@ -198,58 +197,121 @@ export function Dashboard() {
       amountSuccess,
       amountFailed,
       extractionRate,
-    });
+      prevTopCompany,
+    };
   }, [currentScan, history]);
 
-  if (!dashboardData) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] space-y-6 animate-in fade-in duration-500">
-        <div className="w-32 h-32 rounded-3xl bg-white/50 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800 flex items-center justify-center shadow-2xl">
-          <FileText className="w-14 h-14 text-slate-300 dark:text-slate-600" />
-        </div>
-        <div className="text-center max-w-md">
-          <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Sin datos de escaneo</h2>
-          <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">
-            Realiza tu primer escaneo para ver KPIs, gráficas de tendencia y distribución por aseguradora.
-          </p>
-        </div>
-        <Button size="lg" onClick={() => navigate("/scanner")} className="h-14 px-8 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black text-lg shadow-xl shadow-blue-500/20 gap-3">
-          <Search className="w-6 h-6" />
-          IR AL ESCÁNER AHORA
-        </Button>
+  const isEmpty = !dashboardData;
+  const activeData = dashboardData || MOCK_DASHBOARD_DATA;
+
+  return (
+    <div className={cn("relative w-full transition-all duration-500", isEmpty && "h-[calc(100vh-140px)] flex items-center justify-center overflow-hidden")}>
+      <div className={cn(
+        "transition-all duration-700 w-full",
+        isEmpty ? "blur-md opacity-20 grayscale pointer-events-none select-none scale-[0.98] h-full overflow-hidden" : "blur-0 opacity-100 scale-100"
+      )}>
+        <DashboardView 
+          data={activeData} 
+          historyLength={history.length} 
+          pendingDocs={stats.pendingDocs}
+          onNavigate={navigate}
+          onRefresh={handleRefresh}
+          isRefreshing={isRefreshing}
+        />
       </div>
-    );
-  }
+
+      {isEmpty && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-50 animate-in fade-in zoom-in duration-500">
+           <div className="max-w-xl w-full p-12 rounded-[40px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border border-white dark:border-slate-800 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] flex flex-col items-center space-y-8 text-center">
+              <div className="w-24 h-24 rounded-3xl bg-blue-500 text-white flex items-center justify-center shadow-2xl shadow-blue-500/40 rotate-3 transition-transform">
+                <FileText className="w-12 h-12" />
+              </div>
+              <div className="space-y-3">
+                <h2 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Dashboard en Espera</h2>
+                <p className="text-slate-500 dark:text-slate-400 text-lg font-medium leading-relaxed">
+                  Detectamos que aún no has procesado facturas. <br/>
+                  Realiza tu primer escaneo para activar las métricas inteligentes.
+                </p>
+              </div>
+              <div className="w-full pt-4">
+                <Button 
+                  size="lg" 
+                  onClick={() => navigate("/scanner", { state: { autoSelect: true } })} 
+                  className="w-full h-20 rounded-3xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xl shadow-2xl shadow-blue-500/30 gap-4 group active:scale-[0.98] transition-all"
+                >
+                  <Search className="w-8 h-8 group-hover:scale-110 transition-transform" />
+                  INICIAR ESCANEO DE FACTURAS
+                  <ChevronRight className="w-6 h-6 opacity-50" />
+                </Button>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mt-6">
+                  Sincronizado con Motor @COTU-ANALYTICS V3.2
+                </p>
+              </div>
+           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface DashboardViewProps {
+  data: DashboardData;
+  historyLength: number;
+  pendingDocs: number;
+  onNavigate: (path: string) => void;
+  onRefresh: () => void;
+  isRefreshing: boolean;
+}
+
+interface QuickActionCardProps {
+  title: string;
+  label: string;
+  desc: string;
+  icon: React.ReactNode;
+  color: string;
+  onClick: () => void;
+}
+
+function DashboardView({ data, historyLength, pendingDocs, onNavigate, onRefresh, isRefreshing }: DashboardViewProps) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const tooltipStyle = isDark
+    ? { backgroundColor: "rgba(15,23,42,0.97)", border: "1px solid #334155", borderRadius: "12px", color: "#f1f5f9" }
+    : { backgroundColor: "rgba(255,255,255,0.97)", border: "1px solid #e2e8f0", borderRadius: "12px", color: "#0f172a" };
+  const gridStroke = isDark ? "#1e293b" : "#e2e8f0";
 
   const kpis = [
     {
       title: "Total Facturas",
-      value: dashboardData.totalInvoices.toLocaleString("es-CO"),
-      subtitle: dashboardData.prevTotal !== null ? `vs ${dashboardData.prevTotal} anterior` : "escaneo actual",
+      value: data.totalInvoices.toLocaleString("es-CO"),
+      subtitle: data.prevTotal !== null ? `vs ${data.prevTotal} anterior` : "escaneo actual",
       icon: FileText,
-      change: calcChange(dashboardData.totalInvoices, dashboardData.prevTotal),
+      change: calcChange(data.totalInvoices, data.prevTotal),
       color: "from-blue-600 to-cyan-500",
     },
     {
       title: "Aseguradoras",
-      value: dashboardData.uniqueCompanies.toString(),
-      subtitle: `Top: ${dashboardData.topCompanyName.split(" ")[0]}`,
+      value: data.uniqueCompanies.toString(),
+      subtitle: `Top: ${data.topCompanyName.split(" ")[0]}`,
       icon: Building2,
-      change: calcChange(dashboardData.uniqueCompanies, dashboardData.prevCompanies),
+      change: calcChange(data.uniqueCompanies, data.prevCompanies),
       color: "from-emerald-600 to-teal-500",
     },
     {
       title: "Top Compañía",
-      value: dashboardData.topCompanyName.split(" ")[0],
-      subtitle: `${dashboardData.topCompanyCount} facturas`,
+      value: data.topCompanyName.split(" ")[0],
+      subtitle: `${data.topCompanyCount} facturas`,
       icon: TrendingUp,
-      change: { text: "", positive: null },
+      change: { 
+        text: data.prevTopCompany ? `vs ${data.prevTopCompany.split(" ")[0]} anterior` : "liderando", 
+        positive: data.prevTopCompany ? (data.topCompanyName === data.prevTopCompany) : null 
+      },
       color: "from-purple-600 to-pink-500",
     },
     {
       title: "Monto Total",
-      value: formatCOP(dashboardData.totalAmount),
-      subtitle: dashboardData.totalAmount > 0 ? "extraído de PDFs" : "montos no disponibles",
+      value: formatCOP(data.totalAmount),
+      subtitle: data.totalAmount > 0 ? "extraído de PDFs" : "montos no disponibles",
       icon: DollarSign,
       change: { text: "", positive: null },
       color: "from-orange-600 to-red-500",
@@ -265,8 +327,13 @@ export function Dashboard() {
           <p className="text-slate-500 dark:text-slate-400 mt-1 font-medium text-lg">Análisis ejecutivo y estado de módulos</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" className="h-12 px-6 rounded-2xl font-bold border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/40 backdrop-blur-sm" onClick={() => window.location.reload()}>
-            <RefreshCw className="w-4 h-4 mr-2" /> Actualizar Datos
+          <Button
+            variant="outline"
+            className="h-12 px-6 rounded-2xl font-bold border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/40 backdrop-blur-sm"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={cn("w-4 h-4 mr-2", isRefreshing && "animate-spin")} /> Actualizar Datos
           </Button>
         </div>
       </div>
@@ -275,11 +342,11 @@ export function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           <QuickActionCard 
             title="Terapias" 
-            label={`${stats.pendingDocs} documentos`}
+            label={`${pendingDocs} documentos`}
             desc="Pendientes por procesar"
             icon={<Heart className="w-6 h-6" />}
             color="bg-pink-500"
-            onClick={() => navigate('/terapias')}
+            onClick={() => onNavigate('/terapias')}
           />
           <QuickActionCard 
             title="PDF Tools" 
@@ -287,7 +354,7 @@ export function Dashboard() {
             desc="Manipulación profesional"
             icon={<FileText className="w-6 h-6" />}
             color="bg-blue-500"
-            onClick={() => navigate('/pdf-tools')}
+            onClick={() => onNavigate('/pdf-tools')}
           />
           <QuickActionCard 
             title="Escáner" 
@@ -295,7 +362,7 @@ export function Dashboard() {
             desc="Extracción masiva"
             icon={<Search className="w-6 h-6" />}
             color="bg-emerald-500"
-            onClick={() => navigate('/scanner')}
+            onClick={() => onNavigate('/scanner')}
           />
           <QuickActionCard 
             title="Historial" 
@@ -303,7 +370,7 @@ export function Dashboard() {
             desc="Consulta de reportes"
             icon={<History className="w-6 h-6" />}
             color="bg-purple-500"
-            onClick={() => navigate('/history')}
+            onClick={() => onNavigate('/history')}
           />
       </div>
 
@@ -342,7 +409,7 @@ export function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-4">
-        {/* Gráficas con efecto Glass */}
+        {/* Tendencia Mensual — AreaChart con gradiente */}
         <Card className="lg:col-span-2 bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-6">
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -355,54 +422,114 @@ export function Dashboard() {
           </div>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={dashboardData.monthlyTrend}>
+              <AreaChart data={data.monthlyTrend}>
+                <defs>
+                  <linearGradient id="areaGradientBlue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
                 <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} axisLine={false} dy={10} />
                 <YAxis stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Line type="monotone" dataKey="invoices" stroke="#3b82f6" strokeWidth={4} dot={{ r: 5, fill: "#3b82f6", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 7, strokeWidth: 0 }} animationDuration={1500} />
-              </LineChart>
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(value: number) => [value.toLocaleString("es-CO"), "Facturas"]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="invoices"
+                  stroke="#3b82f6"
+                  strokeWidth={3}
+                  fill="url(#areaGradientBlue)"
+                  dot={{ r: 5, fill: "#3b82f6", strokeWidth: 2, stroke: isDark ? "#0f172a" : "#fff" }}
+                  activeDot={{ r: 7, strokeWidth: 0, fill: "#60a5fa" }}
+                  animationDuration={1200}
+                />
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         </Card>
 
+        {/* Top Aseguradoras — PieChart con tooltip enriquecido */}
         <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-6">
-          <div className="mb-8 text-center">
+          <div className="mb-6 text-center">
             <h3 className="text-xl font-black text-slate-900 dark:text-white">Top Aseguradoras</h3>
             <p className="text-sm text-slate-500 font-medium">Distribución por volumen</p>
           </div>
-          <div className="h-[300px]">
+          <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={dashboardData.companyPieData}
+                  data={data.companyPieData}
                   cx="50%" cy="50%"
-                  innerRadius={65} outerRadius={85}
-                  paddingAngle={8}
+                  innerRadius={60} outerRadius={80}
+                  paddingAngle={6}
                   dataKey="value"
                   label={renderCustomPieLabel}
                   labelLine={false}
                 >
-                  {dashboardData.companyPieData.map((entry, index) => (
+                  {data.companyPieData.map((_entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} className="stroke-none outline-none" />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={tooltipStyle} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(value: number, _name: string, props: any) => [
+                    `${value.toLocaleString("es-CO")} facturas`,
+                    props.payload?.fullName ?? props.name
+                  ]}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
         </Card>
       </div>
+
+      {/* Distribución por Año — BarChart horizontal (yearData activado) */}
+      {data.yearData.length > 0 && (
+        <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-6">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">Distribución por Año</h3>
+              <p className="text-sm text-slate-500 font-medium">Volumen histórico acumulado</p>
+            </div>
+            <div className="p-3 rounded-2xl bg-purple-500/10 text-purple-500">
+              <BarChart2 className="w-6 h-6" />
+            </div>
+          </div>
+          <div className="h-[180px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.yearData} layout="vertical" barCategoryGap="30%">
+                <defs>
+                  <linearGradient id="barGradientPurple" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#06b6d4" stopOpacity={0.9} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
+                <XAxis type="number" stroke="#94a3b8" fontSize={11} fontWeight="bold" tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
+                <YAxis type="category" dataKey="name" stroke="#94a3b8" fontSize={12} fontWeight="bold" tickLine={false} axisLine={false} width={45} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(value: number) => [value.toLocaleString("es-CO"), "Facturas"]}
+                />
+                <Bar dataKey="value" fill="url(#barGradientPurple)" radius={[0, 6, 6, 0]} animationDuration={1000} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
       
       {/* Banner de Calidad (Look de resultado PDF Tools) */}
       <div className="p-10 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 shadow-xl flex flex-col md:flex-row items-center gap-10">
         <div className="relative w-40 h-40 flex items-center justify-center shrink-0">
            <svg className="w-full h-full transform -rotate-90">
               <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="16" fill="transparent" className="text-emerald-500/5" />
-              <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="16" fill="transparent" strokeDasharray={439.82} strokeDashoffset={439.82 - (439.82 * (dashboardData.extractionRate || 0)) / 100} className="text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]" strokeLinecap="round" />
+              <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="16" fill="transparent" strokeDasharray={439.82} strokeDashoffset={439.82 - (439.82 * (data.extractionRate || 0)) / 100} className="text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]" strokeLinecap="round" />
            </svg>
            <div className="absolute flex flex-col items-center">
-              <span className="text-4xl font-black text-emerald-600 dark:text-emerald-400">{dashboardData.extractionRate}%</span>
+              <span className="text-4xl font-black text-emerald-600 dark:text-emerald-400">{data.extractionRate}%</span>
               <span className="text-[10px] font-black text-emerald-600/60 uppercase tracking-widest">Calidad OCR</span>
            </div>
         </div>
@@ -416,18 +543,18 @@ export function Dashboard() {
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Documentos Exitosos</p>
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span className="text-xl font-bold">{dashboardData.amountSuccess}</span>
+                  <span className="text-xl font-bold">{data.amountSuccess}</span>
                 </div>
               </div>
               <div className="space-y-1">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fallas de Lectura</p>
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-red-500" />
-                  <span className="text-xl font-bold">{dashboardData.amountFailed}</span>
+                  <span className="text-xl font-bold">{data.amountFailed}</span>
                 </div>
               </div>
               <div className="flex-1" />
-              <Button size="lg" className="h-14 px-8 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg shadow-emerald-500/20 gap-2" onClick={() => navigate('/scanner')}>
+              <Button size="lg" className="h-14 px-8 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg shadow-emerald-500/20 gap-2" onClick={() => onNavigate('/scanner')}>
                 OPTIMIZAR ESCANEO <ChevronRight className="w-5 h-5" />
               </Button>
            </div>
@@ -437,9 +564,12 @@ export function Dashboard() {
   );
 }
 
-function QuickActionCard({ title, label, desc, icon, color, onClick }: any) {
+function QuickActionCard({ title, label, desc, icon, color, onClick }: QuickActionCardProps) {
   return (
-    <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-lg hover:border-blue-500/50 hover:shadow-2xl transition-all cursor-pointer group rounded-2xl overflow-hidden" onClick={onClick}>
+    <Card
+      className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-lg hover:border-blue-500/50 hover:shadow-2xl transition-all cursor-pointer group rounded-2xl overflow-hidden"
+      onClick={onClick}
+    >
       <CardContent className="p-6 flex items-center gap-5">
         <div className={cn("p-3.5 rounded-2xl text-white shadow-xl group-hover:scale-110 group-hover:rotate-3 transition-transform", color)}>
           {icon}

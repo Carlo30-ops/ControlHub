@@ -10,9 +10,9 @@ import { ipcRenderer, contextBridge } from 'electron';
 contextBridge.exposeInMainWorld('electronAPI', {
   // ── Diálogos ──────────────────────────────────────────────────────────────
   selectDirectory: () =>
-    ipcRenderer.invoke('dialog:selectDirectory'),
-  selectFile: (filters?: { name: string; extensions: string[] }[]) =>
-    ipcRenderer.invoke('dialog:selectFile', filters),
+    ipcRenderer.invoke('select-directory'),
+  selectFile: (options?: { filters?: { name: string; extensions: string[] }[]; defaultPath?: string } | { name: string; extensions: string[] }[]) =>
+    ipcRenderer.invoke('dialog:selectFile', options),
 
   // ── Sistema de archivos ───────────────────────────────────────────────────
 
@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** maxPages=1 para identificación rápida, sin maxPages para extracción completa */
   parsePdf: (pdfPath: string, maxPages?: number) =>
     ipcRenderer.invoke('fs:parsePdf', pdfPath, maxPages),
+
+  listFiles: (dirPath: string, extensions: string[]) =>
+    ipcRenderer.invoke('fs:listFiles', dirPath, extensions),
 
   openExternal: (filePath: string) =>
     ipcRenderer.invoke('fs:openExternal', filePath),
@@ -74,6 +77,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   shell: {
     openPath: (path: string) => ipcRenderer.invoke('shell:openPath', path),
+    openFile: (path: string) => ipcRenderer.invoke('open-file', path),
+    revealInFolder: (path: string) => ipcRenderer.invoke('reveal-in-folder', path),
   },
 
   // ── Configuración Persistente ─────────────────────────────────────────────

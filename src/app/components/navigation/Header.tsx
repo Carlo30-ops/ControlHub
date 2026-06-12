@@ -19,7 +19,15 @@ import { es } from "date-fns/locale";
 
 export function Header() {
   const { theme, toggleTheme } = useTheme();
-  const { currentScan } = useData();
+  const { currentScan, settings } = useData();
+  const operatorName = settings.operatorName?.trim() || "Usuario Admin";
+  const operatorEmail = settings.operatorEmail?.trim() || "admin@cotu.com";
+  const operatorInitials = operatorName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "UA";
 
   // ── Alertas derivadas del escaneo activo ──────────────────
   const duplicates = currentScan?.stats?.duplicatesLog ?? [];
@@ -172,13 +180,13 @@ export function Header() {
           <DropdownMenuTrigger asChild>
             <button className="rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 p-2 transition-colors">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white text-sm font-semibold">
-                UA
+                {operatorInitials}
               </div>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem>Usuario Admin</DropdownMenuItem>
-            <DropdownMenuItem>admin@empresa.com</DropdownMenuItem>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem className="font-bold truncate">{operatorName}</DropdownMenuItem>
+            <DropdownMenuItem className="text-slate-500 truncate">{operatorEmail}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

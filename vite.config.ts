@@ -15,6 +15,7 @@ export default defineConfig({
         entry: 'electron/main.ts',
         vite: {
           build: {
+            minify: 'esbuild',
             rollupOptions: {
               input: {
                 main: 'electron/main.ts',
@@ -30,6 +31,23 @@ export default defineConfig({
     }),
     renderer(),
   ],
+  build: {
+    minify: 'esbuild',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router'],
+          'vendor-ui': ['@radix-ui/react-accordion', '@radix-ui/react-dialog', 'lucide-react', 'motion'],
+          'vendor-utils': ['date-fns', 'xlsx', 'jspdf', 'pdf-lib', 'fuse.js'],
+          'vendor-charts': ['recharts'],
+        }
+      }
+    }
+  },
+  esbuild: {
+    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
