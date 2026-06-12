@@ -58,14 +58,24 @@ def check_word_executable():
 def check_word_com():
     """Verifica que Word esté disponible a través de COM (win32com)."""
     try:
+        import pythoncom
         import win32com.client
-        word = win32com.client.Dispatch("Word.Application")
-        version = word.Version
-        word.Quit()
-        return True, f"Word disponible vía COM (versión {version})"
+        pythoncom.CoInitialize()
+        try:
+            # Intentar DispatchEx para una instancia nueva y limpia
+            word = win32com.client.DispatchEx("Word.Application")
+            version = word.Version
+            word.Quit()
+            return True, f"Word disponible vía COM (versión {version})"
+        finally:
+            pythoncom.CoUninitialize()
     except ImportError:
         return False, "pywin32 no está instalado (requerido para COM)"
     except Exception as e:
+        # Si falla COM, verificar si al menos está en el registro para dar mejor feedback
+        reg_ok, reg_msg = check_word_in_registry()
+        if reg_ok:
+            return False, f"Word detectado en registro pero COM falló: {e}"
         return False, f"Error al acceder Word vía COM: {e}"
 
 

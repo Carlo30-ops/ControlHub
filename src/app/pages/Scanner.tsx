@@ -66,6 +66,7 @@ export function Scanner() {
   const [autoWatch, setAutoWatch] = useState(false);
   const [lastStats, setLastStats] = useState<ScanStats | null>(null);
   const [lastInvoiceCount, setLastInvoiceCount] = useState<number | null>(null);
+  const [newFilesCount, setNewFilesCount] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -77,7 +78,9 @@ export function Scanner() {
     }
 
     if ((window as any).electronAPI?.onFolderUpdated) {
-      (window as any).electronAPI.onFolderUpdated(() => {
+      // @ts-ignore
+      (window as any).electronAPI.onFolderUpdated((data: any) => {
+        setNewFilesCount(prev => prev + 1);
         toast.info("Nuevos PDFs detectados", {
           description: "Se recomienda re-escanear para actualizar datos.",
           duration: 5000,
@@ -130,6 +133,7 @@ export function Scanner() {
 
     setIsScanning(true);
     setProgress(0);
+    setNewFilesCount(0);
     setLastStats(null);
     setLastInvoiceCount(null);
     setScanStatus("Inicializando...");
@@ -345,6 +349,15 @@ export function Scanner() {
                   <div className="relative h-4 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
                     <div className="absolute top-0 left-0 h-full bg-blue-600 transition-all duration-300 ease-out shadow-[0_0_15px_rgba(37,99,235,0.5)]" style={{ width: `${progress}%` }} />
                   </div>
+                </div>
+              )}
+
+              {newFilesCount > 0 && (
+                <div className="flex justify-center mb-4">
+                  <Badge className="bg-orange-500 hover:bg-orange-600 text-white font-black py-2 px-6 rounded-full animate-bounce shadow-lg shadow-orange-500/30">
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    {newFilesCount} archivos nuevos detectados — Re-escanear
+                  </Badge>
                 </div>
               )}
 

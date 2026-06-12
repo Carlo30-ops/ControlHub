@@ -51,10 +51,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startWatch: (dirPath: string) => ipcRenderer.invoke('fs:startWatch', dirPath),
   stopWatch: () => ipcRenderer.invoke('fs:stopWatch'),
   onFolderUpdated: (callback: (data: { type: string; path: string }) => void) => {
-    ipcRenderer.on('fs:folderUpdated', (_event, data) => callback(data));
+    ipcRenderer.on('scanner:new-file', (_event, data) => callback(data));
   },
   offFolderUpdated: () => {
-    ipcRenderer.removeAllListeners('fs:folderUpdated');
+    ipcRenderer.removeAllListeners('scanner:new-file');
   },
 
   // ── Base de Datos Local ───────────────────────────────────────────────────

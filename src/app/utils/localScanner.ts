@@ -351,22 +351,55 @@ function parseCOPNumber(raw: string): number {
 // Estrategia: 11 patrones explícitos en orden de especificidad → fallback a mayor valor
 // ─────────────────────────────────────────────────────────────────────────────
 function extractAmountFromText(text: string): number {
-  // Acepta: 1.234.567, 1234567, 1,234,567, $1.234.567
-  const amountPatterns = [
-    /\$\s*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)/,
-    /TOTAL[^\d]*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)/i,
-    /VALOR[^\d]*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)/i,
-    /(?:^|\s)([\d]{6,12})(?:\s|$)/m
+  // Preprocesar: eliminar NITs comunes para evitar confusión con montos
+  const cleanText = text.replace(/\bNIT\s*[:\.]?\s*[\d.]+(-\d)?\b/gi, 'NIT_ID');
+
+  // NUM estricto. (1 a 3 dígitos + separadores de miles) O (4+ dígitos sin separador).
+  const NUM = `(\\d{1,3}(?:[.,]\\d{3})+(?:[.,]\\d{1,2})?|\\d{4,}(?:[.,]\\d{1,2})?)`;
+
+  const explicitPatterns: RegExp[] = [
+    new RegExp(`T\\s*O\\s*T\\s*A\\s*L\\s+V\\s*E\\s*N\\s*T\\s*A[^0-9]{0,40}?${NUM}`, 'gi'),
+    new RegExp(`TOTAL\\s+(?:A\\s+PAGAR|NETO|FACTURA|GENERAL)[^0-9]{0,40}?${NUM}`, 'gi'),
+    new RegExp(`VALOR\\s+(?:TOTAL|A\\s+PAGAR|NETO|DE\\s+LA\\s+P[ÓO]LIZA)[^0-9]{0,40}?${NUM}`, 'gi'),
+    new RegExp(`PRIMA\\s+(?:TOTAL|NETA|BRUTA|A\\s+PAGAR)[^0-9]{0,40}?${NUM}`, 'gi'),
+    new RegExp(`TOTAL[^0-9]{0,10}?(?!\\s*%|\\s*d[ií]as)[^0-9]{0,20}?${NUM}`, 'gi'),
+    new RegExp(`(?:SALDO\\s+)?A\\s+PAGAR[^0-9]{0,40}?${NUM}`, 'gi'),
+    new RegExp(`NETO\\s+A\\s+PAGAR[^0-9]{0,40}?${NUM}`, 'gi'),
+    new RegExp(`IMPORTE\\s+(?:TOTAL|NETO|A\\s+PAGAR)?[^0-9]{0,40}?${NUM}`, 'gi'),
+    new RegExp(`SUBTOTAL[^0-9]{0,40}?${NUM}`, 'gi'),
+    new RegExp(`\\$\\s*${NUM}`, 'gi'),
+    new RegExp(`COP\\s*${NUM}`, 'gi'),
   ];
 
-  for (const pattern of amountPatterns) {
-    const match = text.match(pattern);
-    if (match && match[1]) {
+  for (const pattern of explicitPatterns) {
+    const matches = [...cleanText.matchAll(pattern)];
+    for (const match of matches) {
       const value = parseCOPNumber(match[1]);
       if (!isNaN(value) && value >= 1_000 && value <= 500_000_000) return value;
     }
   }
 
+  // Fallback: Encontrar TODOS los montos con formato correcto, ordenarlos, 
+  // e ignorar el mayor si es irrazonablemente gigante (>50M) asumiendo que es suma asegurada.
+  const fallbackMatches = [...cleanText.matchAll(/\b\d{1,3}(?:[.,]\d{3}){1,3}(?:[.,]\d{1,2})?\b/g)];
+  const validAmounts: number[] = [];
+  
+  for (const raw of fallbackMatches) {
+    const value = parseCOPNumber(raw[0]);
+    if (!isNaN(value) && value >= 10_000 && value <= 500_000_000) {
+      validAmounts.push(value);
+    }
+  }
+
+  validAmounts.sort((a, b) => b - a); // Descendente
+
+  if (validAmounts.length > 0) {
+    if (validAmounts[0] > 50_000_000 && validAmounts.length > 1) {
+      return validAmounts[1];
+    }
+    return validAmounts[0];
+  }
+  
   return 0;
 }
 

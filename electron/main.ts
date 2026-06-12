@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net } from 'elect
 import type { BrowserWindow as BrowserWindowType } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { spawn, ChildProcess } from 'child_process';
 import chokidar, { FSWatcher } from 'chokidar';
 import Store from 'electron-store';
@@ -438,8 +439,10 @@ ipcMain?.handle('fs:cancelScan', async (_: any, scanId: string) => {
 ipcMain?.handle('fs:parsePdf', async (_: any, pdfPath: string, maxPages?: number) => {
   if (!pdfWorkerPool) {
     const workerPath = path.join(__dirname, 'pdfWorker.js');
-    pdfWorkerPool = new WorkerPool(5, workerPath);
-    console.log('[main] PDF WorkerPool inicializado con 5 workers.');
+    const cpuCount = os.cpus().length;
+    const poolSize = Math.min(5, cpuCount);
+    pdfWorkerPool = new WorkerPool(poolSize, workerPath);
+    console.log(`[main] PDF WorkerPool inicializado con ${poolSize} workers (CPUs: ${cpuCount}).`);
   }
   return pdfWorkerPool.parsePdf(pdfPath, maxPages);
 });
@@ -512,7 +515,7 @@ ipcMain?.handle('fs:startWatch', async (_: any, dirPath: string) => {
 
       const timer = setTimeout(() => {
         watcherDebounceMap.delete(filePath);
-        if (win) win.webContents.send('fs:folderUpdated', { type: 'add', path: filePath });
+        if (win) win.webContents.send('scanner:new-file', { type: 'add', path: filePath });
       }, 500);
 
       watcherDebounceMap.set(filePath, timer);

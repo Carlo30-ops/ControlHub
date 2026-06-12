@@ -10,6 +10,8 @@ export interface Invoice {
   filePath: string;
   amount: number; // 0 si no fue posible extraer
   date: string;
+  invoicePdfPath?: string;
+  parseError?: boolean;
 }
 
 export interface ScanStats {
