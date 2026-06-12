@@ -101,6 +101,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listDocs: () => ipcRenderer.invoke('terapias:list_docs'),
     prepare: (data: any) => ipcRenderer.invoke('terapias:prepare', data),
     finalize: (data: any) => ipcRenderer.invoke('terapias:finalize', data),
+    getHistory: () => ipcRenderer.invoke('terapias:get_history'),
+    searchPatient: (data: any) => ipcRenderer.invoke('terapias:search_patient', data),
   },
 
   pdfTools: {

@@ -5,23 +5,41 @@ import {
   FileText, 
   FolderOpen, 
   RefreshCw,
-  Search,
-  History,
+  History as HistoryIcon,
   Info,
   ChevronRight,
   Download,
   Upload,
   X,
   User,
-  Heart
+  Heart,
+  Clock,
+  Calendar,
+  ExternalLink,
+  Search as SearchIcon
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Badge } from "../../components/ui/badge";
 import { Separator } from "../../components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { ScrollArea } from "../../components/ui/scroll-area";
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle, 
+  AlertDialogTrigger 
+} from "../../components/ui/alert-dialog";
+import { 
+  Collapsible, 
+  CollapsibleContent, 
+  CollapsibleTrigger 
+} from "../../components/ui/collapsible";
 import { toast } from "sonner";
 import { cn } from "../../components/ui/utils";
 
@@ -47,9 +65,24 @@ interface StepState {
   folder: string | null;
 }
 
-interface FileInfo {
-  path: string;
+interface FileMetadata {
   name: string;
+  modified: number;
+  size: number;
+}
+
+interface HistoryEntry {
+  date: string;
+  patient: string;
+  filename: string;
+  pdfPath: string;
+  backupPath: string;
+}
+
+interface SearchResult {
+  name: string;
+  path: string;
+  lastModified: number;
 }
 
 const DEFAULT_SOURCE = "C:\\Users\\factu\\OneDrive\\Documentos 1\\TERAPIAS\\DOCUMENTOS PARA ARMAR";
@@ -63,7 +96,7 @@ export default function Terapias() {
     error: null
   });
 
-  const [availableDocs, setAvailableDocs] = useState<string[]>([]);
+  const [availableDocs, setAvailableDocs] = useState<FileMetadata[]>([]);
   const [isListing, setIsListing] = useState(false);
   const [sourceDir, setSourceDir] = useState<string>(DEFAULT_SOURCE);
 
@@ -83,6 +116,13 @@ export default function Terapias() {
 
   const [prepareResult, setPrepareResult] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const checkStatus = async () => {
     setStatus(prev => ({ ...prev, loading: true, error: null }));
@@ -98,7 +138,10 @@ export default function Terapias() {
         error: null
       });
       
-      if (pingRes.ok) fetchDocs();
+      if (pingRes.ok) {
+        fetchDocs();
+        fetchHistory();
+      }
     } catch (err: any) {
       setStatus(prev => ({ 
         ...prev, 
@@ -116,13 +159,47 @@ export default function Terapias() {
       if (res.ok) {
         setAvailableDocs(res.files);
         if (res.files.length > 0 && !form.filename) {
-          setForm(prev => ({ ...prev, filename: res.files[0] }));
+          setForm(prev => ({ ...prev, filename: res.files[0].name }));
         }
       }
     } catch (err) {
       console.error("Error listing docs:", err);
     } finally {
       setIsListing(false);
+    }
+  };
+
+  const fetchHistory = async () => {
+    try {
+      const res = await (window as any).electronAPI.terapias.getHistory();
+      if (res.ok) {
+        setHistory(res.history);
+      }
+    } catch (err) {
+      console.error("Error fetching history:", err);
+    }
+  };
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    if (query.length < 3) {
+      setSearchResults([]);
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      const res = await (window as any).electronAPI.terapias.searchPatient({
+        query,
+        dest_root: form.baseDest
+      });
+      if (res.ok) {
+        setSearchResults(res.results);
+      }
+    } catch (err) {
+      console.error("Error searching patient:", err);
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -200,7 +277,8 @@ export default function Terapias() {
     try {
       const res = await (window as any).electronAPI.terapias.finalize({
         doc_path: step.docPath,
-        backup: form.backup
+        backup: form.backup,
+        patient: step.patient
       });
       
       if (res.ok) {
@@ -209,6 +287,7 @@ export default function Terapias() {
         setStep({ current: 1, docPath: null, patient: null, folder: null });
         setForm(prev => ({ ...prev, inputName: "", filename: "" }));
         fetchDocs();
+        fetchHistory();
       } else {
         toast.error("Error al finalizar: " + res.error);
       }
@@ -219,17 +298,76 @@ export default function Terapias() {
     }
   };
 
+  const formatRelativeDate = (timestamp: number) => {
+    const now = Date.now();
+    const diff = now - (timestamp * 1000);
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "hace un momento";
+    if (mins < 60) return `hace ${mins} min`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `hace ${hours} h`;
+    return new Date(timestamp * 1000).toLocaleDateString();
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1048576).toFixed(1)} MB`;
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in duration-500 pb-20">
       {/* Header Unificado */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
+        <div className="flex-1">
           <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Organizador de Terapias</h1>
           <div className="flex items-center gap-3 mt-1 font-medium">
             <Badge variant="outline" className="text-[10px] font-black border-slate-200 dark:border-slate-800">SOURCE</Badge>
             <span className="font-mono text-xs uppercase text-slate-500">{sourceDir}</span>
           </div>
         </div>
+        
+        {/* Buscador Inteligente */}
+        <div className="relative w-full md:w-80">
+          <div className="relative group">
+            <SearchIcon className={cn(
+              "absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors",
+              isSearching ? "text-blue-500 animate-pulse" : "text-slate-400 group-focus-within:text-blue-500"
+            )} />
+            <Input 
+              placeholder="Buscar paciente antiguo..." 
+              value={searchQuery}
+              onChange={e => handleSearch(e.target.value)}
+              className="pl-10 h-10 rounded-xl bg-white/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 font-bold focus:ring-2 focus:ring-blue-500/20"
+            />
+          </div>
+          
+          {searchResults.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="p-2 divide-y divide-slate-100 dark:divide-slate-800">
+                {searchResults.map((res, i) => (
+                  <button 
+                    key={i} 
+                    className="w-full p-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 flex items-center gap-3 group transition-colors"
+                    onClick={() => {
+                      (window as any).electronAPI.shell?.openPath(res.path);
+                      setSearchResults([]);
+                    }}
+                  >
+                    <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-blue-500/10 group-hover:text-blue-500 transition-colors">
+                      <FolderOpen className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-900 dark:text-white truncate">{res.name}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Modificado: {formatRelativeDate(res.lastModified)}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="flex items-center gap-3">
           {!status.loading && (
             <div className="flex gap-2 mr-2">
@@ -262,7 +400,7 @@ export default function Terapias() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-xl bg-blue-500 text-white shadow-lg">
-                      <Search className="w-5 h-5" />
+                      <SearchIcon className="w-5 h-5" />
                     </div>
                     <CardTitle className="text-2xl font-black">Paso 1: Preparación</CardTitle>
                   </div>
@@ -357,19 +495,50 @@ export default function Terapias() {
                 <div className="flex gap-2">
                   <Input readOnly value={form.backup} placeholder="Ruta para copias Word..." className="h-12 rounded-xl bg-slate-50/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800" />
                   <Button variant="secondary" className="h-12 px-6 rounded-xl font-bold" onClick={handleSelectFolder("backup")}>
-                    <History className="w-4 h-4 mr-2" /> Cambiar
+                    <HistoryIcon className="w-4 h-4 mr-2" /> Cambiar
                   </Button>
                 </div>
               </div>
 
               <div className="flex flex-col gap-4">
-                <Button 
-                  className="w-full h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xl shadow-xl shadow-emerald-500/20 gap-3 active:scale-[0.98] transition-all"
-                  disabled={isProcessing}
-                  onClick={handleFinalize}
-                >
-                  {isProcessing ? <RefreshCw className="w-8 h-8 animate-spin" /> : <><Download className="w-6 h-6" /> GENERAR PDF Y FINALIZAR</>}
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button 
+                      className="w-full h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xl shadow-xl shadow-emerald-500/20 gap-3 active:scale-[0.98] transition-all"
+                      disabled={isProcessing}
+                    >
+                      {isProcessing ? <RefreshCw className="w-8 h-8 animate-spin" /> : <><Download className="w-6 h-6" /> GENERAR PDF Y FINALIZAR</>}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="rounded-3xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-2xl">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="text-xl font-black">Confirmar Finalización</AlertDialogTitle>
+                      <AlertDialogDescription className="text-sm font-medium space-y-4 pt-4 text-slate-500 dark:text-slate-400">
+                        <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-black uppercase text-slate-400">Paciente</span>
+                            <span className="text-xs font-black text-slate-900 dark:text-white">{step.patient}</span>
+                          </div>
+                          <Separator className="bg-slate-200/50 dark:bg-slate-800/50" />
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-black uppercase text-slate-400">Archivo Word</span>
+                            <span className="text-[10px] font-mono text-slate-500 truncate ml-4 max-w-[200px]">{form.filename}</span>
+                          </div>
+                          <Separator className="bg-slate-200/50 dark:bg-slate-800/50" />
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-black uppercase text-slate-400">Destino PDF</span>
+                            <span className="text-[10px] font-mono text-emerald-600 truncate ml-4 max-w-[200px]">{step.folder}</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-orange-500 font-bold px-2">※ Asegúrate de haber guardado tus cambios en Word antes de continuar.</p>
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter className="pt-4">
+                      <AlertDialogCancel className="rounded-xl font-bold">Volver a Word</AlertDialogCancel>
+                      <AlertDialogAction className="rounded-xl bg-emerald-600 hover:bg-emerald-700 font-black" onClick={handleFinalize}>CONFIRMAR Y CONVERTIR</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
                 
                 <Button variant="ghost" className="h-10 font-bold text-slate-400 hover:text-red-500 hover:bg-red-500/10" onClick={() => setStep({ current: 1, docPath: null, patient: null, folder: null })}>
                   CANCELAR OPERACIÓN ACTUAL
@@ -377,6 +546,45 @@ export default function Terapias() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Sección de Historial */}
+          <Collapsible open={isHistoryOpen} onOpenChange={setIsHistoryOpen} className="space-y-4">
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" className="w-full h-12 rounded-2xl justify-between px-6 border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/40 backdrop-blur-sm font-black text-xs uppercase tracking-widest text-slate-500">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-blue-500" />
+                  Historial de Operaciones
+                </div>
+                <Badge variant="secondary" className="font-black">{history.length}</Badge>
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="animate-in slide-in-from-top-4 duration-300">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {history.slice(0, 10).map((entry, i) => (
+                  <Card key={i} className="bg-white/50 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden group hover:border-blue-500/50 transition-all">
+                    <CardContent className="p-4 flex items-center gap-4">
+                      <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-500 group-hover:bg-blue-500/10 group-hover:text-blue-500 transition-colors">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-black text-slate-900 dark:text-white truncate">{entry.patient}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">{new Date(entry.date).toLocaleString()}</p>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-blue-500/10 hover:text-blue-500" onClick={() => (window as any).electronAPI.shell.openPath(entry.pdfPath)}>
+                        <ExternalLink className="w-4 h-4" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+                {history.length === 0 && (
+                  <div className="col-span-full py-10 text-center space-y-3">
+                    <HistoryIcon className="w-10 h-10 text-slate-200 mx-auto" />
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Sin registros recientes</p>
+                  </div>
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </div>
 
         {/* Lateral Info Unificado */}
@@ -418,18 +626,24 @@ export default function Terapias() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <ScrollArea className="h-64">
+                <ScrollArea className="h-80">
                   <div className="divide-y divide-slate-100 dark:divide-slate-800">
                     {availableDocs.map(doc => (
                       <button 
-                        key={doc} 
+                        key={doc.name} 
                         className="w-full px-6 py-4 text-left hover:bg-blue-500/5 transition-colors flex items-center gap-3 group"
-                        onClick={() => setForm(f => ({ ...f, filename: doc }))}
+                        onClick={() => setForm(f => ({ ...f, filename: doc.name }))}
                       >
                         <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-900 group-hover:bg-blue-500/10 group-hover:text-blue-500 transition-colors">
                           <FileText className="w-4 h-4" />
                         </div>
-                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300 truncate flex-1">{doc}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-black text-slate-600 dark:text-slate-300 truncate group-hover:text-blue-500 transition-colors">{doc.name}</p>
+                          <div className="flex items-center gap-3 mt-1 text-[9px] font-bold text-slate-400 uppercase">
+                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatRelativeDate(doc.modified)}</span>
+                            <span className="flex items-center gap-1"><Download className="w-3 h-3" /> {formatSize(doc.size)}</span>
+                          </div>
+                        </div>
                         <ChevronRight className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-all" />
                       </button>
                     ))}

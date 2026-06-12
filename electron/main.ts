@@ -154,35 +154,14 @@ ipcMain.handle('terapias:prepare', (_, data) => {
   const sourceDir = store.get('terapiasSourceDir', DEFAULT_TERAPIAS_DIR) as string;
   return terapiasSidecar.send({ cmd: 'prepare', data: { ...data, source_dir: sourceDir } });
 });
-ipcMain.handle('terapias:finalize', async (_, data) => {
-  try {
-    const docPath = data.doc_path;
-    const pdfPath = docPath.replace(/\.(docx|doc)$/i, '.pdf');
-    
-    // 1. Convertir usando PDF Sidecar (Motor único)
-    console.log('[Main] Solicitando conversión Word->PDF a PDF Sidecar...');
-    const convRes = await pdfSidecar.send({ 
-      cmd: 'word_to_pdf', 
-      data: { input: docPath, output: pdfPath } 
-    });
-
-    if (!convRes.ok) return convRes;
-
-    // 2. Realizar backup usando Terapias Sidecar
-    console.log('[Main] Conversión exitosa. Solicitando backup a Terapias Sidecar...');
-    const backupRes = await terapiasSidecar.send({ 
-      cmd: 'finalize_backup', 
-      data: { doc_path: docPath, backup: data.backup } 
-    });
-
-    if (backupRes.ok) {
-        // Combinar resultados para la UI
-        return { ...backupRes, pdf_path: pdfPath };
-    }
-    return backupRes;
-  } catch (err: any) {
-    return { ok: false, error: err.message };
-  }
+ipcMain.handle('terapias:finalize', (_, data) => {
+  return terapiasSidecar.send({ cmd: 'finalize', data });
+});
+ipcMain.handle('terapias:get_history', () => {
+  return terapiasSidecar.send({ cmd: 'get_history' });
+});
+ipcMain.handle('terapias:search_patient', (_, data) => {
+  return terapiasSidecar.send({ cmd: 'search_patient', data });
 });
 
 // IPC Handlers para PDF Tools
