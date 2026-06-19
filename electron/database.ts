@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
+import { DuplicateEntry, ScanStats, Invoice, ScanResult } from '../src/shared/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // database.ts — Persistencia local JSON para COTU Analytics
@@ -11,50 +12,6 @@ import { app } from 'electron';
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Tipos públicos ────────────────────────────────────────────────────────────
-
-export interface DuplicateEntry {
-    invoiceNumber: string;
-    keptPath: string;
-    discardedPath: string;
-}
-
-export interface ScanStats {
-    totalFilesProcessed: number;
-    skippedByExtension: number;
-    skippedByDateRange: number;
-    skippedDuplicates: number;
-    duplicatesLog: DuplicateEntry[];
-    amountExtractionFailed: number;
-    amountExtractionSuccess: number;
-    invoicesIdentifiedByLayer1: number;
-    invoicesIdentifiedByLayer2: number;
-}
-
-export interface Invoice {
-    id: string;
-    invoiceNumber: string;
-    company: string;
-    month: string;
-    year: string;
-    detail: string;
-    filePath: string;
-    amount: number;
-    date: string;
-    invoicePdfPath?: string;
-    parseError?: boolean;
-}
-
-export interface ScanResult {
-    id: string;
-    timestamp: string;
-    type: 'day' | 'week' | 'month' | 'year' | 'custom';
-    dateRange: { start: string; end: string };
-    basePath: string;
-    totalInvoices: number;
-    invoices: Invoice[];
-    scanDuration: number;
-    stats?: ScanStats;
-}
 
 export interface DbStats {
     count: number;

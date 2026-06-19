@@ -1,17 +1,60 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
 dist-electron/
 release/
+
+# Embedded Python runtime (large; download separately for dev/build)
 python-embed/
-*.pyc
-__pycache__/
-temp_test/
-.env
-*.log
 python-embed.zip
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Logs & debug artifacts
+*.log
+build.log
+metrics/
+ts_errors.txt
+tsc_output.txt
+src/tsc_output.txt
+diff_*.txt
+
+# Local test outputs & sidecar fallbacks
+compressed.pdf
+merged.pdf
 input.json
 clean_input.json
 run_pdf_tests.py
 verify_delete.py
 remove_bg.py
-ts_errors.txt
+temp_test/
+
+# Sample / test data (keep locally, do not commit)
+FACTURA DE MUESTRA/
+test_facturas/
+
+# OS & editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+!.vscode/extensions.json
+.idea/
+
+# Playwright / Vitest
+test-results/
+playwright-report/
+coverage/
+
+# Electron-builder cache
+.electron-builder-cache/

@@ -1,0 +1,8 @@
+# Dependencias Python para sidecars (desarrollo local)
+# En producción se usa python-embed/ empaquetado con electron-builder
+
+pywin32
+pikepdf
+PyMuPDF
+pdf2docx
+pytesseract

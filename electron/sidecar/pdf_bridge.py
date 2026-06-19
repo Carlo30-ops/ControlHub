@@ -1,33 +1,66 @@
 import sys
 import os
-import json
-import subprocess
-import pythoncom
-import win32com.client
-from pdf2docx import Converter
-import pikepdf
-import fitz  # pymupdf
+import traceback
+
 try:
-    import pytesseract
-    from PIL import Image
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-except ImportError:
-    pytesseract = None
+    import json
+    import subprocess
+    import pythoncom
+    import win32com.client
+# from pdf2docx import Converter  # lazy import moved inside function
+    import pikepdf
+    import fitz  # pymupdf
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError:
+        pytesseract = None
 
-# Redirigir cualquier output inesperado de librerías a stderr
-# para que no contamine el canal JSON de stdout
-import io
-sys.stdout.reconfigure(encoding='utf-8')
-_true_stdout = sys.stdout
-sys.stdout = sys.stderr
-os.environ['PYTHONWARNINGS'] = 'ignore'
+    # Redirigir cualquier output inesperado de librerías a stderr
+    # para que no contamine el canal JSON de stdout
+    import io
+    sys.stdout.reconfigure(encoding='utf-8')
+    _true_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    os.environ['PYTHONWARNINGS'] = 'ignore'
 
-# Wrapper para asegurar que solo JSON válido va a stdout
-def send_response(data):
-    _true_stdout.write(json.dumps(data, ensure_ascii=False) + "\n")
-    _true_stdout.flush()
+    # Wrapper para asegurar que solo JSON válido va a stdout
+    def send_response(data, request_id=None):
+        if request_id is not None:
+            data['id'] = request_id
+        _true_stdout.write(json.dumps(data, ensure_ascii=False) + "\n")
+        _true_stdout.flush()
 
-# --- Helpers ---
+    def resolve_tesseract_path(user_path=None):
+        """Busca el ejecutable de Tesseract en orden de prioridad."""
+        if not pytesseract: return None
+        
+        # 1. Ruta configurada por el usuario
+        if user_path and os.path.exists(user_path):
+            return user_path
+            
+        # 2. Rutas comunes en Windows
+        common_paths = [
+            r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+            r'C:\Users\{}\AppData\Local\Tesseract-OCR\tesseract.exe'.format(os.getlogin()),
+            r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe'
+        ]
+        for p in common_paths:
+            if os.path.exists(p): return p
+            
+        # 3. Buscar en el PATH del sistema (funciona en Win/Mac/Linux si está instalado)
+        import shutil
+        path_in_env = shutil.which("tesseract")
+        if path_in_env: return path_in_env
+        
+        return None
+
+    # --- Helpers ---
+    # ... (rest of the file content)
+except Exception as e:
+    sys.stderr.write(f"ERROR CRITICO EN PDF BRIDGE: {traceback.format_exc()}\n")
+    sys.stderr.flush()
+    sys.exit(1)
 
 def parse_pages_param(pages_str, page_count):
     """Parse common page strings: '1, 3, 5-8' or '' for all."""
@@ -71,13 +104,22 @@ def handle_compress(data):
         if level == "fast":
             with pikepdf.open(input_file) as pdf:
                 pdf.save(output_file, linearize=True)
-            return {"ok": True, "output": output_file}
+            return {"ok": True, "output": output_file, "engine": "pikepdf-fast"}
+        
+        import shutil
+        gs_cmd = shutil.which("gswin64c") or shutil.which("gswin32c") or shutil.which("gs")
+        if not gs_cmd:
+            # Fallback: compresión básica con pikepdf si no hay Ghostscript
+            with pikepdf.open(input_file) as pdf:
+                pdf.save(output_file, compress_streams=True, linearize=True)
+            return {"ok": True, "output": output_file, "engine": "pikepdf-fallback", "warning": "Ghostscript no encontrado. Compresión básica aplicada."}
+
         settings = f"/{level}" if not level.startswith("/") else level
-        cmd = ["gswin64c", "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4", f"-dPDFSETTINGS={settings}", 
+        cmd = [gs_cmd, "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4", f"-dPDFSETTINGS={settings}", 
                "-dNOPAUSE", "-dQUIET", "-dBATCH", f"-sOutputFile={output_file}", input_file]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0: return {"ok": False, "error": result.stderr}
-        return {"ok": True, "output": output_file}
+        return {"ok": True, "output": output_file, "engine": "ghostscript"}
     except Exception as e: return {"ok": False, "error": str(e)}
 
 def handle_split(data):
@@ -175,31 +217,50 @@ def handle_watermark(data):
         output_file = os.path.abspath(data.get("output", "watermarked.pdf"))
         text = data.get("text", "CONFIDENCIAL")
         opacity = float(data.get("opacity", 0.3))
-        angle = int(data.get("angle", 45))
-        # fitz insert_text solo permite múltiplos de 90
-        safe_angle = (angle // 90) * 90
+        angle = float(data.get("angle", 45))
         doc = fitz.open(input_file)
         for page in doc:
             rect = page.rect
-            page.insert_text((rect.width/4, rect.height/2), text, fontsize=60, rotate=safe_angle, color=(0.7, 0.7, 0.7), fill_opacity=opacity)
+            page.insert_text(
+                fitz.Point(rect.width / 2, rect.height / 2),
+                text,
+                fontsize=60,
+                color=(0.7, 0.7, 0.7),
+                fill_opacity=opacity,
+                rotate=int(angle)
+            )
         doc.save(output_file)
         doc.close()
         return {"ok": True, "output": output_file}
-    except Exception as e: return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 def handle_watermark_image(data):
     try:
         input_file = os.path.abspath(data.get("input", ""))
         output_file = os.path.abspath(data.get("output", "watermarked_img.pdf"))
         img_path = os.path.abspath(data.get("image", ""))
-        # insert_image no soporta opacity directamente en versiones comunes de fitz
+        opacity = float(data.get("opacity", 0.3))
         doc = fitz.open(input_file)
         for page in doc:
-            page.insert_image(page.rect, filename=img_path, keep_proportion=True, overlay=True)
+            page_rect = page.rect
+            img_w = page_rect.width * 0.5
+            img_h = page_rect.height * 0.5
+            x0 = (page_rect.width - img_w) / 2
+            y0 = (page_rect.height - img_h) / 2
+            img_rect = fitz.Rect(x0, y0, x0 + img_w, y0 + img_h)
+            page.insert_image(
+                img_rect,
+                filename=img_path,
+                keep_proportion=True,
+                overlay=True,
+                alpha=int(opacity * 255)
+            )
         doc.save(output_file)
         doc.close()
         return {"ok": True, "output": output_file}
-    except Exception as e: return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 def handle_crop(data):
     try:
@@ -207,9 +268,25 @@ def handle_crop(data):
         output_file = os.path.abspath(data.get("output", "cropped.pdf"))
         rect_data = data.get("rect", [0, 0, 100, 100])
         doc = fitz.open(input_file)
-        crop_rect = fitz.Rect(rect_data)
-        for page in doc:
-            page.set_cropbox(crop_rect)
+        if doc.page_count > 0:
+            first_page = doc[0]
+            w1 = first_page.rect.width
+            h1 = first_page.rect.height
+            for page in doc:
+                wp = page.rect.width
+                hp = page.rect.height
+                if w1 > 0 and h1 > 0:
+                    scale_x = wp / w1
+                    scale_y = hp / h1
+                    scaled_rect = fitz.Rect(
+                        rect_data[0] * scale_x,
+                        rect_data[1] * scale_y,
+                        rect_data[2] * scale_x,
+                        rect_data[3] * scale_y
+                    )
+                    page.set_cropbox(scaled_rect)
+                else:
+                    page.set_cropbox(fitz.Rect(rect_data))
         doc.save(output_file)
         doc.close()
         return {"ok": True, "output": output_file}
@@ -277,7 +354,7 @@ def handle_html_to_pdf(data):
         doc.close()
         with fitz.open("pdf", pdf_bytes) as pdf:
             pdf.save(output_file)
-        return {"ok": True, "output": output_file}
+        return {"ok": True, "output": output_file, "warning": "El renderizado HTML es básico. Para CSS avanzado usa un navegador externo."}
     except Exception as e: return {"ok": False, "error": str(e)}
 
 def handle_protect(data):
@@ -314,6 +391,13 @@ def handle_ocr(data):
         if not pytesseract:
             return {"ok": False, "error": "Librería pytesseract no instalada"}
             
+        # P17: Resolver ruta dinámica de Tesseract
+        tesseract_exe = resolve_tesseract_path(data.get("tesseract_path"))
+        if not tesseract_exe:
+            return {"ok": False, "error": "No se encontró el motor Tesseract OCR. Instálalo o configura la ruta en Settings."}
+        
+        pytesseract.pytesseract.tesseract_cmd = tesseract_exe
+            
         input_file = os.path.abspath(data.get("input", ""))
         output_file = os.path.abspath(data.get("output", ""))
         lang = data.get("lang", "spa")
@@ -321,14 +405,22 @@ def handle_ocr(data):
         doc = fitz.open(input_file)
         output_pdf = fitz.open()
         
-        for page in doc:
-            pix = page.get_pixmap(dpi=300)
-            img_path = output_file + f"_temp_{page.number}.png"
-            pix.save(img_path)
-            pdf_bytes = pytesseract.image_to_pdf_or_hocr(img_path, lang=lang, extension='pdf')
-            temp_pdf = fitz.open("pdf", pdf_bytes)
-            output_pdf.insert_pdf(temp_pdf)
-            os.remove(img_path)
+        temp_files = []
+        try:
+            for page in doc:
+                pix = page.get_pixmap(dpi=300)
+                img_path = output_file + f"_temp_{page.number}.png"
+                temp_files.append(img_path)
+                pix.save(img_path)
+                pdf_bytes = pytesseract.image_to_pdf_or_hocr(img_path, lang=lang, extension='pdf')
+                temp_pdf = fitz.open("pdf", pdf_bytes)
+                output_pdf.insert_pdf(temp_pdf)
+                sys.stderr.write(f"OCR_PROGRESS:{page.number + 1}\n")
+                sys.stderr.flush()
+        finally:
+            for f in temp_files:
+                if os.path.exists(f):
+                    os.remove(f)
         
         output_pdf.save(output_file)
         doc.close()
@@ -354,34 +446,53 @@ def handle_word_to_pdf(data):
         pythoncom.CoUninitialize()
 
 def handle_pdf_to_word(data):
+    pythoncom.CoInitialize()
+    word = None
     input_file = os.path.abspath(data.get("input", ""))
     output_file = os.path.abspath(data.get("output", ""))
     try:
-        cv = Converter(input_file)
-        cv.convert(output_file, 
-            start=0, 
-            end=None,
-            multi_processing=False,
-            connected_border_tolerance=0,
-            line_overlap_threshold=0.9,
-            image_overlap_threshold=0.0
+        # Estrategia 1: Word COM nativo (mejor fidelidad para layouts complejos)
+        word = win32com.client.DispatchEx("Word.Application")
+        word.Visible = False
+        word.DisplayAlerts = 0
+        doc = word.Documents.Open(
+            input_file,
+            ConfirmConversions=False,
+            ReadOnly=True
         )
-        cv.close()
-        return {"ok": True, "output": output_file}
-    except Exception as e:
-        pythoncom.CoInitialize()
+        doc.SaveAs2(output_file, 16)  # 16 = wdFormatDocumentDefault (.docx)
+        doc.Close(False)
+        word.Quit()
         word = None
+        pythoncom.CoUninitialize()
+        return {"ok": True, "output": output_file}
+    except Exception as e_word:
+        if word:
+            try: word.Quit()
+            except: pass
+            word = None
+        try: pythoncom.CoUninitialize()
+        except: pass
+        # Estrategia 2: pdf2docx (mejor para PDFs con texto plano)
         try:
-            word = win32com.client.DispatchEx("Word.Application")
-            word.Visible = False
-            doc = word.Documents.Open(input_file)
-            doc.SaveAs2(output_file, 16)
-            doc.Close()
-            return {"ok": True, "output": output_file}
-        except Exception as e2: return {"ok": False, "error": str(e2)}
-        finally:
-            if word: word.Quit()
+            from pdf2docx import Converter
+            pythoncom.CoInitialize()
+            cv = Converter(input_file)
+            cv.convert(output_file,
+                start=0,
+                end=None,
+                multi_processing=False,
+                connected_border_tolerance=0,
+                line_overlap_threshold=0.9,
+                image_overlap_threshold=0.0,
+            )
+            cv.close()
             pythoncom.CoUninitialize()
+            return {"ok": True, "output": output_file, "warning": "Conversión via pdf2docx. Layouts complejos pueden variar."}
+        except Exception as e_pdf2docx:
+            try: pythoncom.CoUninitialize()
+            except: pass
+            return {"ok": False, "error": f"Word COM: {str(e_word)} | pdf2docx: {str(e_pdf2docx)}"}
 
 def handle_excel_to_pdf(data):
     pythoncom.CoInitialize()
@@ -449,6 +560,8 @@ def main():
             request = json.loads(line)
             cmd = request.get("cmd")
             data = request.get("data", {})
+            request_id = request.get("id")
+            
             if cmd == "ping": response = {"ok": True, "status": "ready"}
             elif cmd == "merge": response = handle_merge(data)
             elif cmd == "compress": response = handle_compress(data)
@@ -474,8 +587,8 @@ def main():
             elif cmd == "ppt_to_pdf": response = handle_ppt_to_pdf(data)
             elif cmd == "get_page_info": response = handle_get_page_info(data)
             else: response = {"ok": False, "error": f"Comando desconocido: {cmd}"}
-            send_response(response)
-        except Exception as e: send_response({"ok": False, "error": str(e)})
+            send_response(response, request_id)
+        except Exception as e: send_response({"ok": False, "error": str(e)}, request.get("id") if 'request' in locals() else None)
 
 if __name__ == "__main__":
     main()

@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import path from 'path'
 import react from '@vitejs/plugin-react'
@@ -17,6 +18,7 @@ export default defineConfig({
           build: {
             minify: 'esbuild',
             rollupOptions: {
+              external: ['pdf-parse', 'pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js'],
               input: {
                 main: 'electron/main.ts',
                 pdfWorker: 'electron/pdfWorker.ts',
@@ -31,6 +33,12 @@ export default defineConfig({
     }),
     renderer(),
   ],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/tests/setup.ts',
+    include: ['src/**/*.test.{ts,tsx}'],
+  },
   build: {
     minify: 'esbuild',
     sourcemap: false,
@@ -39,7 +47,7 @@ export default defineConfig({
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router'],
           'vendor-ui': ['@radix-ui/react-accordion', '@radix-ui/react-dialog', 'lucide-react', 'motion'],
-          'vendor-utils': ['date-fns', 'xlsx', 'jspdf', 'pdf-lib', 'fuse.js'],
+          'vendor-utils': ['date-fns', 'xlsx', 'jspdf', 'fuse.js'],
           'vendor-charts': ['recharts'],
         }
       }

@@ -6,9 +6,9 @@ import os from 'node:os';
 import { spawn, ChildProcess } from 'child_process';
 import chokidar, { FSWatcher } from 'chokidar';
 import Store from 'electron-store';
+import Tesseract from 'tesseract.js';
 import { dbOptions } from './database';
 import { WorkerPool } from './workerPool';
-
 // ─────────────────────────────────────────────────────────────────────────────
 // main.ts — Proceso principal de Electron — ControlHub v1.0.0
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,16 +44,66 @@ const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 // ─────────────────────────────────────────────────────────────────────────────
 // Sidecar Manager: Gestión unificada de procesos Python
 // ─────────────────────────────────────────────────────────────────────────────
+
+const SIDECAR_DEFAULT_TIMEOUT_MS = 30000; // 30 segundos (fallback global)
+
+const SIDECAR_COMMAND_TIMEOUTS: Record<string, number> = {
+  // Operaciones rápidas / Metadatos (10s - 15s)
+  'ping': 10000,
+  'get_page_info': 15000,
+  
+  // Operaciones de carga estándar (30s)
+  'merge': 30000,
+  'extract': 30000,
+  'delete_pages': 30000,
+  'reorder_pages': 30000,
+  'rotate': 30000,
+  'crop': 30000,
+  'repair': 30000,
+  'add_page_numbers': 30000,
+  'watermark': 30000,
+  'watermark_image': 30000,
+  'protect': 30000,
+  'unlock': 30000,
+
+  // Operaciones de procesamiento intermedio (60s)
+  'compress': 60000,
+  'split': 60000,
+  'jpg_to_pdf': 60000,
+  'html_to_pdf': 60000,
+
+  // Operaciones de conversión pesada y OCR (2m - 5m)
+  'pdf_to_jpg': 120000,
+  'word_to_pdf': 120000,
+  'excel_to_pdf': 120000,
+  'ppt_to_pdf': 120000,
+  'pdf_to_word': 300000,   // 5 minutos
+  'ocr': 300000,           // 5 minutos
+};
+
 class SidecarManager {
   private process: ChildProcess | null = null;
   private name: string;
   private scriptPath: string;
-  private pendingResolvers: Array<(value: any) => void> = [];
+  private pendingResolvers = new Map<string, (value: any) => void>();
+  private requestIdCounter = 0;
   private stdoutBuffer: string = "";
+  private stderrBuffer: string = "";
+  private restartAttempts: number = 0;
+  private readonly maxRestarts: number = 0; // disabled automatic restarts per user request
+  private readonly backoffTimes: number[] = [2000, 4000, 8000];
+  private status: 'running' | 'closed' | 'stalled' | 'reconnecting' | 'failed' | 'ok' | 'unknown' = 'unknown';
 
   constructor(name: string, scriptPath: string) {
     this.name = name;
     this.scriptPath = scriptPath;
+  }
+
+  private setStatus(newStatus: 'running' | 'closed' | 'stalled' | 'reconnecting' | 'failed' | 'ok' | 'unknown') {
+    this.status = newStatus;
+    if (win) {
+      win.webContents.send('sidecar:status', { name: this.name, status: newStatus });
+    }
   }
 
   start() {
@@ -62,13 +112,15 @@ class SidecarManager {
     this.process = spawn(pythonExe, [this.scriptPath], {
       stdio: ["pipe", "pipe", "pipe"]
     });
-
-    if (win) {
-      win.webContents.send('sidecar:status', { name: this.name, status: 'running' });
-    }
+    // Reset restart attempts on successful start
+    this.restartAttempts = 0;
+    this.setStatus('running');
 
     this.process.stdout?.on("data", (data) => {
-      this.stdoutBuffer += data.toString();
+      const out = data.toString();
+      // Log raw stdout for debugging
+      console.log(`[Sidecar] ${this.name} STDOUT:`, out);
+      this.stdoutBuffer += out;
       let lineEndIndex;
       while ((lineEndIndex = this.stdoutBuffer.indexOf("\n")) !== -1) {
         const line = this.stdoutBuffer.slice(0, lineEndIndex).trim();
@@ -77,8 +129,22 @@ class SidecarManager {
         if (line) {
           try {
             const parsed = JSON.parse(line);
-            const resolver = this.pendingResolvers.shift();
-            if (resolver) resolver(parsed);
+            const id = parsed.id?.toString();
+            
+            if (id && this.pendingResolvers.has(id)) {
+              const resolver = this.pendingResolvers.get(id);
+              this.pendingResolvers.delete(id);
+              if (resolver) resolver(parsed);
+            } else {
+              // Fallback: Si no hay ID, tomamos el primer resolver (retrocompatibilidad o error)
+              console.warn(`[Sidecar] ${this.name}: Respuesta recibida sin ID o ID no encontrado: ${id}`);
+              const firstId = this.pendingResolvers.keys().next().value;
+              if (firstId) {
+                const resolver = this.pendingResolvers.get(firstId);
+                this.pendingResolvers.delete(firstId);
+                if (resolver) resolver(parsed);
+              }
+            }
           } catch {
             console.error(`[Sidecar] ${this.name}: error de parseo en comunicación`);
           }
@@ -87,7 +153,9 @@ class SidecarManager {
     });
 
     this.process.stderr?.on("data", (data) => {
-      console.error(`[Sidecar] ${this.name}: error interno detectado`);
+      const errMsg = data.toString();
+      this.stderrBuffer += errMsg;
+      console.error(`[Sidecar] ${this.name} STDERR:`, errMsg);
     });
 
     this.process.on("error", (err) => {
@@ -96,21 +164,69 @@ class SidecarManager {
 
     this.process.on("close", (code) => {
       console.log(`[${this.name}] Proceso finalizado con código ${code}`);
+      // If process exited with error, output captured buffers
+      if (code !== 0) {
+        console.error(`[${this.name}] STDERR BUFFER:\n${this.stderrBuffer}`);
+        console.error(`[${this.name}] STDOUT BUFFER:\n${this.stdoutBuffer}`);
+      }
+      // Reject any pending resolvers to avoid hanging promises
+      if (this.pendingResolvers.size > 0) {
+        const err = new Error(`Sidecar ${this.name} closed unexpectedly with code ${code}`);
+        this.pendingResolvers.forEach((resolver) => {
+          resolver({ ok: false, error: err.message });
+        });
+        this.pendingResolvers.clear();
+      }
       this.process = null;
-      if (win) {
-        win.webContents.send('sidecar:status', { name: this.name, status: 'closed', code });
+      // Automatic reconnection logic
+      if (code !== 0 && this.restartAttempts < this.maxRestarts) {
+        const backoff = this.backoffTimes[this.restartAttempts] || 8000;
+        this.restartAttempts++;
+        this.setStatus('reconnecting');
+        setTimeout(() => this.start(), backoff);
+      } else {
+        // final failure
+        this.setStatus(code === 0 ? 'closed' : 'failed');
+        this.restartAttempts = 0; // reset on final state
       }
     });
   }
 
-  send(payload: object): Promise<any> {
+  send(payload: any): Promise<any> {
     return new Promise((resolve, reject) => {
+      if (this.status === 'stalled') {
+        return reject(new Error(`El módulo ${this.name} se encuentra bloqueado debido a una tarea anterior que superó el tiempo límite. Por favor, haz clic en el botón de reconectar en la barra lateral para reiniciar el servicio.`));
+      }
       if (!this.process) {
         return reject(new Error(`El proceso Python ${this.name} no está iniciado.`));
       }
 
-      this.pendingResolvers.push(resolve);
-      this.process.stdin?.write(JSON.stringify(payload) + "\n");
+      const id = (++this.requestIdCounter).toString();
+      payload.id = id;
+
+      const cmd = payload.cmd || "";
+      const timeoutMs = SIDECAR_COMMAND_TIMEOUTS[cmd] || SIDECAR_DEFAULT_TIMEOUT_MS;
+
+      const timer = setTimeout(() => {
+        if (this.pendingResolvers.has(id)) {
+          this.pendingResolvers.delete(id);
+          this.setStatus('stalled');
+          reject(new Error(`Timeout: La operación '${cmd}' en el sidecar ${this.name} tardó más de ${timeoutMs / 1000}s. El servicio ha sido marcado como atascado.`));
+        }
+      }, timeoutMs);
+      
+      this.pendingResolvers.set(id, (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      });
+
+      try {
+        this.process.stdin?.write(JSON.stringify(payload) + "\n");
+      } catch (writeErr) {
+        clearTimeout(timer);
+        this.pendingResolvers.delete(id);
+        reject(new Error(`Failed to write to sidecar ${this.name}: ${writeErr}`));
+      }
     });
   }
 
@@ -119,25 +235,29 @@ class SidecarManager {
       this.process.kill();
       this.process = null;
     }
+    this.setStatus('closed');
   }
 }
 
 // Instancias de Sidecar
 const getSidecarPath = (fileName: string) => {
   if (app?.isPackaged) {
+    // En producción, los archivos están en la carpeta 'resources/sidecar'
     return path.join(process.resourcesPath, 'sidecar', fileName);
   }
-  const sidecarPath = path.join(__dirname, `sidecar/${fileName}`);
-  return fs.existsSync(sidecarPath) 
-    ? sidecarPath 
-    : path.join(__dirname, `../electron/sidecar/${fileName}`);
+  // En desarrollo, buscamos relativo al archivo actual
+  const devPath = path.join(__dirname, `sidecar/${fileName}`);
+  if (fs.existsSync(devPath)) return devPath;
+  
+  // Fallback para estructuras alternativas en desarrollo
+  return path.join(__dirname, `../electron/sidecar/${fileName}`);
 };
 
 const getPythonExecutable = () => {
   if (app?.isPackaged) {
     return path.join(process.resourcesPath, 'python-embed', 'python.exe');
   }
-  return "python";
+  return path.join(process.cwd(), 'python-embed', 'python.exe');
 };
 
 const terapiasSidecar = new SidecarManager(
@@ -153,11 +273,11 @@ const pdfSidecar = new SidecarManager(
 ipcMain.handle('terapias:ping', () => terapiasSidecar.send({ cmd: 'ping' }));
 ipcMain.handle('terapias:check_word', () => terapiasSidecar.send({ cmd: 'check_word' }));
 ipcMain.handle('terapias:list_docs', () => {
-  const sourceDir = store.get('terapiasSourceDir', DEFAULT_TERAPIAS_DIR) as string;
+  const sourceDir = store.get('settings.terapiasDir', DEFAULT_TERAPIAS_DIR) as string;
   return terapiasSidecar.send({ cmd: 'list_docs', data: { source_dir: sourceDir } });
 });
 ipcMain.handle('terapias:prepare', (_, data) => {
-  const sourceDir = store.get('terapiasSourceDir', DEFAULT_TERAPIAS_DIR) as string;
+  const sourceDir = store.get('settings.terapiasDir', DEFAULT_TERAPIAS_DIR) as string;
   return terapiasSidecar.send({ cmd: 'prepare', data: { ...data, source_dir: sourceDir } });
 });
 ipcMain.handle('terapias:finalize', (_, data) => {
@@ -180,9 +300,7 @@ ipcMain.handle('pdf:extract', (_, data) => pdfSidecar.send({ cmd: 'extract', dat
 ipcMain.handle('pdf:word_to_pdf', (_, data) => pdfSidecar.send({ cmd: 'word_to_pdf', data }));
 ipcMain.handle('pdf:pdf_to_word', (_, data) => pdfSidecar.send({ cmd: 'pdf_to_word', data }));
 ipcMain.handle('pdf:excel_to_pdf', (_, data) => pdfSidecar.send({ cmd: 'excel_to_pdf', data }));
-ipcMain.handle('pdf:pdf_to_excel', (_, data) => pdfSidecar.send({ cmd: 'pdf_to_excel', data }));
 ipcMain.handle('pdf:ppt_to_pdf', (_, data) => pdfSidecar.send({ cmd: 'ppt_to_pdf', data }));
-ipcMain.handle('pdf:pdf_to_ppt', (_, data) => pdfSidecar.send({ cmd: 'pdf_to_ppt', data }));
 
 // Handlers adicionales para PDF Tools
 ipcMain.handle('pdf:delete_pages', (_, data) => pdfSidecar.send({ cmd: 'delete_pages', data }));
@@ -197,8 +315,43 @@ ipcMain.handle('pdf:html_to_pdf', (_, data) => pdfSidecar.send({ cmd: 'html_to_p
 ipcMain.handle('pdf:protect', (_, data) => pdfSidecar.send({ cmd: 'protect', data }));
 ipcMain.handle('pdf:unlock', (_, data) => pdfSidecar.send({ cmd: 'unlock', data }));
 ipcMain.handle('pdf:repair', (_, data) => pdfSidecar.send({ cmd: 'repair', data }));
-ipcMain.handle('pdf:ocr', (_, data) => pdfSidecar.send({ cmd: 'ocr', data }));
+ipcMain.handle('pdf:ocr', (_, data) => {
+  const tesseractPath = store.get('tesseractPath') as string;
+  return pdfSidecar.send({ cmd: 'ocr', data: { ...data, tesseract_path: tesseractPath } });
+});
 ipcMain.handle('pdf:get_page_info', (_, data) => pdfSidecar.send({ cmd: 'get_page_info', data }));
+
+// IPC Handler para OCR Fallback (Main Process)
+ipcMain.handle('ocr:extractText', async (_, pdfPath: string) => {
+  console.log('[MAIN] Iniciando OCR Fallback para:', pdfPath);
+  const tempDir = path.join(os.tmpdir(), 'controlhub-ocr');
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+
+  try {
+    // 1. Convertir página 1 del PDF a JPG usando el sidecar
+    const res = await pdfSidecar.send({ 
+      cmd: 'pdf_to_jpg', 
+      data: { input: pdfPath, output_dir: tempDir, dpi: 300 } 
+    });
+
+    if (!res.ok || !res.outputs || res.outputs.length === 0) {
+      throw new Error(res.error || 'Fallo al convertir PDF a imagen');
+    }
+
+    const imgPath = res.outputs[0];
+    
+    // 2. Extraer texto con Tesseract en el Main Process
+    const { data: { text } } = await Tesseract.recognize(imgPath, 'spa');
+    
+    // 3. Limpiar archivo temporal
+    fs.unlinkSync(imgPath);
+    
+    return text;
+  } catch (err: any) {
+    console.error('[MAIN-OCR] Error:', err);
+    return "";
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // IPC: Configuración Persistente
@@ -209,7 +362,7 @@ ipcMain.handle('config:set', (_, key, value) => store.set(key, value));
 // IPC Handlers para Dashboard
 ipcMain.handle('dashboard:stats', async () => {
   try {
-    const sourceDir = store.get('terapiasSourceDir', DEFAULT_TERAPIAS_DIR) as string;
+    const sourceDir = store.get('settings.terapiasDir', DEFAULT_TERAPIAS_DIR) as string;
     
     // Verificación asíncrona de existencia
     try {
@@ -228,13 +381,22 @@ ipcMain.handle('dashboard:stats', async () => {
   }
 });
 
+ipcMain.handle('fs:readPdfAsBase64', async (_: any, pdfPath: string) => {
+  try {
+    const buffer = await fs.promises.readFile(pdfPath);
+    return { success: true, data: buffer.toString('base64') };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Ventana principal
 // ─────────────────────────────────────────────────────────────────────────────
 function createWindow() {
   if (!app) return;
   win = new BrowserWindow({
-    icon: path.join(process.env.VITE_PUBLIC || '', 'electron-vite.svg'),
+    icon: path.join(process.env.VITE_PUBLIC || '', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -247,12 +409,16 @@ function createWindow() {
 
   win?.setMenu(null);
 
-  win?.webContents.on('did-finish-load', () => {
+    win?.webContents.on('did-finish-load', () => {
     win?.webContents.send('main-process-message', (new Date).toLocaleString());
   });
 
+
+
+
   if (VITE_DEV_SERVER_URL) {
     win?.loadURL(VITE_DEV_SERVER_URL);
+    win?.webContents.openDevTools();
   } else {
     win?.loadFile(path.join(process.env.DIST || '', 'index.html'));
   }
@@ -275,22 +441,19 @@ app?.on('activate', () => {
 });
 
 // Fix #10: Limpiar el pool de Workers al cerrar la app
-app?.on('before-quit', () => {
+app?.on('before-quit', async () => {
   pdfWorkerPool?.terminate().catch(() => {});
   pdfWorkerPool = null;
-  // Finalizar sidecars Python
   terapiasSidecar.kill();
   pdfSidecar.kill();
-  // Fix #15: Limpiar timers de debounce pendientes
   for (const timer of watcherDebounceMap.values()) clearTimeout(timer);
   watcherDebounceMap.clear();
 });
 
-app?.whenReady()?.then(() => {
-  // Sidecars Python
+app?.whenReady()?.then(async () => {
   terapiasSidecar.start();
   pdfSidecar.start();
-  
+
   // Protocolo custom para servir PDFs locales sin abrir el explorador
   protocol.handle('cotu', (request) => {
     const url = new URL(request.url);
@@ -308,15 +471,7 @@ app?.whenReady()?.then(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 // IPC: Seleccionar directorio
 // ─────────────────────────────────────────────────────────────────────────────
-ipcMain?.handle('dialog:selectDirectory', async () => {
-  if (!win) return null;
-  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-    properties: ['openDirectory']
-  });
-  return canceled ? null : filePaths[0];
-});
-
-ipcMain?.handle('select-directory', async () => {
+ipcMain.handle('dialog:selectDirectory', async () => {
   if (!win) return null;
   const { canceled, filePaths } = await dialog.showOpenDialog(win, {
     properties: ['openDirectory']
@@ -327,7 +482,7 @@ ipcMain?.handle('select-directory', async () => {
   return dirPath;
 });
 
-ipcMain?.handle('dialog:selectFile', async (_, options) => {
+ipcMain.handle('dialog:selectFile', async (_, options) => {
   if (!win) return null;
   const filters = Array.isArray(options) ? options : options?.filters;
   const defaultPath = options?.defaultPath;
@@ -337,6 +492,12 @@ ipcMain?.handle('dialog:selectFile', async (_, options) => {
     defaultPath
   });
   return canceled ? null : filePaths[0];
+});
+
+// IPC handler for Save Dialog
+ipcMain.handle('dialog-save-path', async (_, options) => {
+  const result = await dialog.showSaveDialog(options);
+  return result.canceled ? null : result.filePath;
 });
 
 ipcMain.handle('fs:listFiles', async (_, dirPath, extensions) => {
@@ -381,7 +542,7 @@ ipcMain.handle('reveal-in-folder', async (_, filePath: string) => {
 // Fix #3: Acepta `scanId` — si se recibe 'fs:cancelScan' con ese ID,
 //         la traversal se detiene en el próximo punto de control async.
 // ─────────────────────────────────────────────────────────────────────────────
-ipcMain?.handle('fs:readDirectory', async (
+ipcMain.handle('fs:readDirectory', async (
   event: any,
   dirPath: string,
   options?: { ignoredFolders?: string[]; maxDepth?: number; scanId?: string }
@@ -421,7 +582,6 @@ ipcMain?.handle('fs:readDirectory', async (
 
         if (entry.isDirectory()) {
           if (ignoredFolders.includes(entry.name)) continue;
-
           totalFilesScanned++;
 
           if (totalFilesScanned % 250 === 0) {
@@ -432,7 +592,10 @@ ipcMain?.handle('fs:readDirectory', async (
             });
           }
 
-          if (entry.name.toLowerCase().includes('cotu')) {
+          await getAllFiles(fullPath, currentDepth + 1);
+        } else {
+          totalFilesScanned++;
+          if (entry.name.toLowerCase().endsWith('.pdf')) {
             let stat: fs.Stats;
             try {
               stat = await fs.promises.stat(fullPath);
@@ -440,12 +603,7 @@ ipcMain?.handle('fs:readDirectory', async (
               continue;
             }
             arrayOfFiles.push({ filePath: fullPath, mtimeMs: stat.mtimeMs });
-            continue;
           }
-
-          await getAllFiles(fullPath, currentDepth + 1);
-        } else {
-          totalFilesScanned++;
         }
       }
     };
@@ -455,9 +613,6 @@ ipcMain?.handle('fs:readDirectory', async (
   } catch (err) {
     console.error('Error reading directory:', err);
     return { files: [], totalScanned: 0 };
-  } finally {
-    // Siempre limpiar el scanId, tanto en éxito como en cancelación
-    if (scanId) activeScanIds.delete(scanId);
   }
 });
 
@@ -465,7 +620,7 @@ ipcMain?.handle('fs:readDirectory', async (
 // IPC: Cancelar escaneo en curso
 // Fix #3: Al eliminar el scanId, la traversal se detiene en el próximo await
 // ─────────────────────────────────────────────────────────────────────────────
-ipcMain?.handle('fs:cancelScan', async (_: any, scanId: string) => {
+ipcMain.handle('fs:cancelScan', async (_: any, scanId: string) => {
   activeScanIds.delete(scanId);
   return true;
 });
@@ -474,7 +629,8 @@ ipcMain?.handle('fs:cancelScan', async (_: any, scanId: string) => {
 // IPC: Parsear PDF para extraer texto
 // Fix #10: Usa el WorkerPool en vez de crear un Worker nuevo por cada PDF
 // ─────────────────────────────────────────────────────────────────────────────
-ipcMain?.handle('fs:parsePdf', async (_: any, pdfPath: string, maxPages?: number) => {
+ipcMain.handle('fs:parsePdf', async (_: any, pdfPath: string, maxPages?: number) => {
+  console.log('[MAIN] Entrando a fs:parsePdf para:', pdfPath);
   if (!pdfWorkerPool) {
     const workerPath = path.join(__dirname, 'pdfWorker.js');
     const cpuCount = os.cpus().length;
@@ -482,7 +638,13 @@ ipcMain?.handle('fs:parsePdf', async (_: any, pdfPath: string, maxPages?: number
     pdfWorkerPool = new WorkerPool(poolSize, workerPath);
     console.log(`[main] PDF WorkerPool inicializado con ${poolSize} workers (CPUs: ${cpuCount}).`);
   }
-  return pdfWorkerPool.parsePdf(pdfPath, maxPages);
+  const result = await pdfWorkerPool.parsePdf(pdfPath, maxPages);
+  console.log('[MAIN] parsePdf resultado para:', pdfPath, 
+    '| texto length:', result?.text?.length ?? 0);
+  if (result && result.text) {
+    console.log('[DEBUG-MAIN] Texto extraído del PDF:', result.text.substring(0, 800));
+  }
+  return result;
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -607,4 +769,3 @@ ipcMain.handle('sidecar:reconnect', async (_, name: string) => {
   }
   return { ok: true };
 });
-

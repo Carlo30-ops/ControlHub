@@ -89,10 +89,10 @@ export function Settings() {
     <div className="max-w-5xl mx-auto space-y-10 animate-in fade-in duration-500 pb-20">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Configuración</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1 font-medium text-lg">Personaliza el motor de auditoría y la interfaz</p>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">Configuración</h1>
+          <p className="text-muted-foreground mt-1 font-medium text-lg">Personaliza el motor de auditoría y la interfaz</p>
         </div>
-        <div className="p-3 rounded-2xl bg-blue-500/10 text-blue-500">
+        <div className="p-3 rounded-2xl bg-muted text-muted-foreground">
            <SettingsIcon className="w-8 h-8" />
         </div>
       </div>
@@ -100,11 +100,11 @@ export function Settings() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8 space-y-8">
           {/* Apariencia Glass */}
-          <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl overflow-hidden">
-            <CardHeader className="p-8 bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/50">
+          <Card className="bg-card shadow-md rounded-2xl overflow-hidden">
+            <CardHeader className="p-8 border-b border-border">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-purple-500 text-white shadow-lg"><Monitor className="w-5 h-5" /></div>
-                <CardTitle className="text-xl font-black">Apariencia del Sistema</CardTitle>
+                <div className="p-2 rounded-xl bg-muted text-muted-foreground shadow-lg"><Monitor className="w-5 h-5" /></div>
+                <CardTitle className="text-xl font-bold">Apariencia del Sistema</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="p-8 space-y-6">
@@ -116,11 +116,11 @@ export function Settings() {
           </Card>
 
           {/* Motor de Escaneo Glass */}
-          <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl overflow-hidden">
-            <CardHeader className="p-8 bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/50">
+          <Card className="bg-card shadow-md rounded-2xl overflow-hidden">
+            <CardHeader className="p-8 border-b border-border">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-blue-500 text-white shadow-lg"><ScanSearch className="w-5 h-5" /></div>
-                <CardTitle className="text-xl font-black">Motor de Escaneo</CardTitle>
+                <div className="p-2 rounded-xl bg-muted text-muted-foreground shadow-lg"><ScanSearch className="w-5 h-5" /></div>
+                <CardTitle className="text-xl font-bold">Motor de Escaneo</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="p-8 space-y-8">
@@ -141,9 +141,9 @@ export function Settings() {
                </div>
 
                <div className="space-y-3">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Profundidad de Búsqueda</label>
+                  <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Profundidad de Búsqueda</label>
                   <Select value={settings.scanning.maxDepth.toString()} onValueChange={(v) => updateSettings({ scanning: { ...settings.scanning, maxDepth: parseInt(v) } })}>
-                    <SelectTrigger className="h-12 rounded-xl font-bold bg-white/50 dark:bg-slate-900/50"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-12 rounded-xl font-bold bg-muted/50"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="5" className="font-bold">5 niveles (Superficial)</SelectItem>
                       <SelectItem value="10" className="font-bold">10 niveles (Equilibrado)</SelectItem>
@@ -155,21 +155,21 @@ export function Settings() {
           </Card>
 
           {/* Aseguradoras Glass */}
-          <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl overflow-hidden">
-            <CardHeader className="p-8 bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/50">
+          <Card className="bg-card shadow-md rounded-2xl overflow-hidden">
+            <CardHeader className="p-8 border-b border-border">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-emerald-500 text-white shadow-lg"><Building2 className="w-5 h-5" /></div>
-                <CardTitle className="text-xl font-black">Aseguradoras Personalizadas</CardTitle>
+                <div className="p-2 rounded-xl bg-muted text-muted-foreground shadow-lg"><Building2 className="w-5 h-5" /></div>
+                <CardTitle className="text-xl font-bold">Aseguradoras Personalizadas</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="p-8 space-y-6">
-              <div className="flex flex-col md:flex-row gap-4 p-6 bg-emerald-500/5 rounded-2xl border border-emerald-500/10">
+              <div className="flex flex-col md:flex-row gap-4 p-6 bg-muted/30 rounded-2xl border border-border">
                 <div className="flex-1 space-y-2">
-                  <Label className="text-[10px] font-black uppercase text-slate-400">Nombre Oficial</Label>
+                  <Label className="text-xs font-bold uppercase text-muted-foreground">Nombre Oficial</Label>
                   <Input placeholder="Ej: Sura" value={newInsurerName} onChange={(e) => setNewInsurerName(e.target.value)} className="h-11 rounded-xl" />
                 </div>
                 <div className="flex-[2] space-y-2">
-                  <Label className="text-[10px] font-black uppercase text-slate-400">Alias (separados por coma)</Label>
+                  <Label className="text-xs font-bold uppercase text-muted-foreground">Alias (separados por coma)</Label>
                   <Input placeholder="Ej: suramericana, seguros sura" value={newInsurerAliases} onChange={(e) => setNewInsurerAliases(e.target.value)} className="h-11 rounded-xl" />
                 </div>
                 <div className="flex items-end">
@@ -177,7 +177,7 @@ export function Settings() {
                     if (!newInsurerName) return;
                     updateSettings({ customInsurers: [...(settings.customInsurers || []), { name: newInsurerName, aliases: newInsurerAliases }] });
                     setNewInsurerName(""); setNewInsurerAliases(""); toast.success("Agregada");
-                  }} className="h-11 rounded-xl bg-emerald-600 px-6 font-bold">
+                  }} className="h-11 rounded-xl bg-primary text-primary-foreground px-6 font-bold hover:bg-primary/90">
                     <Plus className="w-4 h-4 mr-2" /> AGREGAR
                   </Button>
                 </div>
@@ -185,12 +185,12 @@ export function Settings() {
 
               <div className="space-y-3">
                  {settings.customInsurers?.map((ins, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-4 bg-white dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-800 group transition-all hover:border-emerald-500/30">
+                    <div key={idx} className="flex items-center justify-between p-4 bg-card rounded-xl border border-border group transition-all">
                        <div>
-                          <p className="font-black text-slate-900 dark:text-white uppercase tracking-tight">{ins.name}</p>
-                          <p className="text-[10px] font-medium text-slate-500">{ins.aliases}</p>
+                          <p className="font-bold text-foreground uppercase tracking-tight">{ins.name}</p>
+                          <p className="text-xs font-medium text-muted-foreground">{ins.aliases}</p>
                        </div>
-                       <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-500/10" onClick={() => {
+                       <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 text-destructive hover:bg-destructive/10" onClick={() => {
                          const newList = [...settings.customInsurers]; newList.splice(idx, 1);
                          updateSettings({ customInsurers: newList }); toast.success("Eliminada");
                        }}><Trash2 className="w-4 h-4" /></Button>
@@ -201,21 +201,21 @@ export function Settings() {
           </Card>
 
           {/* Rutas del Sistema */}
-          <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl overflow-hidden">
-            <CardHeader className="p-8 bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/50">
+          <Card className="bg-card shadow-md rounded-2xl overflow-hidden">
+            <CardHeader className="p-8 border-b border-border">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-orange-500 text-white shadow-lg"><HardDrive className="w-5 h-5" /></div>
-                <CardTitle className="text-xl font-black">Rutas del Sistema</CardTitle>
+                <div className="p-2 rounded-xl bg-muted text-muted-foreground shadow-lg"><HardDrive className="w-5 h-5" /></div>
+                <CardTitle className="text-xl font-bold">Rutas del Sistema</CardTitle>
               </div>
             </CardHeader>
-            <CardContent className="p-8 space-y-4">
+            <CardContent className="p-8 space-y-8">
               <div className="space-y-2">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Ruta de Terapias</Label>
+                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Ruta de Terapias</Label>
                 <div className="flex flex-col md:flex-row gap-3">
                   <Input 
                     value={settings.terapiasDir || "Sin configurar (usando home)"} 
                     disabled 
-                    className="flex-1 h-12 rounded-xl bg-slate-100/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-500 font-bold"
+                    className="flex-1 h-12 rounded-xl bg-muted/50 border-border text-muted-foreground font-bold"
                   />
                   <Button 
                     variant="outline" 
@@ -232,9 +232,47 @@ export function Settings() {
                         toast.error("Error al seleccionar la carpeta");
                       }
                     }}
-                    className="h-12 px-6 rounded-xl font-bold border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/40 shrink-0"
+                    className="h-12 px-6 rounded-xl font-bold border-border bg-card shrink-0"
                   >
                     Cambiar carpeta...
+                  </Button>
+                </div>
+              </div>
+
+              <Separator className="opacity-50" />
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Motor OCR (Tesseract)</Label>
+                  <Badge variant="outline" className="text-[10px] font-bold border-primary/20 text-primary">REQUERIDO PARA PDF ESCANEADOS</Badge>
+                </div>
+                <div className="flex flex-col md:flex-row gap-3">
+                  <Input 
+                    value={settings.tesseractPath || "No detectado (se buscará en PATH)"} 
+                    disabled 
+                    className="flex-1 h-12 rounded-xl bg-muted/50 border-border text-muted-foreground font-bold"
+                  />
+                  <Button 
+                    variant="outline" 
+                    onClick={async () => {
+                      try {
+                        const newPath = await window.electronAPI.selectFile({
+                          filters: [{ name: "Ejecutables", extensions: ["exe"] }],
+                          defaultPath: "C:\\Program Files\\Tesseract-OCR"
+                        });
+                        if (newPath) {
+                          updateSettings({ tesseractPath: newPath });
+                          toast.success(`Ruta de Tesseract actualizada`, {
+                            description: newPath,
+                          });
+                        }
+                      } catch (err) {
+                        toast.error("Error al seleccionar el ejecutable");
+                      }
+                    }}
+                    className="h-12 px-6 rounded-xl font-bold border-border bg-card shrink-0"
+                  >
+                    Localizar tesseract.exe
                   </Button>
                 </div>
               </div>
@@ -242,32 +280,32 @@ export function Settings() {
           </Card>
 
           {/* Perfil del Operador */}
-          <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl overflow-hidden">
-            <CardHeader className="p-8 bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/50">
+          <Card className="bg-card border-border shadow-md rounded-2xl overflow-hidden">
+            <CardHeader className="p-8 border-b border-border">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-indigo-505 bg-indigo-600 text-white shadow-lg"><User className="w-5 h-5" /></div>
-                <CardTitle className="text-xl font-black">Perfil del Operador</CardTitle>
+                <div className="p-2 rounded-xl bg-muted text-muted-foreground"><User className="w-5 h-5" /></div>
+                <CardTitle className="text-xl font-bold">Perfil del Operador</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="p-8 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nombre del Operador</Label>
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Nombre del Operador</Label>
                   <Input 
                     value={operatorName} 
                     onChange={(e) => setOperatorName(e.target.value)} 
                     placeholder="Ej: Usuario Admin"
-                    className="h-12 rounded-xl bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-bold text-slate-900 dark:text-white"
+                    className="h-12 rounded-xl bg-muted/50 border-border font-bold text-foreground"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Correo Electrónico</Label>
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Correo Electrónico</Label>
                   <Input 
                     type="email"
                     value={operatorEmail} 
                     onChange={(e) => setOperatorEmail(e.target.value)} 
                     placeholder="Ej: admin@cotu.com"
-                    className="h-12 rounded-xl bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-bold text-slate-900 dark:text-white"
+                    className="h-12 rounded-xl bg-muted/50 border-border font-bold text-foreground"
                   />
                 </div>
               </div>
@@ -277,7 +315,7 @@ export function Settings() {
                     updateSettings({ operatorName, operatorEmail });
                     toast.success("Perfil del operador guardado con éxito");
                   }}
-                  className="h-12 px-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black shadow-lg shadow-indigo-500/20"
+                  className="h-12 px-8 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-md"
                 >
                   Guardar Cambios
                 </Button>
@@ -288,35 +326,35 @@ export function Settings() {
 
         <div className="lg:col-span-4 space-y-8">
            {/* Almacenamiento Glass */}
-           <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl overflow-hidden">
-              <CardHeader className="p-6 border-b border-slate-100 dark:border-slate-800/50">
-                 <CardTitle className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                    <Database className="w-4 h-4 text-blue-500" /> Base de Datos Local
+           <Card className="bg-card shadow-md rounded-2xl overflow-hidden">
+              <CardHeader className="p-6 border-b border-border">
+                 <CardTitle className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                    <Database className="w-4 h-4 text-primary" /> Base de Datos Local
                  </CardTitle>
               </CardHeader>
               <CardContent className="p-8 space-y-8">
                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 rounded-2xl bg-slate-100/50 dark:bg-slate-900/50 text-center">
-                       <p className="text-2xl font-black">{dbStats?.count || history.length}</p>
-                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Sesiones</p>
+                    <div className="p-4 rounded-2xl bg-muted/50 text-center">
+                       <p className="text-2xl font-bold">{dbStats?.count || history.length}</p>
+                       <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Sesiones</p>
                     </div>
-                    <div className="p-4 rounded-2xl bg-slate-100/50 dark:bg-slate-900/50 text-center">
-                       <p className="text-2xl font-black">{dbStats?.sizeMB.toFixed(1) || '0.0'} MB</p>
-                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tamaño</p>
+                    <div className="p-4 rounded-2xl bg-muted/50 text-center">
+                       <p className="text-2xl font-bold">{dbStats?.sizeMB.toFixed(1) || '0.0'} MB</p>
+                       <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Tamaño</p>
                     </div>
                  </div>
 
-                 <Button variant="outline" className="w-full h-12 rounded-xl font-bold border-red-200 text-red-600 hover:bg-red-500/10" onClick={handleTrimHistory} disabled={isTrimming || history.length <= 50}>
+                 <Button variant="outline" className="w-full h-12 rounded-xl font-bold border-destructive/20 text-destructive hover:bg-destructive/10" onClick={handleTrimHistory} disabled={isTrimming || history.length <= 50}>
                     <Scissors className="w-4 h-4 mr-2" /> REDUCIR HISTORIAL (TOP 50)
                  </Button>
               </CardContent>
            </Card>
 
            {/* Columnas Visibles */}
-           <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl overflow-hidden">
-              <CardHeader className="p-6 border-b border-slate-100 dark:border-slate-800/50">
-                 <CardTitle className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                    <LayoutGrid className="w-4 h-4 text-orange-500" /> Tabla y Reportes
+           <Card className="bg-card shadow-md rounded-2xl overflow-hidden">
+              <CardHeader className="p-6 border-b border-border">
+                 <CardTitle className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                    <LayoutGrid className="w-4 h-4 text-primary" /> Tabla y Reportes
                  </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4">
@@ -332,36 +370,57 @@ export function Settings() {
   );
 }
 
-function ThemeButton({ active, onClick, icon, label, desc }: any) {
+interface ThemeButtonProps {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  desc: string;
+}
+
+function ThemeButton({ active, onClick, icon, label, desc }: ThemeButtonProps) {
   return (
-    <button onClick={onClick} className={cn("p-6 rounded-2xl border-2 transition-all text-left space-y-3 group", active ? "border-blue-600 bg-blue-500/5 shadow-lg" : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700")}>
-       <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110", active ? "bg-blue-600 text-white shadow-xl shadow-blue-500/30" : "bg-slate-100 dark:bg-slate-800 text-slate-500")}>
+    <button onClick={onClick} className={cn("p-6 rounded-2xl border-2 transition-all text-left space-y-3 group", active ? "border-primary bg-primary/5 shadow-lg" : "border-border hover:border-border/80")}>
+      <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110", active ? "bg-primary text-primary-foreground shadow-xl" : "bg-muted text-muted-foreground")}>
           {icon}
        </div>
        <div>
-          <p className="font-black text-slate-900 dark:text-white uppercase tracking-tight text-sm">{label}</p>
-          <p className="text-[11px] font-medium text-slate-500">{desc}</p>
+          <p className="font-bold text-foreground uppercase tracking-tight text-sm">{label}</p>
+          <p className="text-xs font-medium text-muted-foreground">{desc}</p>
        </div>
     </button>
   );
 }
 
-function SettingSwitch({ label, desc, checked, onCheckedChange }: any) {
+interface SettingSwitchProps {
+  label: string;
+  desc: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}
+
+function SettingSwitch({ label, desc, checked, onCheckedChange }: SettingSwitchProps) {
   return (
     <div className="flex items-center justify-between">
       <div className="space-y-1">
-        <p className="font-black text-slate-900 dark:text-white uppercase tracking-tight text-sm">{label}</p>
-        <p className="text-[11px] font-medium text-slate-500">{desc}</p>
+        <p className="font-bold text-foreground uppercase tracking-tight text-sm">{label}</p>
+        <p className="text-xs font-medium text-muted-foreground">{desc}</p>
       </div>
       <Switch checked={checked} onCheckedChange={onCheckedChange} className="scale-90" />
     </div>
   );
 }
 
-function ColumnSwitch({ label, checked, onChange }: any) {
+interface ColumnSwitchProps {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}
+
+function ColumnSwitch({ label, checked, onChange }: ColumnSwitchProps) {
   return (
     <div className="flex items-center justify-between px-2 py-1">
-       <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{label}</span>
+       <span className="text-xs font-bold text-muted-foreground">{label}</span>
        <Switch checked={checked} onCheckedChange={onChange} className="scale-75" />
     </div>
   );

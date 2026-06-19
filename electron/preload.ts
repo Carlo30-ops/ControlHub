@@ -10,7 +10,10 @@ import { ipcRenderer, contextBridge } from 'electron';
 contextBridge.exposeInMainWorld('electronAPI', {
   // ── Diálogos ──────────────────────────────────────────────────────────────
   selectDirectory: () =>
-    ipcRenderer.invoke('select-directory'),
+    ipcRenderer.invoke('dialog:selectDirectory'),
+  // New: Show Save Dialog
+  selectSavePath: (options?: Electron.SaveDialogOptions) =>
+    ipcRenderer.invoke('dialog-save-path', options),
   selectFile: (options?: { filters?: { name: string; extensions: string[] }[]; defaultPath?: string } | { name: string; extensions: string[] }[]) =>
     ipcRenderer.invoke('dialog:selectFile', options),
 
@@ -29,6 +32,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** maxPages=1 para identificación rápida, sin maxPages para extracción completa */
   parsePdf: (pdfPath: string, maxPages?: number) =>
     ipcRenderer.invoke('fs:parsePdf', pdfPath, maxPages),
+
+  readPdfAsBase64: (pdfPath: string) => 
+    ipcRenderer.invoke('fs:readPdfAsBase64', pdfPath),
 
   listFiles: (dirPath: string, extensions: string[]) =>
     ipcRenderer.invoke('fs:listFiles', dirPath, extensions),
@@ -69,6 +75,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: () => ipcRenderer.invoke('db:getSettings'),
   saveSettings: (settings: any) => ipcRenderer.invoke('db:saveSettings', settings),
 
+  /** Fix: OCR Fallback desde el proceso principal */
+  ocrExtractText: (pdfPath: string) => ipcRenderer.invoke('ocr:extractText', pdfPath),
+
   /** Fix #11: Recortar historial conservando solo los últimos `keepCount` escaneos */
   trimHistory: (keepCount: number) => ipcRenderer.invoke('db:trimHistory', keepCount),
 
@@ -83,9 +92,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── Configuración Persistente ─────────────────────────────────────────────
   config: {
-    get: (key: string) => ipcRenderer.invoke('config:get', key),
-    set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),
-  },
+  get: (key: string) => ipcRenderer.invoke('config:get', key),
+  set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),
+  getAll: () => ipcRenderer.invoke('config:getAll'),
+  setAll: (obj: Record<string, any>) => ipcRenderer.invoke('config:setAll', obj),
+  delete: (key: string) => ipcRenderer.invoke('config:delete', key),
+},
 
   dashboard: {
     getStats: () => ipcRenderer.invoke('dashboard:stats'),
@@ -120,9 +132,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     wordToPdf: (data: any) => ipcRenderer.invoke('pdf:word_to_pdf', data),
     pdfToWord: (data: any) => ipcRenderer.invoke('pdf:pdf_to_word', data),
     excelToPdf: (data: any) => ipcRenderer.invoke('pdf:excel_to_pdf', data),
-    pdfToExcel: (data: any) => ipcRenderer.invoke('pdf:pdf_to_excel', data),
     pptToPdf: (data: any) => ipcRenderer.invoke('pdf:ppt_to_pdf', data),
-    pdfToPpt: (data: any) => ipcRenderer.invoke('pdf:pdf_to_ppt', data),
     // Nuevas herramientas
     deletePages: (data: any) => ipcRenderer.invoke('pdf:delete_pages', data),
     reorderPages: (data: any) => ipcRenderer.invoke('pdf:reorder_pages', data),

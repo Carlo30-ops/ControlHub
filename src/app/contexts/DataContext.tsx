@@ -1,67 +1,5 @@
-import { createContext, useContext, useState, ReactNode, useEffect, useMemo, useCallback } from "react";
-
-export interface Invoice {
-  id: string;
-  invoiceNumber: string;
-  company: string;
-  month: string;
-  year: string;
-  detail: string;
-  filePath: string;
-  amount: number; // 0 si no fue posible extraer
-  date: string;
-  invoicePdfPath?: string;
-  parseError?: boolean;
-}
-
-export interface ScanStats {
-  totalFilesProcessed: number;
-  skippedByExtension: number;
-  skippedByDateRange: number;
-  skippedDuplicates: number;
-  duplicatesLog: { invoiceNumber: string; keptPath: string; discardedPath: string }[];
-  amountExtractionFailed: number;
-  amountExtractionSuccess: number;
-}
-
-export interface ScanResult {
-  id: string;
-  timestamp: string;
-  type: "day" | "week" | "month" | "year" | "custom";
-  dateRange: { start: string; end: string };
-  basePath: string;
-  totalInvoices: number;
-  invoices: Invoice[];
-  exportPath?: string;
-  scanDuration: number;
-  stats?: ScanStats; // estadísticas de escaneo (opcional para compatibilidad con historial antiguo)
-}
-
-export interface Settings {
-  columns: {
-    invoiceNumber: boolean;
-    company: boolean;
-    month: boolean;
-    year: boolean;
-    detail: boolean;
-    filePath: boolean;
-    amount: boolean;
-  };
-  scanning: {
-    onlyCotuFolders: boolean;
-    ignoreSystemFolders: boolean;
-    maxDepth: number;
-  };
-  display: {
-    rowsPerPage: number;
-    compactMode: boolean;
-  };
-  // Aseguradoras adicionales definidas por el usuario
-  customInsurers: { name: string; aliases: string }[];
-  operatorName?: string;
-  operatorEmail?: string;
-  terapiasDir?: string;
-}
+import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo, useCallback } from "react";
+import { Invoice, ScanResult, AppSettings as Settings } from "../../shared/types";
 
 interface DataContextType {
   settings: Settings;
@@ -74,7 +12,7 @@ interface DataContextType {
   trimHistory: (keepCount: number) => Promise<void>;
   currentScan: ScanResult | null;
   setCurrentScan: (scan: ScanResult | null) => void;
-  sidecarStatus: Record<string, 'running' | 'closed' | 'unknown'>;
+  sidecarStatus: Record<string, 'running' | 'closed' | 'stalled' | 'unknown'>;
   checkSidecars: () => Promise<void>;
   reconnectSidecar: (name: string) => Promise<void>;
 }
@@ -87,7 +25,7 @@ const defaultSettings: Settings = {
     year: true,
     detail: true,
     filePath: false,
-    amount: false,
+    amount: true, // <--- CAMBIADO: Visible por defecto
   },
   scanning: {
     onlyCotuFolders: true,
@@ -107,37 +45,21 @@ const defaultSettings: Settings = {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<Settings>(() => {
-    const saved = localStorage.getItem("ordertrack-settings");
-    if (!saved) return defaultSettings;
-    // Merge con defaultSettings para garantizar que nuevas keys existan
-    const parsed = JSON.parse(saved);
-    return {
-      ...defaultSettings,
-      ...parsed,
-      columns: { ...defaultSettings.columns, ...parsed.columns },
-      scanning: { ...defaultSettings.scanning, ...parsed.scanning },
-      display: { ...defaultSettings.display, ...parsed.display },
-      customInsurers: parsed.customInsurers ?? [],
-      operatorName: parsed.operatorName ?? defaultSettings.operatorName,
-      operatorEmail: parsed.operatorEmail ?? defaultSettings.operatorEmail,
-      terapiasDir: parsed.terapiasDir ?? defaultSettings.terapiasDir,
-    };
-  });
+  const [settings, setSettings] = useState<Settings>(defaultSettings);
 
   const [history, setHistory] = useState<ScanResult[]>([]);
   const [currentScan, setCurrentScan] = useState<ScanResult | null>(null);
-  const [sidecarStatus, setSidecarStatus] = useState<Record<string, 'running' | 'closed' | 'unknown'>>({
+  const [sidecarStatus, setSidecarStatus] = useState<Record<string, 'running' | 'closed' | 'stalled' | 'unknown'>>({
     Terapias: 'unknown',
     PDF: 'unknown',
   });
 
   const checkSidecars = useCallback(async () => {
-    if (!(window as any).electronAPI) return;
+    if (!window.electronAPI) return;
     
     // Intentar ping a Terapias
     try {
-      const resT = await (window as any).electronAPI.terapias.ping();
+      const resT = await window.electronAPI.terapias.ping();
       setSidecarStatus(prev => ({ ...prev, Terapias: resT.ok ? 'running' : 'closed' }));
     } catch {
       setSidecarStatus(prev => ({ ...prev, Terapias: 'closed' }));
@@ -145,7 +67,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     // Intentar ping a PDF
     try {
-      const resP = await (window as any).electronAPI.pdfTools.ping();
+      const resP = await window.electronAPI.pdfTools.ping();
       setSidecarStatus(prev => ({ ...prev, PDF: resP.ok ? 'running' : 'closed' }));
     } catch {
       setSidecarStatus(prev => ({ ...prev, PDF: 'closed' }));
@@ -153,9 +75,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reconnectSidecar = useCallback(async (name: string) => {
-    if (!(window as any).electronAPI) return;
+    if (!window.electronAPI) return;
     setSidecarStatus(prev => ({ ...prev, [name]: 'unknown' }));
-    await (window as any).electronAPI.reconnectSidecar(name);
+    await window.electronAPI.reconnectSidecar(name);
     // Esperar un poco y chequear
     setTimeout(checkSidecars, 1500);
   }, [checkSidecars]);
@@ -167,20 +89,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         try {
           const savedSettings = await window.electronAPI.getSettings();
           
-          let terapiasDirStore = "";
-          let operatorNameStore = "Usuario Admin";
-          let operatorEmailStore = "admin@cotu.com";
-          
-          if (window.electronAPI?.config?.get) {
-            try {
-              terapiasDirStore = await window.electronAPI.config.get('settings.terapiasDir') || "";
-              operatorNameStore = await window.electronAPI.config.get('settings.operatorName') || "Usuario Admin";
-              operatorEmailStore = await window.electronAPI.config.get('settings.operatorEmail') || "admin@cotu.com";
-            } catch (err) {
-              console.error('[DataContext] Error leyendo de electron-store:', err);
-            }
-          }
-
           if (savedSettings) {
             setSettings(prev => ({
               ...prev,
@@ -189,16 +97,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
               scanning: { ...prev.scanning, ...(savedSettings.scanning || {}) },
               display: { ...prev.display, ...(savedSettings.display || {}) },
               customInsurers: savedSettings.customInsurers ?? prev.customInsurers,
-              terapiasDir: savedSettings.terapiasDir || terapiasDirStore || prev.terapiasDir,
-              operatorName: savedSettings.operatorName || operatorNameStore || prev.operatorName,
-              operatorEmail: savedSettings.operatorEmail || operatorEmailStore || prev.operatorEmail,
-            }));
-          } else {
-            setSettings(prev => ({
-              ...prev,
-              terapiasDir: terapiasDirStore || prev.terapiasDir,
-              operatorName: operatorNameStore || prev.operatorName,
-              operatorEmail: operatorEmailStore || prev.operatorEmail,
+              terapiasDir: savedSettings.terapiasDir || prev.terapiasDir,
             }));
           }
         } catch (err) {
@@ -209,125 +108,87 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (window.electronAPI?.getHistory) {
         try {
           const savedHistory = await window.electronAPI.getHistory();
-          setHistory(savedHistory || []);
-          if (currentScan === null && savedHistory?.length > 0) {
-            setCurrentScan(savedHistory[0]);
+          if (savedHistory && Array.isArray(savedHistory)) {
+            setHistory(savedHistory);
           }
         } catch (err) {
           console.error('[DataContext] Error cargando historial desde IPC:', err);
         }
-      } else {
-        const saved = localStorage.getItem("ordertrack-history");
-        if (saved) {
-          try {
-            const parsed: ScanResult[] = JSON.parse(saved);
-            setHistory(parsed);
-            if (currentScan === null && parsed.length > 0) setCurrentScan(parsed[0]);
-          } catch (err) {
-            console.error('[DataContext] Error parseando historial de localStorage:', err);
-          }
-        }
       }
+      
+      checkSidecars();
     };
+
     initData();
-    
-    // Suscribirse a eventos de Sidecar Status
-    if ((window as any).electronAPI?.onSidecarStatus) {
-      (window as any).electronAPI.onSidecarStatus((data: any) => {
-        setSidecarStatus(prev => ({
-          ...prev,
-          [data.name]: data.status === 'running' ? 'running' : 'closed'
-        }));
-      });
-    }
+  }, [checkSidecars]);
 
-    // Ping inicial para conocer estado actual
-    checkSidecars();
-
-    return () => {
-      if ((window as any).electronAPI?.offSidecarStatus) {
-        (window as any).electronAPI.offSidecarStatus();
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkSidecars]); // Added checkSidecars to deps
-
+  // Suscribirse a las actualizaciones de estado en tiempo real del Sidecar
   useEffect(() => {
-    localStorage.setItem("ordertrack-settings", JSON.stringify(settings));
-    if (window.electronAPI?.saveSettings) {
-      window.electronAPI.saveSettings(settings).catch((err) => {
-        console.error('[DataContext] Error guardando settings en IPC:', err);
+    if (window.electronAPI?.onSidecarStatus) {
+      window.electronAPI.onSidecarStatus((data: { name: string; status: string }) => {
+        let uiStatus: 'running' | 'closed' | 'stalled' | 'unknown' = 'unknown';
+        if (data.status === 'running' || data.status === 'ok') {
+          uiStatus = 'running';
+        } else if (data.status === 'stalled') {
+          uiStatus = 'stalled';
+        } else if (data.status === 'closed' || data.status === 'failed') {
+          uiStatus = 'closed';
+        }
+        setSidecarStatus(prev => ({ ...prev, [data.name]: uiStatus }));
       });
+      return () => {
+        if (window.electronAPI?.offSidecarStatus) {
+          window.electronAPI.offSidecarStatus();
+        }
+      };
     }
-    if (window.electronAPI?.config?.set) {
-      if (settings.operatorName !== undefined) {
-        window.electronAPI.config.set('settings.operatorName', settings.operatorName).catch(console.error);
-      }
-      if (settings.operatorEmail !== undefined) {
-        window.electronAPI.config.set('settings.operatorEmail', settings.operatorEmail).catch(console.error);
-      }
-      if (settings.terapiasDir !== undefined) {
-        window.electronAPI.config.set('settings.terapiasDir', settings.terapiasDir).catch(console.error);
-      }
-    }
-  }, [settings]);
+  }, []);
 
-  const updateSettings = useCallback((newSettings: Partial<Settings>) => {
-    setSettings((prev) => ({
-      ...prev,
-      ...newSettings,
-      columns: { ...prev.columns, ...(newSettings.columns || {}) },
-      scanning: { ...prev.scanning, ...(newSettings.scanning || {}) },
-      display: { ...prev.display, ...(newSettings.display || {}) },
-      customInsurers: newSettings.customInsurers ?? prev.customInsurers,
-      operatorName: newSettings.operatorName ?? prev.operatorName,
-      operatorEmail: newSettings.operatorEmail ?? prev.operatorEmail,
-      terapiasDir: newSettings.terapiasDir ?? prev.terapiasDir,
-    }));
+  const updateSettings = useCallback(async (newSettings: Partial<Settings>) => {
+    setSettings(prev => {
+      const updated = {
+        ...prev,
+        ...newSettings,
+        columns: { ...prev.columns, ...(newSettings.columns || {}) },
+        scanning: { ...prev.scanning, ...(newSettings.scanning || {}) },
+        display: { ...prev.display, ...(newSettings.display || {}) },
+      };
+      
+      // Persistir vía IPC
+      if (window.electronAPI?.saveSettings) {
+        window.electronAPI.saveSettings(updated).then(saved => {
+          if (saved) {
+            localStorage.removeItem("ordertrack-settings");
+          }
+        });
+      }
+      return updated;
+    });
   }, []);
 
   const addToHistory = useCallback(async (result: ScanResult) => {
     if (window.electronAPI?.saveScan) {
       try {
-        const updated = await window.electronAPI.saveScan(result);
-        setHistory(updated);
+        const next = await window.electronAPI.saveScan(result);
+        setHistory(next);
       } catch (err) {
-        console.error('[DataContext] Error guardando escaneo en IPC, usando fallback localStorage:', err);
-        // Fallback a localStorage si IPC falla
-        setHistory((prev) => {
-          const updated = [result, ...prev].slice(0, 100);
-          localStorage.setItem("ordertrack-history", JSON.stringify(updated));
-          return updated;
-        });
+        console.error('[DataContext] Error in addToHistory IPC:', err);
       }
     } else {
-      setHistory((prev) => {
-        const updated = [result, ...prev].slice(0, 100);
-        localStorage.setItem("ordertrack-history", JSON.stringify(updated));
-        return updated;
-      });
+      setHistory(prev => [result, ...prev]);
     }
   }, []);
 
   const deleteFromHistory = useCallback(async (id: string) => {
     if (window.electronAPI?.deleteScan) {
       try {
-        const updated = await window.electronAPI.deleteScan(id);
-        setHistory(updated);
+        const next = await window.electronAPI.deleteScan(id);
+        setHistory(next);
       } catch (err) {
-        console.error('[DataContext] Error eliminando escaneo en IPC, usando fallback localStorage:', err);
-        setHistory((prev) => {
-          const updated = prev.filter((s) => s.id !== id);
-          localStorage.setItem("ordertrack-history", JSON.stringify(updated));
-          return updated;
-        });
+        console.error('[DataContext] Error in deleteFromHistory IPC:', err);
       }
     } else {
-      setHistory((prev) => {
-        const updated = prev.filter((s) => s.id !== id);
-        localStorage.setItem("ordertrack-history", JSON.stringify(updated));
-        return updated;
-      });
+      setHistory(prev => prev.filter(item => item.id !== id));
     }
   }, []);
 
@@ -337,31 +198,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
         await window.electronAPI.clearHistory();
         setHistory([]);
       } catch (err) {
-        console.error('[DataContext] Error limpiando historial en IPC:', err);
-        localStorage.removeItem("ordertrack-history");
-        setHistory([]);
+        console.error('[DataContext] Error in clearHistory IPC:', err);
       }
     } else {
-      localStorage.removeItem("ordertrack-history");
       setHistory([]);
     }
   }, []);
 
-  const trimHistory = useCallback(async (keepCount: number): Promise<void> => {
+  const trimHistory = useCallback(async (keepCount: number) => {
     if (window.electronAPI?.trimHistory) {
       try {
-        const updated = await window.electronAPI.trimHistory(keepCount);
-        setHistory(updated);
+        const next = await window.electronAPI.trimHistory(keepCount);
+        setHistory(next);
       } catch (err) {
-        console.error('[DataContext] Error en trimHistory IPC:', err);
+        console.error('[DataContext] Error in trimHistory IPC:', err);
       }
     } else {
-      // Fallback localStorage
-      setHistory(prev => {
-        const trimmed = prev.slice(0, keepCount);
-        localStorage.setItem('ordertrack-history', JSON.stringify(trimmed));
-        return trimmed;
-      });
+      setHistory(prev => prev.slice(0, keepCount));
     }
   }, []);
 
@@ -401,8 +254,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
 export function useData() {
   const context = useContext(DataContext);
-  if (!context) {
-    throw new Error("useData must be used within DataProvider");
+  if (context === undefined) {
+    throw new Error("useData must be used within a DataProvider");
   }
   return context;
 }

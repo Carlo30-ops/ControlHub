@@ -1,4 +1,4 @@
-import { Invoice } from "../contexts/DataContext";
+import { Invoice } from "../../shared/types";
 
 // Aseguradoras reales sincronizadas con el motor de escaneo
 const companies = [

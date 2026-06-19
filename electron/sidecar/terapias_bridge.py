@@ -1,24 +1,36 @@
 import sys
 import os
-import json
-import shutil
-import datetime
-import pythoncom
-import win32com.client
-import glob
-import logging
-from logging.handlers import RotatingFileHandler
+import traceback
 
-# Redirigir cualquier output inesperado de librerías a stderr
-# para que no contamine el canal JSON de stdout
-_true_stdout = sys.stdout
-sys.stdout = sys.stderr
-os.environ['PYTHONWARNINGS'] = 'ignore'
+try:
+    import json
+    import shutil
+    import datetime
+    import pythoncom
+    import win32com.client
+    import glob
+    import logging
+    import winreg
+    from logging.handlers import RotatingFileHandler
 
-# Wrapper para asegurar que solo JSON válido va a stdout
-def send_response(data):
-    _true_stdout.write(json.dumps(data, ensure_ascii=False) + "\n")
-    _true_stdout.flush()
+    # Redirigir cualquier output inesperado de librerías a stderr
+    # para que no contamine el canal JSON de stdout
+    _true_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    os.environ['PYTHONWARNINGS'] = 'ignore'
+
+    # Wrapper para asegurar que solo JSON válido va a stdout
+    def send_response(data, request_id=None):
+        if request_id is not None:
+            data["id"] = request_id
+        _true_stdout.write(json.dumps(data, ensure_ascii=False) + "\n")
+        _true_stdout.flush()
+
+    # ... (rest of the file content)
+except Exception as e:
+    sys.stderr.write(f"ERROR CRITICO EN TERAPIAS BRIDGE: {traceback.format_exc()}\n")
+    sys.stderr.flush()
+    sys.exit(1)
 
 # Configuración de Logging (para historial)
 LOG_FILE = os.path.join(os.path.expanduser("~"), "Documents", "TERAPIAS", "organizar_log.txt")
@@ -33,13 +45,19 @@ logger = logging.getLogger("terapias")
 logger.setLevel(logging.INFO)
 logger.addHandler(handler)
 
-# Importar funciones de lógica local
-from terapias_logic import (
-    sanitize_filename,
-    patient_from_user_input,
-    check_path_length,
-    build_folder_structure
-)
+# Importar funciones de lógica local con importación perezosa (lazy)
+import sys, os
+sys.path.append(os.path.dirname(__file__))
+try:
+    from terapias_logic import (
+        sanitize_filename,
+        patient_from_user_input,
+        check_path_length,
+        build_folder_structure,
+    )
+except ImportError as e:
+    sanitize_filename = patient_from_user_input = check_path_length = build_folder_structure = None
+    sys.stderr.write(f"ERROR importing terapias_logic: {e}\n")
 import check_word_install
 
 # Configuración de meses para la estructura de carpetas
@@ -54,15 +72,51 @@ DEFAULT_SOURCE = r"C:\Users\factu\OneDrive\Documentos 1\TERAPIAS\DOCUMENTOS PARA
 # Referencia global para mantener Word "caliente"
 _word_app = None
 
+def find_word_executable():
+    """
+    Busca dinámicamente el ejecutable de Word en el sistema.
+    Orden: Registry -> Rutas comunes -> PATH
+    """
+    # 1. Registro de Windows (App Paths) - fuente más confiable
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\WINWORD.EXE") as key:
+            path, _ = winreg.QueryValueEx(key, "")
+            if os.path.exists(path):
+                return path
+    except Exception:
+        pass
+
+    # 2. Rutas conocidas comunes (fallback)
+    common_paths = [
+        r"C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE",
+        r"C:\Program Files\Microsoft Office\root\Office15\WINWORD.EXE",
+        r"C:\Program Files (x86)\Microsoft Office\root\Office16\WINWORD.EXE",
+        r"C:\Program Files\Microsoft Office 16\ClientX64\WINWORD.EXE",
+        r"C:\Program Files\Microsoft Office 15\ClientX64\WINWORD.EXE",
+    ]
+    for path in common_paths:
+        if os.path.exists(path):
+            return path
+
+    # 3. Variable de entorno PATH (shutil.which)
+    try:
+        path = shutil.which("WINWORD.EXE")
+        if path:
+            return path
+    except Exception:
+        pass
+
+    return None
+
 def get_word_app():
-    """Obtiene o crea una instancia persistente de Word."""
+    """Obtiene o crea una instancia persistente de Word. Retorna (app, error_msg)"""
     global _word_app
     pythoncom.CoInitialize()
     try:
         if _word_app:
             # Verificar si la instancia sigue viva
             _word_app.Visible = False
-            return _word_app
+            return _word_app, None
     except Exception:
         _word_app = None
 
@@ -71,23 +125,32 @@ def get_word_app():
         _word_app = win32com.client.Dispatch("Word.Application")
         _word_app.Visible = False
         _word_app.DisplayAlerts = 0
-        return _word_app
+        return _word_app, None
     except Exception as e:
-        logger.error(f"No se pudo iniciar Word: {str(e)}")
-        return None
+        error_msg = str(e)
+        logger.error(f"No se pudo iniciar Word: {error_msg}")
+        return None, error_msg
 
 def handle_check_word():
     """Verifica si Word está disponible."""
-    word = get_word_app()
+    word, error = get_word_app()
     if word:
         return {"ok": True, "message": "Microsoft Word está listo y persistente"}
     else:
-        return {"ok": False, "error": "No se pudo conectar con Microsoft Word"}
+        # Intentar diagnóstico adicional si Dispatch falló
+        word_path = find_word_executable()
+        detail = f"Ejecutable detectado en: {word_path}" if word_path else "No se detectó el ejecutable en rutas comunes ni PATH."
+        return {
+            "ok": False, 
+            "error": f"No se pudo conectar con Microsoft Word (COM): {error}. {detail}"
+        }
 
 def handle_list_docs(data):
     """Lista archivos Word en la carpeta origen ordenados por mtime desc."""
     try:
         source_dir = data.get("source_dir", DEFAULT_SOURCE)
+        print(f"[list_docs] source_dir recibido: {source_dir}", file=sys.stderr)
+        print(f"[list_docs] existe: {os.path.exists(source_dir)}", file=sys.stderr)
         if not os.path.exists(source_dir):
             return {"ok": True, "files": [], "warning": f"Carpeta origen no encontrada: {source_dir}"}
         
@@ -184,9 +247,9 @@ def handle_finalize(data):
         pdf_path = os.path.splitext(doc_path)[0] + ".pdf"
 
         # 1. Conversión Word -> PDF vía instancia persistente
-        word = get_word_app()
+        word, error = get_word_app()
         if not word:
-            return {"ok": False, "error": "No se pudo obtener el motor de Microsoft Word"}
+            return {"ok": False, "error": f"No se pudo obtener el motor de Microsoft Word: {error}"}
 
         try:
             doc = word.Documents.Open(doc_path, ReadOnly=False)
@@ -292,6 +355,7 @@ def main():
             request = json.loads(line)
             cmd = request.get("cmd")
             data = request.get("data", {})
+            request_id = request.get("id")
 
             if cmd == "ping":
                 response = {"ok": True, "status": "ready"}
@@ -310,9 +374,9 @@ def main():
             else:
                 response = {"ok": False, "error": f"Comando desconocido: {cmd}"}
 
-            send_response(response)
+            send_response(response, request_id)
         except Exception as e:
-            send_response({"ok": False, "error": f"Error inesperado: {str(e)}"})
+            send_response({"ok": False, "error": f"Error inesperado: {str(e)}"}, request.get("id") if 'request' in locals() else None)
 
 if __name__ == "__main__":
     main()

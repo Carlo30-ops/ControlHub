@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useData } from "../contexts/DataContext";
 import { useNavigate } from "react-router";
 import {
@@ -19,7 +19,10 @@ import {
   ExternalLink,
   ChevronRight,
   TrendingUp,
-  LayoutGrid
+  LayoutGrid,
+  Clock,
+  FolderOpen,
+  FileStack
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -57,7 +60,8 @@ import {
 import { Separator } from "../components/ui/separator";
 import { toast } from "sonner";
 import { format as formatDate } from "date-fns";
-import { Invoice } from "../contexts/DataContext";
+import { es } from "date-fns/locale";
+import { Invoice } from "../../shared/types";
 import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
 import { toPng } from "html-to-image";
@@ -109,13 +113,15 @@ function buildCSV(invoices: Invoice[], columns: any): string {
 }
 
 function SortIcon({ col, sortKey, sortDir }: any) {
-  if (sortKey !== col) return <ChevronsUpDown className="w-3 h-3 ml-1 text-slate-400 opacity-30" />;
-  return sortDir === "asc" ? <ChevronUp className="w-3 h-3 ml-1 text-blue-500" /> : <ChevronDown className="w-3 h-3 ml-1 text-blue-500" />;
+  if (sortKey !== col) return <ChevronsUpDown className="w-3 h-3 ml-1 text-muted-foreground opacity-30" />;
+  return sortDir === "asc" ? <ChevronUp className="w-3 h-3 ml-1 text-primary" /> : <ChevronDown className="w-3 h-3 ml-1 text-primary" />;
 }
 
 export function Reports() {
   const navigate = useNavigate();
-  const { currentScan, history, settings } = useData();
+  const { currentScan, history, settings, setCurrentScan } = useData();
+
+  const activeScan = useMemo(() => currentScan ?? (history.length > 0 ? history[0] : null), [currentScan, history]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState<string>("all");
@@ -128,6 +134,38 @@ export function Reports() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
+  const [pdfBase64, setPdfBase64] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setCompanyFilter("all");
+    setYearFilter("all");
+    setMonthFilter("all");
+    setMinAmount("");
+    setMaxAmount("");
+    setSortKey(null);
+    setSortDir("asc");
+    setCurrentPage(1);
+  };
+
+  // Cuando se abre el visor, cargar el PDF como base64
+  useEffect(() => {
+    if (previewPath) {
+      setPdfLoading(true);
+      setPdfBase64(null);
+      window.electronAPI.readPdfAsBase64(previewPath).then((result: any) => {
+        if (result.success) {
+          setPdfBase64(result.data);
+        } else {
+          toast.error("Error al cargar el PDF: " + result.error);
+        }
+        setPdfLoading(false);
+      });
+    } else {
+      setPdfBase64(null);
+    }
+  }, [previewPath]);
 
   const rowsPerPage = settings.display.rowsPerPage;
 
@@ -320,11 +358,11 @@ export function Reports() {
   };
 
   const filteredInvoices = useMemo(() => {
-    if (!currentScan) return [];
+    if (!activeScan) return [];
     const min = minAmount ? parseFloat(minAmount) : null;
     const max = maxAmount ? parseFloat(maxAmount) : null;
 
-    return currentScan.invoices.filter((invoice) => {
+    return activeScan.invoices.filter((invoice) => {
       const matchesSearch = invoice.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) || invoice.company.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCompany = companyFilter === "all" || invoice.company === companyFilter;
       const matchesYear = yearFilter === "all" || invoice.year === yearFilter;
@@ -333,7 +371,7 @@ export function Reports() {
       const matchesMax = max === null || invoice.amount <= max;
       return matchesSearch && matchesCompany && matchesYear && matchesMonth && matchesMin && matchesMax;
     });
-  }, [currentScan, searchQuery, companyFilter, yearFilter, monthFilter, minAmount, maxAmount]);
+  }, [activeScan, searchQuery, companyFilter, yearFilter, monthFilter, minAmount, maxAmount]);
 
   const sortedInvoices = useMemo(() => {
     if (!sortKey) return filteredInvoices;
@@ -350,27 +388,28 @@ export function Reports() {
   const totalPages = Math.ceil(sortedInvoices.length / rowsPerPage);
   const paginatedInvoices = sortedInvoices.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
-  const totalAmount = filteredInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+  // REGLA 2: No contar duplicados en los totales del reporte
+  const uniqueInvoices = useMemo(() => filteredInvoices.filter(inv => !inv.isDuplicate), [filteredInvoices]);
+  const totalAmount = uniqueInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+  
   const hasFilters = searchQuery || companyFilter !== "all" || yearFilter !== "all" || monthFilter !== "all" || minAmount || maxAmount || sortKey !== null;
 
-  const activeInvoices = currentScan?.invoices ?? (history.length > 0 ? history[0].invoices : null);
-
-  if (!activeInvoices || activeInvoices.length === 0) {
+  if (!activeScan || activeScan.invoices.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8 animate-in fade-in duration-500">
-        <div className="w-20 h-20 rounded-3xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
+        <div className="w-20 h-20 rounded-2xl bg-muted text-muted-foreground flex items-center justify-center">
           <FileText className="w-10 h-10" />
         </div>
         <div className="text-center space-y-3 max-w-md">
-          <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Sin Reportes Disponibles</h2>
-          <p className="text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+          <h2 className="text-2xl font-bold text-foreground uppercase tracking-tight">Sin Reportes Disponibles</h2>
+          <p className="text-muted-foreground font-medium leading-relaxed">
             Aún no tienes facturas escaneadas. Realiza un escaneo primero para ver el reporte detallado.
           </p>
         </div>
         <Button
           size="lg"
           onClick={() => navigate("/scanner")}
-          className="h-14 px-10 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-xl shadow-blue-500/20 gap-3"
+          className="h-14 px-10 rounded-2xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-md gap-3"
         >
           <Search className="w-5 h-5" />
           IR AL ESCÁNER
@@ -385,22 +424,31 @@ export function Reports() {
       
       {/* PDF Preview Modal Glass */}
       <Dialog open={!!previewPath} onOpenChange={() => setPreviewPath(null)}>
-        <DialogContent className="max-w-5xl w-full h-[90vh] flex flex-col p-0 bg-white/90 dark:bg-slate-950/90 backdrop-blur-2xl border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
-          <DialogHeader className="px-8 pt-6 pb-4 border-b border-slate-100 dark:border-slate-800/50">
+        <DialogContent className="max-w-5xl w-full h-[90vh] flex flex-col p-0 bg-card border-border rounded-2xl overflow-hidden shadow-lg">
+          <DialogHeader className="px-8 pt-6 pb-4 border-b border-border">
             <DialogTitle className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500"><Eye className="w-5 h-5" /></div>
-              <span className="font-black truncate uppercase tracking-tight">{previewPath?.split(/[\\/]/).pop()}</span>
+              <div className="p-2 rounded-lg bg-muted text-muted-foreground"><Eye className="w-5 h-5" /></div>
+              <span className="font-bold truncate uppercase tracking-tight">{previewPath?.split(/[\\/]/).pop()}</span>
             </DialogTitle>
           </DialogHeader>
-          <div className="flex-1 p-4 bg-slate-100/30 dark:bg-slate-900/30">
-            {previewPath && (
-              <iframe src={`cotu://pdf?path=${encodeURIComponent(previewPath)}#toolbar=1`} className="w-full h-full rounded-2xl border border-slate-200 dark:border-slate-800 shadow-inner" />
+          <div className="flex-1 p-4 bg-muted/30">
+            {pdfLoading && (
+              <div className="flex items-center justify-center h-full">
+                <span className="text-muted-foreground font-bold animate-pulse">Cargando PDF...</span>
+              </div>
+            )}
+            {pdfBase64 && !pdfLoading && (
+              <embed
+                src={`data:application/pdf;base64,${pdfBase64}`}
+                type="application/pdf"
+                className="w-full h-full rounded-2xl border border-border shadow-inner"
+              />
             )}
           </div>
-          <div className="px-8 py-5 border-t border-slate-100 dark:border-slate-800/50 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/50">
-            <p className="text-[10px] font-mono text-slate-400 truncate max-w-md">{previewPath}</p>
+          <div className="px-8 py-5 border-t border-border flex justify-between items-center bg-muted/50">
+            <p className="text-xs font-mono text-muted-foreground truncate max-w-md">{previewPath}</p>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="rounded-xl font-bold" onClick={() => (window as any).electronAPI.shell.openPath(previewPath!)}>
+              <Button size="sm" variant="outline" className="rounded-xl font-bold" onClick={() => window.electronAPI.shell.openPath(previewPath!)}>
                 <ExternalLink className="w-4 h-4 mr-2" /> Abrir Sistema
               </Button>
               <Button size="sm" variant="secondary" className="rounded-xl font-bold" onClick={() => { navigator.clipboard.writeText(previewPath!); toast.success("Copiado"); }}>
@@ -414,50 +462,91 @@ export function Reports() {
       {/* Header Premium */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Reportes y Auditoría</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1 font-medium text-lg">Visualización y exportación de hallazgos COTU</p>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Reportes y Auditoría</h1>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-muted-foreground font-medium text-lg">Visualización y exportación de hallazgos COTU</p>
+            {history.length > 0 && (
+              <>
+                <Separator orientation="vertical" className="h-4 bg-border mx-2" />
+                <Select value={activeScan?.id} onValueChange={(val) => {
+                  const s = history.find(h => h.id === val);
+                  if (s) {
+                    setCurrentScan(s);
+                    toast.success("Cargada sesión del historial");
+                  }
+                }}>
+                  <SelectTrigger className="w-[320px] h-9 bg-muted/40 border border-border/50 rounded-xl text-xs font-bold hover:bg-muted/60 transition-colors shadow-sm">
+                    <div className="flex items-center gap-2 truncate">
+                      <Clock className="w-3.5 h-3.5 text-primary" />
+                      <SelectValue placeholder="Cambiar sesión..." />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent className="rounded-2xl border-border shadow-2xl p-1 max-h-[400px]">
+                    {history.map((scan) => (
+                      <SelectItem key={scan.id} value={scan.id} className="rounded-xl py-3 focus:bg-primary/10">
+                        <div className="flex flex-col gap-1.5 w-[280px]">
+                          <div className="flex items-center justify-between">
+                             <span className="font-bold text-foreground">
+                               {formatDate(new Date(scan.timestamp), "dd MMMM yyyy", { locale: es })}
+                             </span>
+                             <Badge variant="outline" className="text-[9px] font-black h-4 px-1.5 border-primary/20 bg-primary/5 text-primary">
+                               {scan.totalInvoices} FACS
+                             </Badge>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[9px] font-mono text-muted-foreground bg-muted/50 p-1.5 rounded-md border border-border/30">
+                             <FolderOpen className="w-2.5 h-2.5 shrink-0" />
+                             <span className="truncate">{scan.basePath}</span>
+                          </div>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap gap-3">
           <Button 
             variant="outline" 
-            className="h-12 px-5 rounded-xl font-bold bg-white/50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 gap-2"
+            className="h-12 px-5 rounded-xl font-bold bg-muted/50 border-border gap-2"
             onClick={handleExportCSV}
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-500" /> CSV
+            <FileSpreadsheet className="w-4 h-4 text-emerald-500 dark:text-emerald-400" /> CSV
           </Button>
           <Button 
-            className="h-12 px-6 rounded-xl font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/20 gap-2"
+            className="h-12 px-6 rounded-xl font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm gap-2"
             onClick={handleExportExcel}
           >
-            <FileSpreadsheet className="w-4 h-4 text-white" /> EXCEL (.XLSX)
+            <FileSpreadsheet className="w-4 h-4 text-primary-foreground" /> EXCEL (.XLSX)
           </Button>
           <Button 
             disabled={isExportingPDF}
-            className="h-12 px-6 rounded-xl font-black bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 gap-2"
+            className="h-12 px-6 rounded-xl font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm gap-2"
             onClick={handleExportPDF}
           >
-            <Download className="w-4 h-4 text-white" /> {isExportingPDF ? "EXPORTANDO..." : "PDF"}
+            <Download className="w-4 h-4 text-primary-foreground" /> {isExportingPDF ? "EXPORTANDO..." : "PDF"}
           </Button>
         </div>
       </div>
 
       {/* KPIs Glass */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-         <StatCard label="Total Facturas" val={filteredInvoices.length} icon={<FileText className="w-5 h-5" />} color="bg-blue-500" />
-         <StatCard label="Aseguradoras" val={new Set(filteredInvoices.map(i => i.company)).size} icon={<LayoutGrid className="w-5 h-5" />} color="bg-purple-500" />
-         <StatCard label="Monto Total" val={formatCOP(totalAmount)} icon={<DollarSign className="w-5 h-5" />} color="bg-emerald-500" isMoney />
-         <StatCard label="Eficiencia" val={`${Math.round((filteredInvoices.filter(i => i.amount > 0).length / Math.max(filteredInvoices.length, 1)) * 100)}%`} icon={<TrendingUp className="w-5 h-5" />} color="bg-orange-500" />
+         <StatCard label="Total Facturas" val={uniqueInvoices.length} icon={<FileText className="w-5 h-5" />} color="bg-muted text-muted-foreground" />
+         <StatCard label="Aseguradoras" val={new Set(uniqueInvoices.map(i => i.company)).size} icon={<LayoutGrid className="w-5 h-5" />} color="bg-muted text-muted-foreground" />
+         <StatCard label="Monto Total" val={formatCOP(totalAmount)} icon={<DollarSign className="w-5 h-5" />} color="bg-muted text-muted-foreground" isMoney />
+         <StatCard label="Eficiencia" val={`${Math.round((uniqueInvoices.filter(i => i.amount > 0).length / Math.max(uniqueInvoices.length, 1)) * 100)}%`} icon={<TrendingUp className="w-5 h-5" />} color="bg-muted text-muted-foreground" />
       </div>
 
       {/* Filtros Glass */}
-      <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl overflow-hidden">
-        <CardHeader className="p-8 border-b border-slate-100 dark:border-slate-800/50 flex flex-row items-center justify-between">
+      <Card className="bg-card border-border shadow-md rounded-2xl overflow-hidden">
+        <CardHeader className="p-8 border-b border-border flex flex-row items-center justify-between">
           <div className="flex items-center gap-3">
-             <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500"><Filter className="w-5 h-5" /></div>
-             <CardTitle className="text-xl font-black">Panel de Filtros</CardTitle>
+             <div className="p-2 rounded-xl bg-muted text-muted-foreground"><Filter className="w-5 h-5" /></div>
+             <CardTitle className="text-lg font-bold">Panel de Filtros</CardTitle>
           </div>
           {hasFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters} className="text-blue-500 font-bold hover:bg-blue-500/10">
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="text-primary font-bold hover:bg-primary/10">
               <X className="w-4 h-4 mr-2" /> LIMPIAR TODO
             </Button>
           )}
@@ -465,58 +554,76 @@ export function Reports() {
         <CardContent className="p-8 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input placeholder="Buscar por N° COTU o aseguradora..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="h-12 pl-12 rounded-xl bg-slate-50/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-bold" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input placeholder="Buscar por N° COTU o aseguradora..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="h-12 pl-12 rounded-xl bg-muted/50 border-border font-bold" />
             </div>
-            <SelectFilter value={companyFilter} onChange={setCompanyFilter} options={Array.from(new Set(currentScan.invoices.map(i => i.company)))} label="Compañía" />
+            <SelectFilter value={companyFilter} onChange={setCompanyFilter} options={Array.from(new Set(activeScan?.invoices?.map(i => i.company) || []))} label="Compañía" />
             <SelectFilter value={monthFilter} onChange={setMonthFilter} options={MONTHS_ORDER} label="Mes" />
-            <SelectFilter value={yearFilter} onChange={setYearFilter} options={Array.from(new Set(currentScan.invoices.map(i => i.year)))} label="Año" />
+            <SelectFilter value={yearFilter} onChange={setYearFilter} options={Array.from(new Set(activeScan?.invoices?.map(i => i.year) || []))} label="Año" />
           </div>
         </CardContent>
       </Card>
 
       {/* Tabla Premium */}
-      <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-2xl rounded-3xl overflow-hidden">
-        <CardHeader className="p-8 border-b border-slate-100 dark:border-slate-800/50 flex flex-row items-center justify-between">
+      <Card className="bg-card border-border shadow-md rounded-2xl overflow-hidden">
+        <CardHeader className="p-8 border-b border-border flex flex-row items-center justify-between">
            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-blue-500 text-white shadow-lg"><FileBadge className="w-5 h-5" /></div>
-              <CardTitle className="text-xl font-black">Resultados de la Auditoría</CardTitle>
+              <div className="p-2 rounded-xl bg-muted text-muted-foreground shadow-lg"><FileBadge className="w-5 h-5" /></div>
+              <CardTitle className="text-lg font-bold">Resultados de la Auditoría</CardTitle>
            </div>
-           <Badge variant="secondary" className="h-7 bg-blue-500/10 text-blue-600 font-black px-3 border-none">{filteredInvoices.length} FACTURAS</Badge>
+           <div className="flex gap-2 items-center">
+              {filteredInvoices.length !== uniqueInvoices.length && (
+                <Badge variant="outline" className="h-7 border-orange-200 text-orange-600 bg-orange-50 font-bold px-3 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-800">
+                  {filteredInvoices.length - uniqueInvoices.length} DUPLICADOS OCULTOS EN TOTALES
+                </Badge>
+              )}
+              <Badge variant="secondary" className="h-7 bg-muted text-muted-foreground font-bold px-3 border-none">{uniqueInvoices.length} FACTURAS ÚNICAS</Badge>
+           </div>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
-            <TableHeader className="bg-slate-50/50 dark:bg-slate-900/50">
-              <TableRow className="hover:bg-transparent border-slate-100 dark:border-slate-800">
+            <TableHeader className="bg-muted/50">
+              <TableRow className="hover:bg-transparent border-border">
                 <SortableHead col="invoiceNumber" label="N° COTU" active={sortKey} dir={sortDir} onSort={handleSort} />
                 <SortableHead col="company" label="ASEGURADORA" active={sortKey} dir={sortDir} onSort={handleSort} />
                 <SortableHead col="day" label="DÍA" active={sortKey} dir={sortDir} onSort={handleSort} />
-                <TableHead className="text-[10px] font-black uppercase text-slate-400 p-6">MES/AÑO</TableHead>
+                <TableHead className="text-xs font-bold uppercase text-muted-foreground p-6">MES/AÑO</TableHead>
                 <SortableHead col="amount" label="MONTO (COP)" active={sortKey} dir={sortDir} onSort={handleSort} />
-                <TableHead className="text-[10px] font-black uppercase text-slate-400 p-6 text-right">ACCIONES</TableHead>
+                <TableHead className="text-xs font-bold uppercase text-muted-foreground p-6 text-right">ACCIONES</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {paginatedInvoices.map((inv) => (
-                <TableRow key={inv.id} className="group border-slate-100 dark:border-slate-800 hover:bg-blue-500/5 transition-colors">
-                  <TableCell className="p-6 font-black text-blue-600 dark:text-blue-400 tabular-nums">{inv.invoiceNumber}</TableCell>
-                  <TableCell className="p-6 font-bold text-slate-700 dark:text-slate-200">{inv.company}</TableCell>
-                  <TableCell className="p-6 font-black text-center tabular-nums">{getDayFromDate(inv.date)}</TableCell>
+                <TableRow key={inv.id} className="group border-border hover:bg-primary/5 transition-colors">
+                  <TableCell className="p-6 font-bold text-primary tabular-nums">{inv.invoiceNumber}</TableCell>
+                  <TableCell className="p-6 font-bold text-foreground">{inv.company}</TableCell>
+                  <TableCell className="p-6 font-bold text-center tabular-nums">{getDayFromDate(inv.date)}</TableCell>
                   <TableCell className="p-6">
                      <div className="flex flex-col">
                         <span className="text-xs font-bold">{inv.month}</span>
-                        <span className="text-[10px] text-slate-400 font-black">{inv.year}</span>
+                        <span className="text-xs text-muted-foreground font-bold">{inv.year}</span>
                      </div>
                   </TableCell>
-                  <TableCell className="p-6 font-mono font-black text-emerald-600 dark:text-emerald-400">
-                     {inv.amount > 0 ? formatCOP(inv.amount) : <span className="text-slate-300 dark:text-slate-700">—</span>}
+                  <TableCell className="p-6 font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                     {inv.amount > 0 ? formatCOP(inv.amount) : <span className="text-muted-foreground/30">—</span>}
                   </TableCell>
                   <TableCell className="p-6 text-right">
                     <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl hover:bg-blue-500/10 text-blue-500" onClick={() => setPreviewPath(inv.filePath)}>
+                      <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl hover:bg-primary/10 text-primary" onClick={() => setPreviewPath(inv.filePath)}>
                         <Eye className="w-4 h-4" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => (window as any).electronAPI.shell.openPath(inv.filePath)}>
+                      {inv.filePath && (
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          className="h-9 w-9 rounded-xl hover:bg-blue-500/10 text-blue-600" 
+                          title="Enviar a PDF Tools"
+                          onClick={() => navigate("/pdf-tools", { state: { fileToProcess: inv.invoicePdfPath ?? inv.filePath } })}
+                        >
+                          <FileStack className="w-4 h-4" />
+                        </Button>
+                      )}
+                      <Button size="icon" variant="ghost" className="h-9 w-9 rounded-xl hover:bg-muted" onClick={() => window.electronAPI.shell.openPath(inv.filePath)}>
                         <ExternalLink className="w-4 h-4" />
                       </Button>
                     </div>
@@ -527,8 +634,8 @@ export function Reports() {
           </Table>
           
           {totalPages > 1 && (
-            <div className="p-8 border-t border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-950/30 flex items-center justify-between">
-               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Página {currentPage} de {totalPages}</p>
+            <div className="p-8 border-t border-border bg-muted/30 flex items-center justify-between">
+               <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Página {currentPage} de {totalPages}</p>
                <Pagination className="w-auto mx-0">
                   <PaginationContent>
                     <PaginationItem><PaginationPrevious onClick={() => setCurrentPage(p => Math.max(1, p-1))} className="cursor-pointer rounded-xl font-bold" /></PaginationItem>
@@ -545,13 +652,13 @@ export function Reports() {
 
 function StatCard({ label, val, icon, color, isMoney }: any) {
   return (
-    <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-lg rounded-2xl overflow-hidden group">
+    <Card className="bg-card border-border shadow-lg rounded-2xl overflow-hidden group">
        <CardContent className="p-6">
           <div className="flex items-center justify-between mb-4">
-             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-             <div className={cn("p-2 rounded-lg text-white shadow-md group-hover:scale-110 transition-transform", color)}>{icon}</div>
+             <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
+             <div className={cn("p-2 rounded-lg shadow-md group-hover:scale-110 transition-transform", color)}>{icon}</div>
           </div>
-          <h3 className={cn("font-black tracking-tight truncate", isMoney ? "text-xl" : "text-3xl")}>{val}</h3>
+          <h3 className={cn("font-bold tracking-tight truncate", isMoney ? "text-xl" : "text-3xl")}>{val}</h3>
        </CardContent>
     </Card>
   );
@@ -560,12 +667,12 @@ function StatCard({ label, val, icon, color, isMoney }: any) {
 function SelectFilter({ value, onChange, options, label }: any) {
   return (
     <div className="space-y-2">
-      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">{label}</label>
+      <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">{label}</label>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="h-12 rounded-xl bg-slate-50/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-bold">
+        <SelectTrigger className="h-12 rounded-xl bg-muted/50 border-border font-bold">
           <SelectValue placeholder={`Seleccionar ${label}`} />
         </SelectTrigger>
-        <SelectContent className="rounded-xl border-slate-200 dark:border-slate-800 shadow-2xl">
+        <SelectContent className="rounded-xl border-border shadow-lg">
           <SelectItem value="all" className="font-bold">Todos</SelectItem>
           {options.sort().map((o: string) => <SelectItem key={o} value={o} className="font-bold">{o}</SelectItem>)}
         </SelectContent>
@@ -576,9 +683,9 @@ function SelectFilter({ value, onChange, options, label }: any) {
 
 function SortableHead({ col, label, active, dir, onSort }: any) {
   return (
-    <TableHead className="p-6 cursor-pointer hover:bg-blue-500/5 transition-colors group" onClick={() => onSort(col)}>
+    <TableHead className="p-6 cursor-pointer hover:bg-primary/5 transition-colors group" onClick={() => onSort(col)}>
        <div className="flex items-center gap-1">
-          <span className={cn("text-[10px] font-black uppercase tracking-widest", active === col ? "text-blue-500" : "text-slate-400")}>{label}</span>
+          <span className={cn("text-xs font-bold uppercase tracking-widest", active === col ? "text-primary" : "text-muted-foreground")}>{label}</span>
           <SortIcon col={col} sortKey={active} sortDir={dir} />
        </div>
     </TableHead>

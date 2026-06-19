@@ -42,12 +42,12 @@ export function Header() {
     : null;
 
   return (
-    <header className="h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6">
+    <header className="h-16 bg-background/80 backdrop-blur-xl border-b border-border flex items-center justify-between px-6">
 
       {/* ── Izquierda: fecha + contexto del escaneo ── */}
       <div className="flex items-center gap-3 min-w-0">
         <div className="shrink-0">
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-sm text-muted-foreground">
             {new Date().toLocaleDateString("es-ES", {
               weekday: "long",
               year: "numeric",
@@ -58,13 +58,13 @@ export function Header() {
         </div>
 
         {currentScan && (
-          <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-slate-200 dark:border-slate-700 min-w-0">
+          <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-border min-w-0">
             <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
-            <span className="text-xs text-slate-600 dark:text-slate-400 font-medium shrink-0">
-              <FileText className="w-3 h-3 inline mr-1 text-blue-500" />
+            <span className="text-xs text-muted-foreground font-medium shrink-0">
+              <FileText className="w-3 h-3 inline mr-1 text-primary" />
               {currentScan.totalInvoices.toLocaleString("es-CO")} facturas
             </span>
-            <span className="text-xs text-slate-400 dark:text-slate-500 truncate">
+            <span className="text-xs text-muted-foreground/60 truncate">
               · {lastScanAgo}
             </span>
           </div>
@@ -80,19 +80,19 @@ export function Header() {
             <Button
               variant="ghost"
               size="icon"
-              className="rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 relative"
+              className="rounded-xl hover:bg-muted relative"
             >
-              <Bell className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+              <Bell className="w-5 h-5 text-[#64748B]" />
               {totalAlerts > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
                   {totalAlerts > 9 ? "9+" : totalAlerts}
                 </span>
               )}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-80 p-0 overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+          <PopoverContent align="end" className="w-80 p-0 overflow-hidden bg-card border-border">
+            <div className="px-4 py-3 border-b border-border bg-muted/30">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
                 <Bell className="w-4 h-4" />
                 Panel de Alertas
                 {totalAlerts > 0 && (
@@ -103,16 +103,16 @@ export function Header() {
               </h3>
             </div>
 
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-80 overflow-y-auto">
+            <div className="divide-y divide-border max-h-80 overflow-y-auto">
               {!currentScan ? (
-                <div className="px-4 py-6 text-center text-sm text-slate-500">
+                <div className="px-4 py-6 text-center text-sm text-muted-foreground">
                   No hay escaneo activo
                 </div>
               ) : totalAlerts === 0 ? (
                 <div className="px-4 py-6 flex flex-col items-center gap-2 text-center">
                   <CheckCircle2 className="w-8 h-8 text-emerald-500" />
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Sin alertas detectadas</p>
-                  <p className="text-xs text-slate-500">El escaneo no reportó duplicados ni facturas sin monto</p>
+                  <p className="text-sm font-medium text-foreground">Sin alertas detectadas</p>
+                  <p className="text-xs text-muted-foreground">El escaneo no reportó duplicados ni facturas sin monto</p>
                 </div>
               ) : (
                 <>
@@ -121,10 +121,10 @@ export function Header() {
                     <div className="px-4 py-3 flex items-start gap-3">
                       <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-sm font-medium text-slate-900 dark:text-white">
+                        <p className="text-sm font-medium text-foreground">
                           {invoicesSinMonto} factura{invoicesSinMonto > 1 ? "s" : ""} sin monto
                         </p>
-                        <p className="text-xs text-slate-500 mt-0.5">
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           No fue posible extraer el monto del PDF
                         </p>
                       </div>
@@ -136,7 +136,7 @@ export function Header() {
                     <div className="px-4 py-3">
                       <div className="flex items-center gap-2 mb-2">
                         <Copy className="w-4 h-4 text-orange-500 shrink-0" />
-                        <p className="text-sm font-medium text-slate-900 dark:text-white">
+                        <p className="text-sm font-medium text-foreground">
                           {duplicates.length} duplicado{duplicates.length > 1 ? "s" : ""} omitido{duplicates.length > 1 ? "s" : ""}
                         </p>
                       </div>
@@ -144,10 +144,10 @@ export function Header() {
                         {duplicates.map((d, i) => (
                           <div
                             key={i}
-                            className="text-xs bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md px-2 py-1.5"
+                            className="text-xs bg-orange-500/5 border border-orange-500/20 rounded-md px-2 py-1.5"
                           >
-                            <span className="font-semibold text-orange-800 dark:text-orange-300">{d.invoiceNumber}</span>
-                            <span className="text-slate-500 ml-1 block truncate">
+                            <span className="font-semibold text-orange-500">{d.invoiceNumber}</span>
+                            <span className="text-muted-foreground ml-1 block truncate">
                               {d.discardedPath.split(/[/\\]/).slice(-2).join("/")}
                             </span>
                           </div>
@@ -166,27 +166,27 @@ export function Header() {
           variant="ghost"
           size="icon"
           onClick={toggleTheme}
-          className="rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="rounded-xl hover:bg-muted"
         >
           {theme === "light" ? (
-            <Moon className="w-5 h-5 text-slate-600" />
+            <Moon className="w-5 h-5 text-[#64748B]" />
           ) : (
-            <Sun className="w-5 h-5 text-slate-400" />
+            <Sun className="w-5 h-5 text-[#64748B]" />
           )}
         </Button>
 
         {/* Avatar usuario */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 p-2 transition-colors">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white text-sm font-semibold">
+            <button className="rounded-xl hover:bg-muted p-2 transition-colors">
+              <div className="w-8 h-8 rounded-full bg-muted border border-border flex items-center justify-center text-muted-foreground text-sm font-semibold">
                 {operatorInitials}
               </div>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuItem className="font-bold truncate">{operatorName}</DropdownMenuItem>
-            <DropdownMenuItem className="text-slate-500 truncate">{operatorEmail}</DropdownMenuItem>
+          <DropdownMenuContent align="end" className="w-56 bg-card border-border">
+            <DropdownMenuItem className="font-bold truncate text-foreground">{operatorName}</DropdownMenuItem>
+            <DropdownMenuItem className="text-muted-foreground truncate">{operatorEmail}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

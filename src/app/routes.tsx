@@ -17,7 +17,6 @@ export const router = createHashRouter([
     Component: MainLayout,
     children: [
       { index: true, element: <Suspense fallback={<SkeletonDashboard />}><Dashboard /></Suspense> },
-      { path: "dashboard", element: <Suspense fallback={<SkeletonDashboard />}><Dashboard /></Suspense> },
       { path: "scanner", element: <Suspense fallback={<SkeletonDashboard />}><Scanner /></Suspense> },
       { path: "reports", element: <Suspense fallback={<SkeletonDashboard />}><Reports /></Suspense> },
       { path: "history", element: <Suspense fallback={<SkeletonDashboard />}><History /></Suspense> },

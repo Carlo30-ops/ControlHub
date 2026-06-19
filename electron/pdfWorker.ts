@@ -18,12 +18,20 @@ if (process.parentPort) {
             const dataBuffer = await fs.promises.readFile(msg.pdfPath);
             const options = msg.maxPages ? { max: msg.maxPages } : undefined;
             const data = await pdfParse(dataBuffer, options);
+            
+            if (process.stderr) {
+              process.stderr.write(`[WORKER] PDF: ${msg.pdfPath} | MaxPages: ${msg.maxPages || 'ALL'} | TextLength: ${data.text?.length || 0}\n`);
+            }
+
             process.parentPort.postMessage({ 
                 success: true, 
                 text: data.text, 
                 pageCount: data.numpages 
             });
         } catch (error: any) {
+            if (process.stderr) {
+              process.stderr.write(`[WORKER-ERROR] PDF: ${msg.pdfPath} | Error: ${error.message}\n`);
+            }
             process.parentPort.postMessage({ success: false, error: error.message });
         }
     });

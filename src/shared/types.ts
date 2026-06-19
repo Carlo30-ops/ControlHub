@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // shared/types.ts — Fuente única de verdad para tipos compartidos
-// Usado por: localScanner.ts, DataContext.tsx, database.ts, preload.ts
+// Unificado: Consolida definiciones de localScanner, DataContext y database.ts
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface Invoice {
@@ -14,7 +14,14 @@ export interface Invoice {
   amount: number; // 0 si no fue posible extraer
   date: string;   // Formato "DD/MM/YYYY"
   invoicePdfPath?: string; // Ruta al PDF identificado como factura
-  parseError?: boolean;    // Marcado explícito cuando el worker explota procesando este PDF
+  parseError?: boolean;    // Marcado explícito cuando el worker falla procesando este PDF
+  isDuplicate?: boolean;   // Marcado si es un COTU repetido en diferentes carpetas
+  
+  // Campos de Extracción Avanzada (desde contenido)
+  patient?: string;
+  nit?: string;
+  policyNo?: string;
+  identification?: string;
 }
 
 export interface DuplicateEntry {
@@ -45,7 +52,7 @@ export interface ScanResult {
   invoices: Invoice[];
   exportPath?: string;
   scanDuration: number;
-  stats?: ScanStats;
+  stats?: ScanStats; // estadísticas de escaneo
 }
 
 export interface ColumnSettings {
@@ -69,9 +76,30 @@ export interface DisplaySettings {
   compactMode: boolean;
 }
 
+/** 
+ * Configuración global de la aplicación.
+ * Unifica 'Settings' de DataContext y 'AppSettings' de shared.
+ */
 export interface AppSettings {
   columns: ColumnSettings;
   scanning: ScanningSettings;
   display: DisplaySettings;
   customInsurers: { name: string; aliases: string }[];
+  
+  // Campos de Operador y Módulos extra
+  operatorName?: string;
+  operatorEmail?: string;
+  terapiasDir?: string;
+  tesseractPath?: string;
+}
+
+/** Opciones para el motor de escaneo localScanner */
+export interface ScanOptions {
+  maxDepth?: number;
+  onlyCotuFolders?: boolean;
+  ignoreSystemFolders?: boolean;
+  customInsurers?: { name: string; aliases: string }[];
+  signal?: AbortSignal;
+  scanId?: string;
+  applyDateFilter?: boolean;
 }

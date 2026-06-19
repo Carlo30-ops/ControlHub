@@ -1,8 +1,6 @@
-import { Suspense } from "react";
 import { Outlet, useLocation } from "react-router";
 import { Sidebar } from "../navigation/Sidebar";
 import { Header } from "../navigation/Header";
-import { SkeletonDashboard } from "../ui/skeleton";
 import { motion, AnimatePresence } from "motion/react";
 
 export function MainLayout() {
@@ -23,9 +21,7 @@ export function MainLayout() {
               transition={{ duration: 0.15, ease: "easeOut" }}
               className="h-full"
             >
-              <Suspense fallback={<SkeletonDashboard />}>
-                <Outlet />
-              </Suspense>
+              <Outlet />
             </motion.div>
           </AnimatePresence>
         </main>

@@ -1,69 +1,112 @@
-# ControlHub v1.0.0 — Unified Suite
+# ControlHub
 
-ControlHub es una aplicación de escritorio unificada diseñada para la gestión eficiente de documentos, análisis de facturas y organización de tareas. Construida sobre Electron y alimentada por motores de procesamiento en Python, ofrece una experiencia de usuario moderna y fluida con una estética "Modern Glass".
+Suite de escritorio para Windows que unifica **análisis de facturas COTU**, **organización de documentos de terapias** y **22 herramientas PDF** en una sola aplicación Electron.
 
-## 🚀 Módulos Principales
-
-### 📊 Escáner & Analytics
-- Análisis inteligente de facturas y documentos COTU.
-- Extracción de datos en tiempo real y visualización de estadísticas.
-- Historial de escaneos persistente.
-
-### 📄 PDF Tools (23 herramientas)
-- **Organizar:** Unir, Dividir, Extraer, Eliminar y Reordenar páginas.
-- **Optimizar:** Compresión, Rotación, Recorte y Reparación.
-- **Contenido:** Marcas de agua (texto/imagen), Numeración, OCR (Buscable).
-- **Seguridad:** Cifrado con contraseña y desbloqueo.
-- **Convertir:** Conversión bidireccional con Office (Word, Excel, PPT) e Imágenes.
-
-### 🏥 Organizador de Terapias
-- Puente directo con procesos de lógica de negocio para la organización de sesiones y reportes.
+**Versión:** 3.2.0 · **Plataforma:** Windows 10/11
 
 ---
 
-## 🛠️ Stack Tecnológico
+## Módulos
 
-- **Frontend:** React 18 + TypeScript + TailwindCSS v4 + Shadcn UI.
-- **Desktop:** Electron + IPC Bridge.
-- **Motores Backend:** Python 3.12 (Sidecars).
-- **Librerías Clave:** 
-  - `pikepdf` & `PyMuPDF` (Procesamiento PDF)
-  - `pdf2docx` (Conversión)
-  - `pytesseract` (OCR)
-  - `electron-store` (Persistencia)
+| Módulo | Descripción |
+|--------|-------------|
+| **Dashboard** | KPIs del escaneo activo y documentos Word pendientes |
+| **Escáner** | Recorre carpetas, identifica PDFs COTU, extrae metadatos y montos |
+| **Reportes** | Tabla filtrable, selector de sesión, export CSV/XLSX/PDF |
+| **Historial** | Sesiones de escaneo guardadas |
+| **Terapias** | Flujo Word → edición → PDF con regla SS y estructura `Año/Mes/Día/Paciente` |
+| **PDF Tools** | Merge, split, OCR, compresión, conversión Office, marcas de agua, etc. |
+| **Configuración** | Columnas, profundidad de escaneo, aseguradoras, rutas, Tesseract |
 
 ---
 
-## 💻 Desarrollo
+## Stack
 
-### Requisitos
-- **Node.js:** v18 o superior.
-- **Python:** v3.10 o superior (para desarrollo).
-- **Tesseract OCR:** Instalado en el sistema (C:\Program Files\Tesseract-OCR).
+- **Frontend:** React 18, TypeScript, Tailwind CSS v4, Radix/shadcn
+- **Desktop:** Electron 40, IPC + preload seguro
+- **PDF parsing:** pdf-parse en UtilityProcess pool
+- **Sidecars:** Python embebido (`python-embed/`) — Word COM, pikepdf, PyMuPDF, Tesseract
+- **Build:** Vite 6 + electron-builder (NSIS)
 
-### Instalación
-1. Clonar el repositorio.
-2. Instalar dependencias de Node:
-   ```bash
-   npm install
-   ```
-3. Instalar dependencias de Python (Sidecars):
-   ```bash
-   pip install pikepdf pymupdf pdf2docx pytesseract pywin32
-   ```
+---
 
-### Ejecución
+## Requisitos
+
+- **Node.js** 18+
+- **Windows** 10/11
+- **Tesseract OCR** (opcional, configurable en Settings)
+- **Microsoft Word** (requerido para Terapias y conversión PDF→Word)
+
+---
+
+## Instalación y desarrollo
+
 ```bash
+# Clonar e instalar dependencias Node
+git clone https://github.com/Carlo30-ops/ControlHub.git
+cd ControlHub
+npm install
+
+# Desarrollo (Vite + Electron, hot reload en renderer)
 npm run dev
+
+# Build de producción (sin instalador)
+npm run build
+
+# Build + instalador NSIS (.exe con Python embebido)
+npm run build:electron
+
+# Tests unitarios
+npm run test
+
+# Benchmark de parsing PDF (Node puro, requiere carpeta de muestras local)
+npm run load-test
 ```
 
-### Build (Producción)
-Para generar el instalador auto-suficiente (.exe) con Python embebido:
+### Python (solo desarrollo sin embebido)
+
+Si no usas `python-embed/`, instala dependencias del sidecar:
+
 ```bash
-npm run build:electron
+pip install -r requirements.txt
+```
+
+Dependencias principales: `pywin32`, `pikepdf`, `PyMuPDF`, `pdf2docx`, `pytesseract`.
+
+---
+
+## Estructura del proyecto
+
+```
+ControlHub/
+├── electron/           # Main process, IPC, sidecars Python, worker pool
+├── src/                # React UI (pages, contexts, components)
+├── scripts/            # loadTest.ts y utilidades CLI
+├── public/             # Iconos y assets estáticos
+├── python-embed/       # Runtime Python embebido (no incluido en git)
+├── CONTEXT.md          # Documentación técnica para desarrolladores/IAs
+├── BUSINESS_LOGIC_SPEC.md  # Contrato lógica COTU
+└── requirements.txt    # Dependencias Python del sidecar
 ```
 
 ---
 
-## 📦 Distribución
-El instalador generado en `release/ControlHub Setup 1.0.0.exe` es totalmente auto-suficiente e incluye un entorno de Python embebido con todas las dependencias necesarias.
+## Documentación
+
+| Archivo | Audiencia |
+|---------|-----------|
+| [CONTEXT.md](./CONTEXT.md) | Desarrolladores — arquitectura, IPC, problemas conocidos, changelog |
+| [BUSINESS_LOGIC_SPEC.md](./BUSINESS_LOGIC_SPEC.md) | Lógica de negocio COTU (regex, scoring, entidades) |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | Guía para contribuir |
+
+---
+
+## Distribución
+
+El instalador generado en `release/` incluye Python embebido y sidecars. No requiere Python del sistema en el equipo destino.
+
+---
+
+## Licencia
+
+MIT — ver [LICENSE](./LICENSE).

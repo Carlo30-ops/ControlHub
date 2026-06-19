@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { useData } from "../../contexts/DataContext";
 import { 
   CheckCircle2, 
@@ -25,6 +26,14 @@ import { Input } from "../../components/ui/input";
 import { Badge } from "../../components/ui/badge";
 import { Separator } from "../../components/ui/separator";
 import { ScrollArea } from "../../components/ui/scroll-area";
+import { 
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "../../components/ui/dialog";
 import { 
   AlertDialog, 
   AlertDialogAction, 
@@ -86,7 +95,20 @@ interface SearchResult {
   lastModified: number;
 }
 
+const getFinalPathPreview = (base: string, patient: string) => {
+  const hoy = new Date();
+  const meses = [
+    "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+    "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
+  ];
+  const mesNombre = `${(hoy.getMonth() + 1).toString().padStart(2, '0')}- ${meses[hoy.getMonth()]}`;
+  const diaNombre = `${hoy.getDate().toString().padStart(2, '0')} DE ${meses[hoy.getMonth()]}`;
+  return `${base}\\${hoy.getFullYear()}\\${mesNombre}\\${diaNombre}\\${patient}`;
+};
+
 export default function Terapias() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { settings, updateSettings, sidecarStatus } = useData();
   const [status, setStatus] = useState<SidecarStatus>({
     ping: false,
@@ -116,34 +138,125 @@ export default function Terapias() {
 
   const [prepareResult, setPrepareResult] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'select' | 'prepare'>('select');
   
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [isSSAlertOpen, setIsSSAlertOpen] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [confirmData, setConfirmData] = useState<{
+    filename: string;
+    inputName: string;
+    patient: string;
+    destination: string;
+  } | null>(null);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  const inputNameRef = useRef<HTMLInputElement>(null);
 
   const hasSourceDir = sourceDir.trim().length > 0;
   const engineReady = !status.loading && status.ping === true;
   const interactionsLocked = !hasSourceDir || !engineReady || isProcessing;
 
-  const checkStatus = async (activeSourceDir = sourceDir) => {
+  // Detectar estados de navegación (Dashboard -> Terapias o PDF Tools -> Terapias)
+  useEffect(() => {
+    const processState = async () => {
+      if (location.state?.autoSearch && engineReady) {
+        handleAutoDetectWord();
+        toast.info("Búsqueda automática de documentos iniciada");
+      }
+      
+      if (location.state?.preloadedDoc) {
+        const path = location.state.preloadedDoc;
+        const name = path.split(/[\\/]/).pop() || "";
+        setForm(prev => ({ ...prev, filename: name }));
+        toast.success(`Documento precargado: ${name}`);
+      }
+
+      if (location.state?.autoSearch || location.state?.preloadedDoc) {
+        // Limpiar state de navegación
+        window.history.replaceState({}, '');
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    };
+
+    if (!status.loading) {
+      processState();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, engineReady, status.loading]);
+
+  const hasSSCode = (input: string): boolean => {
+    return /\d*SS\s+\S+/.test(input);
+  };
+
+  const handleAutoDetectWord = async () => {
+    if (!sourceDir.trim()) {
+      toast.error("Configura primero la carpeta origen");
+      return;
+    }
+
+    setIsListing(true);
+    try {
+      const res = await window.electronAPI.terapias.listDocs();
+      if (res.ok) {
+        const files = (res as any).files;
+        setAvailableDocs(files);
+        if (files.length === 0) {
+          toast.error("No se encontró ningún documento Word en la carpeta origen");
+        } else if (files.length === 1) {
+          setForm(prev => ({ ...prev, filename: files[0].name }));
+          toast.success(`Archivo detectado: ${files[0].name}`);
+        } else {
+          setPickerMode('select');
+          setIsPickerOpen(true);
+        }
+      } else {
+        toast.error("Error al buscar archivos: " + res.error);
+      }
+    } catch (err) {
+      toast.error("Error crítico al buscar archivos");
+    } finally {
+      setIsListing(false);
+    }
+  };
+
+  const getPatientFromInput = (input: string) => {
+    const parts = input.trim().split(/\s+/);
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i].toUpperCase();
+      if (p === "SS" || p.endsWith("SS")) {
+        if (i === parts.length - 1) {
+          return parts.slice(0, i).join(" ").trim() || "PACIENTE_DESCONOCIDO";
+        } else {
+          return parts.slice(i + 1).join(" ").trim() || "PACIENTE_DESCONOCIDO";
+        }
+      }
+    }
+    return "PACIENTE_DESCONOCIDO";
+  };
+
+  const checkStatus = async (activeSource: string) => {
     setStatus(prev => ({ ...prev, loading: true, error: null }));
     try {
-      const pingRes = await (window as any).electronAPI.terapias.ping();
-      const wordRes = await (window as any).electronAPI.terapias.checkWord();
+      const pingRes = await window.electronAPI.terapias.ping();
+      const wordRes = await window.electronAPI.terapias.checkWord();
       
       setStatus({
         ping: pingRes.ok,
         word: wordRes.ok,
-        wordMessage: wordRes.message || wordRes.error,
+        wordMessage: wordRes.message || wordRes.error || "",
         loading: false,
         error: null
       });
       
       if (pingRes.ok) {
-        fetchDocs(activeSourceDir);
+        fetchDocs(activeSource);
         fetchHistory();
       }
     } catch (err: any) {
@@ -156,15 +269,15 @@ export default function Terapias() {
     }
   };
 
-  const fetchDocs = async (activeSourceDir = sourceDir) => {
-    if (!activeSourceDir.trim()) {
+  const fetchDocs = async (dir: string = sourceDir) => {
+    if (!dir.trim()) {
       setAvailableDocs([]);
       return;
     }
 
     setIsListing(true);
     try {
-      const res = await (window as any).electronAPI.terapias.listDocs();
+      const res = await window.electronAPI.terapias.listDocs();
       if (res.ok) {
         setAvailableDocs(res.files);
         if (res.files.length > 0 && !form.filename) {
@@ -180,7 +293,7 @@ export default function Terapias() {
 
   const fetchHistory = async () => {
     try {
-      const res = await (window as any).electronAPI.terapias.getHistory();
+      const res = await window.electronAPI.terapias.getHistory();
       if (res.ok) {
         setHistory(res.history);
       }
@@ -198,7 +311,7 @@ export default function Terapias() {
     
     setIsSearching(true);
     try {
-      const res = await (window as any).electronAPI.terapias.searchPatient({
+      const res = await window.electronAPI.terapias.searchPatient({
         query,
         dest_root: form.baseDest
       });
@@ -214,49 +327,48 @@ export default function Terapias() {
 
   useEffect(() => {
     const loadConfig = async () => {
-      const source = await (window as any).electronAPI.config.get("settings.terapiasDir");
-      const dest = await (window as any).electronAPI.config.get("terapias.baseDest");
-      const backup = await (window as any).electronAPI.config.get("terapias.backup");
-      
+      const source = await window.electronAPI.config.get("settings.terapiasDir");
+      const dest = await window.electronAPI.config.get("terapias.baseDest");
+      const backup = await window.electronAPI.config.get("terapias.backup");
+
       const activeSource = source || settings.terapiasDir || "";
       setSourceDir(activeSource);
       if (activeSource) {
-        await (window as any).electronAPI.config.set("settings.terapiasDir", activeSource);
-        await (window as any).electronAPI.config.set("terapiasSourceDir", activeSource);
+        await window.electronAPI.config.set("settings.terapiasDir", activeSource);
       }
-      
+
       if (dest) setForm(prev => ({ ...prev, baseDest: dest }));
       if (backup) setForm(prev => ({ ...prev, backup: backup }));
       return activeSource;
     };
-    
+
     loadConfig().then((activeSource) => {
-      // Solo disparar checkStatus si el sidecar no reporta estar activo globalmente
-      if (sidecarStatus.Terapias !== 'running') {
-        checkStatus(activeSource || "");
-      } else {
-        // Si ya está activo, actualizar estado local y listar datos
-        setStatus(prev => ({ ...prev, ping: true, word: true, loading: false }));
-        fetchDocs(activeSource || "");
-        fetchHistory();
+      if (activeSource) {
+        checkStatus(activeSource);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [settings.terapiasDir]);
+
+  useEffect(() => {
+    if (sidecarStatus.Terapias === 'running' && sourceDir.trim()) {
+      // Si el sidecar se reconecta, re-verificar Word
+      checkStatus(sourceDir);
+    }
+  }, [sidecarStatus.Terapias, sourceDir]);
 
   const handleSelectFolder = (field: "baseDest" | "backup" | "sourceDir") => async () => {
-    const path = await (window as any).electronAPI.selectDirectory();
+    const path = await window.electronAPI.selectDirectory();
     if (path) {
       if (field === "sourceDir") {
         setSourceDir(path);
         updateSettings({ terapiasDir: path });
-        (window as any).electronAPI.config.set("settings.terapiasDir", path);
-        (window as any).electronAPI.config.set("terapiasSourceDir", path);
+        window.electronAPI.config.set("settings.terapiasDir", path);
         fetchDocs(path);
       } else {
         setForm(prev => ({ ...prev, [field]: path }));
         const configKey = field === "baseDest" ? "terapias.baseDest" : "terapias.backup";
-        (window as any).electronAPI.config.set(configKey, path);
+        window.electronAPI.config.set(configKey, path);
       }
     }
   };
@@ -282,31 +394,91 @@ export default function Terapias() {
       return;
     }
 
-    // Paso 1: Buscar automáticamente el archivo Word en sourceDir
-    const docFiles = await (window as any).electronAPI.listFiles(sourceDir, ['.docx', '.doc']);
-
-    if (docFiles.length === 0) {
-      toast.error("No se encontró ningún documento Word en la carpeta configurada.");
+    // Validación de SS (Seguridad Social)
+    if (!hasSSCode(form.inputName)) {
+      setIsSSAlertOpen(true);
       return;
     }
 
-    if (docFiles.length > 1) {
-      toast.error("Hay más de un documento Word en la carpeta. Deja solo uno.");
-      return;
+    const patientName = getPatientFromInput(form.inputName);
+
+    // Paso 1: Buscar archivo Word
+    let filename = form.filename;
+    
+    if (!filename) {
+      const docFiles = await window.electronAPI.listFiles(sourceDir, ['.docx', '.doc']);
+      if (docFiles.length === 0) {
+        toast.error("No se encontró ningún documento Word en la carpeta configurada.");
+        return;
+      }
+      if (docFiles.length > 1) {
+        setPickerMode('prepare');
+        setIsPickerOpen(true);
+        return;
+      }
+      filename = docFiles[0];
+    } else {
+      // Validar que el archivo seleccionado exista en la carpeta origen
+      const docFiles = await window.electronAPI.listFiles(sourceDir, ['.docx', '.doc']);
+      if (!docFiles.includes(filename)) {
+        toast.error("El archivo seleccionado no se encuentra en la carpeta origen configurada.");
+        return;
+      }
     }
 
-    const filename = docFiles[0];
+    // Preparar datos para confirmación con ruta completa
+    setConfirmData({
+      filename,
+      inputName: form.inputName,
+      patient: patientName,
+      destination: getFinalPathPreview(form.baseDest, patientName)
+    });
+    setIsConfirmOpen(true);
+  };
 
+  const handlePrepareWithSkipSS = async () => {
+    setIsSSAlertOpen(false);
+    const patientName = getPatientFromInput(form.inputName); // Será PACIENTE_DESCONOCIDO
+
+    // Paso 1: Buscar archivo Word (Lógica repetida pero necesaria para el flujo skip)
+    let filename = form.filename;
+    if (!filename) {
+      const docFiles = await window.electronAPI.listFiles(sourceDir, ['.docx', '.doc']);
+      if (docFiles.length === 0) {
+        toast.error("No se encontró ningún documento Word en la carpeta configurada.");
+        return;
+      }
+      if (docFiles.length > 1) {
+        setPickerMode('prepare');
+        setIsPickerOpen(true);
+        return;
+      }
+      filename = docFiles[0];
+    }
+
+    setConfirmData({
+      filename,
+      inputName: form.inputName,
+      patient: patientName,
+      destination: getFinalPathPreview(form.baseDest, patientName)
+    });
+    setIsConfirmOpen(true);
+  };
+
+  const executePrepare = async () => {
+    if (!confirmData) return;
+    
+    setIsConfirmOpen(false);
     setIsProcessing(true);
     try {
-      const res = await (window as any).electronAPI.terapias.prepare({
-        input_name: form.inputName,
-        filename: filename,
-        base_dest: form.baseDest
+      const res = await window.electronAPI.terapias.prepare({
+        input_name: confirmData.inputName,
+        filename: confirmData.filename,
+        base_dest: confirmData.destination
       });
       
       if (res.ok) {
-        setForm(prev => ({ ...prev, filename: filename }));
+        setForm(prev => ({ ...prev, filename: confirmData.filename }));
         setPrepareResult(res);
         setStep({
           current: 2,
@@ -314,12 +486,12 @@ export default function Terapias() {
           patient: res.patient,
           folder: res.folder
         });
-        toast.success("Archivo movido y Word abierto para edición");
+        toast.success("Archivo organizado y Word abierto");
       } else {
         toast.error("Error: " + res.error);
       }
     } catch (err: any) {
-      toast.error("Error crítico en el Paso 1");
+      toast.error("Error crítico en la organización");
     } finally {
       setIsProcessing(false);
     }
@@ -338,10 +510,10 @@ export default function Terapias() {
 
     setIsProcessing(true);
     try {
-      const res = await (window as any).electronAPI.terapias.finalize({
+      const res = await window.electronAPI.terapias.finalize({
         doc_path: step.docPath,
         backup: form.backup,
-        patient: step.patient
+        patient: step.patient ?? ""
       });
       
       if (res.ok) {
@@ -349,7 +521,7 @@ export default function Terapias() {
         
         // Revelar en carpeta automáticamente
         if (res.pdf_path) {
-          (window as any).electronAPI.shell.revealInFolder(res.pdf_path);
+          window.electronAPI.shell.revealInFolder(res.pdf_path);
         }
 
         setPrepareResult(null);
@@ -389,10 +561,10 @@ export default function Terapias() {
       {/* Header Unificado */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex-1">
-          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Organizador de Terapias</h1>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">Organizador de Terapias</h1>
           <div className="flex items-center gap-3 mt-1 font-medium">
-            <Badge variant="outline" className="text-[10px] font-black border-slate-200 dark:border-slate-800">SOURCE</Badge>
-            <span className="font-mono text-xs uppercase text-slate-500">{sourceDir || "Origen no configurado"}</span>
+            <Badge variant="outline" className="text-xs font-bold border-border">SOURCE</Badge>
+            <span className="font-mono text-xs uppercase text-muted-foreground">{sourceDir || "Origen no configurado"}</span>
           </div>
         </div>
         
@@ -401,35 +573,35 @@ export default function Terapias() {
           <div className="relative group">
             <SearchIcon className={cn(
               "absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors",
-              isSearching ? "text-blue-500 animate-pulse" : "text-slate-400 group-focus-within:text-blue-500"
+              isSearching ? "text-primary animate-pulse" : "text-muted-foreground group-focus-within:text-primary"
             )} />
             <Input 
               placeholder="Buscar paciente antiguo..." 
               value={searchQuery}
               onChange={e => handleSearch(e.target.value)}
               disabled={!engineReady}
-              className="pl-10 h-10 rounded-xl bg-white/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 font-bold focus:ring-2 focus:ring-blue-500/20"
+              className="pl-10 h-10 rounded-xl bg-card border-border font-bold focus:ring-2 focus:ring-primary/20"
             />
           </div>
           
           {searchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="absolute top-full left-0 right-0 mt-2 bg-card border-border rounded-2xl shadow-md z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
               <div className="p-2 divide-y divide-slate-100 dark:divide-slate-800">
                 {searchResults.map((res, i) => (
                   <button 
                     key={i} 
-                    className="w-full p-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 flex items-center gap-3 group transition-colors"
+                    className="w-full p-3 text-left hover:bg-muted/50 flex items-center gap-3 group transition-colors"
                     onClick={() => {
-                      (window as any).electronAPI.shell?.openPath(res.path);
+                      window.electronAPI.shell?.openPath(res.path);
                       setSearchResults([]);
                     }}
                   >
-                    <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-blue-500/10 group-hover:text-blue-500 transition-colors">
+                    <div className="p-2 rounded-lg bg-muted group-hover:bg-primary/10 group-hover:text-primary transition-colors">
                       <FolderOpen className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-black text-slate-900 dark:text-white truncate">{res.name}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Modificado: {formatRelativeDate(res.lastModified)}</p>
+                      <p className="text-xs font-bold text-foreground truncate">{res.name}</p>
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-tight">Modificado: {formatRelativeDate(res.lastModified)}</p>
                     </div>
                   </button>
                 ))}
@@ -445,13 +617,13 @@ export default function Terapias() {
                 {status.ping ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
                 Motor listo
               </Badge>
-              <Badge variant={status.word ? "outline" : "destructive"} className={cn("gap-1.5 font-bold border-none", status.word ? "bg-blue-500/10 text-blue-600" : "")}>
+              <Badge variant={status.word ? "outline" : "destructive"} className={cn("gap-1.5 font-bold border-none", status.word ? "bg-emerald-500/10 text-emerald-600" : "")}>
                 {status.word ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
                 {status.word ? "Word disponible" : "Word ausente"}
               </Badge>
             </div>
           )}
-          <Button variant="outline" size="icon" onClick={checkStatus} disabled={status.loading} className="h-10 w-10 rounded-xl border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/40 backdrop-blur-sm">
+          <Button variant="outline" size="icon" onClick={() => checkStatus(sourceDir)} disabled={status.loading} className="h-10 w-10 rounded-xl border-border bg-card">
             <RefreshCw className={cn("w-4 h-4", status.loading ? "animate-spin" : "")} />
           </Button>
         </div>
@@ -461,8 +633,8 @@ export default function Terapias() {
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 flex flex-col md:flex-row md:items-center gap-4">
           <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />
           <div className="flex-1">
-            <p className="text-sm font-black text-amber-700 dark:text-amber-400 uppercase tracking-wide">Flujo bloqueado</p>
-            <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mt-1">
+            <p className="text-sm font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Flujo bloqueado</p>
+            <p className="text-xs font-medium text-muted-foreground dark:text-muted-foreground mt-1">
               {!hasSourceDir
                 ? "Configura la carpeta origen desde settings.terapiasDir para iniciar el Paso 1."
                 : "El motor de Terapias o Microsoft Word no esta disponible. Reintenta la conexion antes de continuar."}
@@ -479,17 +651,17 @@ export default function Terapias() {
         <div className="lg:col-span-8 space-y-8">
           {/* PASO 1: Selección y Preparación */}
           <Card className={cn(
-            "bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-2xl rounded-3xl overflow-hidden transition-all duration-500",
-            step.current === 1 ? "ring-2 ring-blue-500/50" : "opacity-50 grayscale-[0.5]"
+            "bg-card border-border shadow-md rounded-2xl overflow-hidden transition-all duration-500",
+            step.current === 1 ? "ring-2 ring-primary/50" : "opacity-50 grayscale-[0.5]"
           )}>
-            <CardHeader className="bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/50 p-8">
+            <CardHeader className="p-8 border-b border-border">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-blue-500 text-white shadow-lg">
+                    <div className="p-2 rounded-xl bg-muted text-muted-foreground">
                       <SearchIcon className="w-5 h-5" />
                     </div>
-                    <CardTitle className="text-2xl font-black">Paso 1: Preparación</CardTitle>
+                    <CardTitle className="text-2xl font-bold">Paso 1: Preparación</CardTitle>
                   </div>
                   <CardDescription className="text-base font-medium">Busca el archivo base y prepara la carpeta del paciente</CardDescription>
                 </div>
@@ -499,7 +671,19 @@ export default function Terapias() {
             <CardContent className="p-8 space-y-8">
               {/* Nueva Zona de Drop para Selección (estilo PDF Tools) */}
               <div className="space-y-4">
-                 <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Documento Word a procesar</label>
+                 <div className="flex items-center justify-between ml-2">
+                    <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Documento Word a procesar</label>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={handleAutoDetectWord}
+                      disabled={interactionsLocked || isListing}
+                      className="h-8 rounded-lg font-bold text-[10px] uppercase tracking-wider text-primary hover:bg-primary/10 gap-2"
+                    >
+                      <SearchIcon className={cn("w-3.5 h-3.5", isListing ? "animate-spin" : "")} />
+                      Buscar Word en carpeta
+                    </Button>
+                 </div>
                  <DropZoneSimple 
                    file={form.filename ? { name: form.filename, path: sourceDir + "\\" + form.filename } : null}
                    onFiles={(paths) => {
@@ -515,20 +699,21 @@ export default function Terapias() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Nombre del Paciente / Entrada</label>
+                  <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground ml-2">Nombre del Paciente / Entrada</label>
                   <Input 
+                    ref={inputNameRef}
                     placeholder="Ej: Control 15-05 SS Maria Delgado" 
                     value={form.inputName}
                     onChange={e => setForm(prev => ({ ...prev, inputName: e.target.value }))}
                     disabled={step.current !== 1 || interactionsLocked}
-                    className="h-12 rounded-xl bg-slate-50/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 font-bold"
+                    className="h-12 rounded-xl bg-card border-border font-bold"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Destino de Almacenamiento</label>
+                  <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground ml-2">Destino de Almacenamiento</label>
                   <div className="flex gap-2">
-                    <Input readOnly value={form.baseDest} placeholder="Selecciona destino..." className="h-12 rounded-xl bg-slate-50/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-xs" />
+                    <Input readOnly value={form.baseDest} placeholder="Selecciona destino..." className="h-12 rounded-xl bg-muted/40 border-border text-xs font-bold text-muted-foreground" />
                     <Button variant="secondary" className="h-12 w-12 rounded-xl" onClick={handleSelectFolder("baseDest")} disabled={step.current !== 1 || interactionsLocked}>
                       <FolderOpen className="w-5 h-5" />
                     </Button>
@@ -537,51 +722,177 @@ export default function Terapias() {
               </div>
 
               {step.current === 1 && (
-                <Button 
-                  className="w-full h-16 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xl shadow-xl shadow-blue-500/20 gap-3 active:scale-[0.98] transition-all"
-                  disabled={interactionsLocked || !form.inputName}
-                  onClick={handlePrepare}
-                >
-                  {isProcessing ? <RefreshCw className="w-8 h-8 animate-spin" /> : <><ChevronRight className="w-6 h-6" /> PREPARAR Y ABRIR WORD</>}
-                </Button>
+                <>
+                  <Button 
+                    className="w-full h-16 rounded-2xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-base shadow-sm"
+                    disabled={interactionsLocked || !form.inputName}
+                    onClick={handlePrepare}
+                  >
+                    {isProcessing ? <RefreshCw className="w-8 h-8 animate-spin" /> : <><ChevronRight className="w-6 h-6" /> PREPARAR Y ABRIR WORD</>}
+                  </Button>
+
+                  <Dialog open={isSSAlertOpen} onOpenChange={setIsSSAlertOpen}>
+                    <DialogContent className="rounded-2xl border-border bg-card shadow-md">
+                      <DialogHeader>
+                        <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                          <AlertCircle className="w-6 h-6 text-amber-500" />
+                          Código SS no detectado
+                        </DialogTitle>
+                        <DialogDescription className="text-sm font-medium pt-4 text-muted-foreground">
+                          El nombre ingresado no contiene un código SS válido. La carpeta del paciente se creará como <span className="font-bold text-foreground">PACIENTE_DESCONOCIDO</span>. ¿Deseas continuar de todas formas?
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter className="pt-4 flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          className="rounded-xl font-bold flex-1" 
+                          onClick={() => {
+                            setIsSSAlertOpen(false);
+                            setTimeout(() => inputNameRef.current?.focus(), 100);
+                          }}
+                        >
+                          Corregir nombre
+                        </Button>
+                        <Button 
+                          className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold flex-1" 
+                          onClick={handlePrepareWithSkipSS}
+                        >
+                          Continuar sin SS
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
+                    <AlertDialogContent className="rounded-2xl border-border bg-card border-border shadow-md">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="text-xl font-bold">Confirmar Organización</AlertDialogTitle>
+                        <AlertDialogDescription className="text-sm font-medium space-y-4 pt-4 text-muted-foreground">
+                          <p>Se creará la estructura de carpetas y se moverá el archivo seleccionado.</p>
+                          <div className="p-4 rounded-2xl bg-muted border-border space-y-3">
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs font-bold uppercase text-muted-foreground">Paciente Extraído</span>
+                              <span className="text-xs font-bold text-foreground">{confirmData?.patient}</span>
+                            </div>
+                            <Separator className="bg-border/50" />
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs font-bold uppercase text-muted-foreground">Archivo Origen</span>
+                              <span className="text-xs font-mono text-muted-foreground truncate ml-4 max-w-[200px]">{confirmData?.filename}</span>
+                            </div>
+                            <Separator className="bg-border/50" />
+                            <div className="flex justify-between items-start">
+                              <span className="text-xs font-bold uppercase text-muted-foreground shrink-0 mt-1">Ruta Final</span>
+                              <span className="text-xs font-mono text-primary text-right break-all ml-4">{confirmData?.destination}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-2 p-3 rounded-xl bg-primary/5 border border-primary/10">
+                            <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                            <p className="text-[10px] leading-relaxed text-muted-foreground">
+                              El sistema organizará el archivo en: <span className="font-bold text-primary">{confirmData?.destination}\[AÑO]\[MES]\[DÍA]\{confirmData?.patient}\</span>
+                            </p>
+                          </div>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter className="pt-4">
+                        <AlertDialogCancel className="rounded-xl font-bold">Corregir datos</AlertDialogCancel>
+                        <AlertDialogAction 
+                          className="rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold" 
+                          onClick={executePrepare}
+                        >
+                          CONFIRMAR Y MOVER
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+
+                  <AlertDialog open={isPickerOpen} onOpenChange={setIsPickerOpen}>
+                    <AlertDialogContent className="max-w-2xl rounded-2xl border-border bg-card border-border shadow-md">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="text-xl font-bold">Seleccionar Documento</AlertDialogTitle>
+                        <AlertDialogDescription className="text-sm font-medium pt-4 text-muted-foreground">
+                          Se han encontrado varios archivos Word en la carpeta origen. Por favor, selecciona el que deseas procesar para <strong>{getPatientFromInput(form.inputName)}</strong>.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <div className="max-h-[400px] overflow-y-auto pr-2 py-4">
+                        <div className="grid grid-cols-1 gap-3">
+                          {availableDocs.map((doc) => (
+                            <button
+                              key={doc.name}
+                              onClick={() => {
+                                setForm(prev => ({ ...prev, filename: doc.name }));
+                                setIsPickerOpen(false);
+                                if (pickerMode === 'prepare') {
+                                  const patientName = getPatientFromInput(form.inputName);
+                                  setConfirmData({
+                                    filename: doc.name,
+                                    inputName: form.inputName,
+                                    patient: patientName,
+                                    destination: getFinalPathPreview(form.baseDest, patientName)
+                                  });
+                                  setIsConfirmOpen(true);
+                                }
+                              }}
+                              className="flex items-center gap-4 p-4 rounded-xl border border-border hover:border-primary hover:bg-primary/5 transition-all text-left group"
+                            >
+                              <div className="p-3 rounded-xl bg-muted group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                                <FileText className="w-5 h-5" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-bold text-foreground truncate">{doc.name}</p>
+                                <div className="flex items-center gap-4 mt-1 text-[10px] font-bold text-muted-foreground uppercase tracking-tight">
+                                  <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatRelativeDate(doc.modified)}</span>
+                                  <span className="flex items-center gap-1"><Download className="w-3 h-3" /> {formatSize(doc.size)}</span>
+                                </div>
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel className="rounded-xl font-bold">Cancelar</AlertDialogCancel>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </>
               )}
             </CardContent>
           </Card>
 
           {/* PASO 2: Finalización */}
           <Card className={cn(
-            "bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 shadow-2xl rounded-3xl overflow-hidden transition-all duration-500",
-            step.current === 2 ? "ring-2 ring-emerald-500 shadow-emerald-500/10" : "opacity-30 pointer-events-none"
+            "bg-card border-border shadow-md rounded-2xl overflow-hidden transition-all duration-500",
+            step.current === 2 ? "ring-2 ring-emerald-500" : "opacity-30 pointer-events-none"
           )}>
-            <CardHeader className="bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/50 p-8">
+            <CardHeader className="p-8 border-b border-border">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-emerald-500 text-white shadow-lg">
                   <CheckCircle2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-2xl font-black">Paso 2: Finalización</CardTitle>
+                  <CardTitle className="text-2xl font-bold">Paso 2: Finalización</CardTitle>
                   <CardDescription className="text-base font-medium">Genera el PDF final y respalda el documento editable</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="p-8 space-y-8">
               {step.current === 2 && (
-                <div className="p-6 bg-emerald-500/10 rounded-2xl border border-emerald-500/20 flex items-center gap-6 animate-in zoom-in duration-500">
-                  <div className="p-4 rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/20">
+                <div className="p-6 bg-muted/10 rounded-2xl border border-border flex items-center gap-6 animate-in zoom-in duration-500">
+                  <div className="p-4 rounded-2xl bg-secondary text-secondary-foreground shadow-lg">
                     <User className="w-10 h-10" />
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600/70 mb-1">Paciente en proceso</p>
-                    <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 truncate">{step.patient}</p>
-                    <p className="text-xs text-slate-500 mt-1 truncate italic">Editando ahora en Microsoft Word...</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">Paciente en proceso</p>
+                    <p className="text-2xl font-bold text-foreground truncate">{step.patient}</p>
+                    <p className="text-xs text-muted-foreground mt-1 truncate italic font-medium">Editando ahora en Microsoft Word...</p>
                   </div>
                 </div>
               )}
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-2">Carpeta de Respaldo Histórico</label>
+                <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground ml-2">Carpeta de Respaldo Histórico</label>
                 <div className="flex gap-2">
-                  <Input readOnly value={form.backup} placeholder="Ruta para copias Word..." className="h-12 rounded-xl bg-slate-50/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800" />
+                  <Input readOnly value={form.backup} placeholder="Ruta para copias Word..." className="h-12 rounded-xl bg-muted/40 border-border font-bold text-muted-foreground" />
                   <Button variant="secondary" className="h-12 px-6 rounded-xl font-bold" onClick={handleSelectFolder("backup")} disabled={interactionsLocked || step.current !== 2}>
                     <HistoryIcon className="w-4 h-4 mr-2" /> Cambiar
                   </Button>
@@ -592,43 +903,43 @@ export default function Terapias() {
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button 
-                      className="w-full h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xl shadow-xl shadow-emerald-500/20 gap-3 active:scale-[0.98] transition-all"
+                      className="w-full h-16 rounded-2xl bg-secondary hover:bg-secondary/80 text-secondary-foreground font-bold text-xl shadow-sm gap-3 active:scale-[0.98] transition-all"
                       disabled={interactionsLocked || step.current !== 2 || !step.docPath || !form.backup}
                     >
                       {isProcessing ? <RefreshCw className="w-8 h-8 animate-spin" /> : <><Download className="w-6 h-6" /> GENERAR PDF Y FINALIZAR</>}
                     </Button>
                   </AlertDialogTrigger>
-                  <AlertDialogContent className="rounded-3xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-2xl">
+                  <AlertDialogContent className="rounded-2xl border-border bg-card border-border shadow-md">
                     <AlertDialogHeader>
-                      <AlertDialogTitle className="text-xl font-black">Confirmar Finalización</AlertDialogTitle>
-                      <AlertDialogDescription className="text-sm font-medium space-y-4 pt-4 text-slate-500 dark:text-slate-400">
-                        <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 space-y-3">
+                      <AlertDialogTitle className="text-xl font-bold">Confirmar Finalización</AlertDialogTitle>
+                      <AlertDialogDescription className="text-sm font-medium space-y-4 pt-4 text-muted-foreground">
+                        <div className="p-4 rounded-2xl bg-muted border-border space-y-3">
                           <div className="flex justify-between items-center">
-                            <span className="text-[10px] font-black uppercase text-slate-400">Paciente</span>
-                            <span className="text-xs font-black text-slate-900 dark:text-white">{step.patient}</span>
+                            <span className="text-xs font-bold uppercase text-muted-foreground">Paciente</span>
+                            <span className="text-xs font-bold text-foreground">{step.patient}</span>
                           </div>
-                          <Separator className="bg-slate-200/50 dark:bg-slate-800/50" />
+                          <Separator className="bg-border/50" />
                           <div className="flex justify-between items-center">
-                            <span className="text-[10px] font-black uppercase text-slate-400">Archivo Word</span>
-                            <span className="text-[10px] font-mono text-slate-500 truncate ml-4 max-w-[200px]">{form.filename}</span>
+                            <span className="text-xs font-bold uppercase text-muted-foreground">Archivo Word</span>
+                            <span className="text-xs font-mono text-muted-foreground truncate ml-4 max-w-[200px]">{form.filename}</span>
                           </div>
-                          <Separator className="bg-slate-200/50 dark:bg-slate-800/50" />
+                          <Separator className="bg-border/50" />
                           <div className="flex justify-between items-center">
-                            <span className="text-[10px] font-black uppercase text-slate-400">Destino PDF</span>
-                            <span className="text-[10px] font-mono text-emerald-600 truncate ml-4 max-w-[200px]">{step.folder}</span>
+                            <span className="text-xs font-bold uppercase text-muted-foreground">Destino PDF</span>
+                            <span className="text-xs font-mono text-muted-foreground truncate ml-4 max-w-[200px]">{step.folder}</span>
                           </div>
                         </div>
-                        <p className="text-xs text-orange-500 font-bold px-2">※ Asegúrate de haber guardado tus cambios en Word antes de continuar.</p>
+                        <p className="text-xs text-amber-600 dark:text-amber-400 font-bold px-2">※ Asegúrate de haber guardado tus cambios en Word antes de continuar.</p>
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter className="pt-4">
                       <AlertDialogCancel className="rounded-xl font-bold">Volver a Word</AlertDialogCancel>
-                      <AlertDialogAction className="rounded-xl bg-emerald-600 hover:bg-emerald-700 font-black" disabled={interactionsLocked || step.current !== 2 || !step.docPath || !form.backup} onClick={handleFinalize}>CONFIRMAR Y CONVERTIR</AlertDialogAction>
+                      <AlertDialogAction className="rounded-xl bg-secondary hover:bg-secondary/80 text-secondary-foreground font-bold" disabled={interactionsLocked || step.current !== 2 || !step.docPath || !form.backup} onClick={handleFinalize}>CONFIRMAR Y CONVERTIR</AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
                 
-                <Button variant="ghost" className="h-10 font-bold text-slate-400 hover:text-red-500 hover:bg-red-500/10" disabled={interactionsLocked} onClick={() => setStep({ current: 1, docPath: null, patient: null, folder: null })}>
+                <Button variant="ghost" className="h-10 font-bold text-muted-foreground hover:text-red-500 hover:bg-red-500/10" disabled={interactionsLocked} onClick={() => setStep({ current: 1, docPath: null, patient: null, folder: null })}>
                   CANCELAR OPERACIÓN ACTUAL
                 </Button>
               </div>
@@ -638,27 +949,27 @@ export default function Terapias() {
           {/* Sección de Historial */}
           <Collapsible open={isHistoryOpen} onOpenChange={setIsHistoryOpen} className="space-y-4">
             <CollapsibleTrigger asChild>
-              <Button variant="outline" className="w-full h-12 rounded-2xl justify-between px-6 border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/40 backdrop-blur-sm font-black text-xs uppercase tracking-widest text-slate-500">
+              <Button variant="outline" className="w-full h-12 rounded-2xl justify-between px-6 border-border bg-card font-bold text-xs uppercase tracking-widest text-muted-foreground">
                 <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-blue-500" />
+                  <Clock className="w-4 h-4 text-primary" />
                   Historial de Operaciones
                 </div>
-                <Badge variant="secondary" className="font-black">{history.length}</Badge>
+                <Badge variant="secondary" className="font-bold">{history.length}</Badge>
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="animate-in slide-in-from-top-4 duration-300">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {history.slice(0, 10).map((entry, i) => (
-                  <Card key={i} className="bg-white/50 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden group hover:border-blue-500/50 transition-all">
+                  <Card key={i} className="bg-card border-border rounded-2xl overflow-hidden group hover:border-primary/50 transition-all">
                     <CardContent className="p-4 flex items-center gap-4">
-                      <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-500 group-hover:bg-blue-500/10 group-hover:text-blue-500 transition-colors">
+                      <div className="p-3 rounded-xl bg-muted dark:bg-slate-900 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
                         <FileText className="w-5 h-5" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-black text-slate-900 dark:text-white truncate">{entry.patient}</p>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">{new Date(entry.date).toLocaleString()}</p>
+                        <p className="text-sm font-bold text-foreground truncate">{entry.patient}</p>
+                        <p className="text-xs font-bold text-muted-foreground uppercase">{new Date(entry.date).toLocaleString()}</p>
                       </div>
-                      <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-blue-500/10 hover:text-blue-500" onClick={() => (window as any).electronAPI.shell.openPath(entry.pdfPath)}>
+                      <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-primary/10 hover:text-primary" onClick={() => window.electronAPI.shell.openPath(entry.pdfPath)}>
                         <ExternalLink className="w-4 h-4" />
                       </Button>
                     </CardContent>
@@ -666,8 +977,8 @@ export default function Terapias() {
                 ))}
                 {history.length === 0 && (
                   <div className="col-span-full py-10 text-center space-y-3">
-                    <HistoryIcon className="w-10 h-10 text-slate-200 mx-auto" />
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Sin registros recientes</p>
+                    <HistoryIcon className="w-10 h-10 text-muted-foreground mx-auto" />
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Sin registros recientes</p>
                   </div>
                 )}
               </div>
@@ -677,10 +988,13 @@ export default function Terapias() {
 
         {/* Lateral Info Unificado */}
         <div className="lg:col-span-4 space-y-6">
-          <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl overflow-hidden">
-            <CardHeader className="bg-blue-500 text-white p-6">
-              <CardTitle className="text-lg font-black flex items-center gap-2">
-                <Info className="w-5 h-5" /> GUÍA RÁPIDA
+          <Card className="bg-card border-border rounded-2xl shadow-xl overflow-hidden">
+            <CardHeader className="p-6 border-b border-border">
+              <CardTitle className="text-lg font-bold flex items-center gap-3 text-foreground">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <Info className="w-5 h-5" />
+                </div>
+                GUÍA RÁPIDA
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6 space-y-6">
@@ -689,15 +1003,15 @@ export default function Terapias() {
               <GuideStep num="3" text="Completa el archivo en Word y guárdalo antes de finalizar." />
               
               {prepareResult && prepareResult.ok && (
-                <div className="p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-4 animate-in slide-in-from-right-4 duration-500">
+                <div className="p-5 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 space-y-4 animate-in slide-in-from-right-4 duration-500">
                   <div>
-                    <p className="text-[10px] font-black uppercase text-slate-400 mb-1 tracking-widest">CARPETA CREADA</p>
-                    <p className="text-[11px] font-mono break-all text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-800">{prepareResult.folder}</p>
+                    <p className="text-xs font-bold uppercase text-muted-foreground mb-1 tracking-widest">CARPETA CREADA</p>
+                    <p className="text-xs font-mono break-all text-muted-foreground bg-muted dark:bg-slate-900/50 p-3 rounded-xl border border-border font-bold">{prepareResult.folder}</p>
                   </div>
                   <Button 
                     variant="outline" 
-                    className="w-full h-11 rounded-xl font-bold bg-white dark:bg-slate-950 border-emerald-500/30 hover:bg-emerald-500 text-emerald-600 hover:text-white transition-all gap-2"
-                    onClick={() => (window as any).electronAPI.shell?.openPath(prepareResult.folder)}
+                    className="w-full h-11 rounded-xl font-bold border-border hover:bg-accent text-foreground transition-all gap-2"
+                    onClick={() => window.electronAPI.shell?.openPath(prepareResult.folder)}
                   >
                     <FolderOpen className="w-4 h-4" /> Abrir en Explorador
                   </Button>
@@ -707,10 +1021,10 @@ export default function Terapias() {
           </Card>
 
           {availableDocs.length > 0 && step.current === 1 && (
-            <Card className="bg-white/50 dark:bg-slate-950/40 backdrop-blur-md border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
-              <CardHeader className="p-6 border-b border-slate-100 dark:border-slate-800">
-                <CardTitle className="text-sm font-black uppercase tracking-widest text-slate-400 flex items-center justify-between">
-                  PENDIENTES <Badge className="bg-blue-500 font-black">{availableDocs.length}</Badge>
+            <Card className="bg-card border-border rounded-2xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
+              <CardHeader className="p-6 border-b border-border">
+                <CardTitle className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center justify-between">
+                  PENDIENTES <Badge className="bg-primary text-primary-foreground font-bold">{availableDocs.length}</Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
@@ -719,7 +1033,7 @@ export default function Terapias() {
                     {availableDocs.map(doc => (
                       <div 
                         key={doc.name} 
-                        className="w-full px-6 py-4 flex items-center gap-3 group transition-colors hover:bg-blue-500/5"
+                        className="w-full px-6 py-4 flex items-center gap-3 group transition-colors hover:bg-primary/5"
                       >
                         <div 
                           className="flex-1 min-w-0 flex items-center gap-3 cursor-pointer"
@@ -728,12 +1042,12 @@ export default function Terapias() {
                             setForm(f => ({ ...f, filename: doc.name }));
                           }}
                         >
-                          <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-900 group-hover:bg-blue-500/10 group-hover:text-blue-500 transition-colors">
+                          <div className="p-2 rounded-lg bg-muted dark:bg-slate-900 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
                             <FileText className="w-4 h-4" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-black text-slate-600 dark:text-slate-300 truncate group-hover:text-blue-500 transition-colors">{doc.name}</p>
-                            <div className="flex items-center gap-3 mt-1 text-[9px] font-bold text-slate-400 uppercase">
+                            <p className="text-xs font-bold text-muted-foreground dark:text-muted-foreground truncate group-hover:text-primary transition-colors">{doc.name}</p>
+                            <div className="flex items-center gap-3 mt-1 text-xs font-bold text-muted-foreground uppercase">
                               <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatRelativeDate(doc.modified)}</span>
                               <span className="flex items-center gap-1"><Download className="w-3 h-3" /> {formatSize(doc.size)}</span>
                             </div>
@@ -743,14 +1057,14 @@ export default function Terapias() {
                         <Button 
                           variant="outline" 
                           size="sm" 
-                          className="h-8 rounded-lg font-bold text-[10px] gap-2 opacity-0 group-hover:opacity-100 transition-all border-slate-200 dark:border-slate-800 shrink-0"
+                          className="h-8 rounded-lg font-bold text-xs gap-2 opacity-0 group-hover:opacity-100 transition-all border-border shrink-0"
                           disabled={interactionsLocked || step.current !== 1}
                           onClick={() => {
                             if (interactionsLocked || step.current !== 1) return;
-                            (window as any).electronAPI.shell.openFile(`${sourceDir}\\${doc.name}`);
+                            window.electronAPI.shell.openFile(`${sourceDir}\\${doc.name}`);
                           }}
                         >
-                          <FileText className="w-3.5 h-3.5 text-blue-500" /> 
+                          <FileText className="w-3.5 h-3.5 text-primary" /> 
                           Abrir Word original
                         </Button>
                       </div>
@@ -769,13 +1083,22 @@ export default function Terapias() {
 function GuideStep({ num, text }: { num: string, text: string }) {
   return (
     <div className="flex gap-4">
-      <div className="h-7 w-7 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0 font-black text-sm border border-blue-500/20">{num}</div>
-      <p className="text-xs font-medium text-slate-600 dark:text-slate-400 leading-relaxed pt-1">{text}</p>
+      <div className="h-7 w-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 font-bold text-sm border border-primary/20">{num}</div>
+      <p className="text-xs font-medium text-muted-foreground dark:text-muted-foreground leading-relaxed pt-1">{text}</p>
     </div>
   );
 }
 
-function DropZoneSimple({ file, onFiles, accept, disabled, onClear, defaultPath }: any) {
+interface DropZoneSimpleProps {
+  file: { name: string; path: string } | null;
+  onFiles: (paths: string[]) => void;
+  accept?: string;
+  disabled?: boolean;
+  onClear?: () => void;
+  defaultPath?: string;
+}
+
+function DropZoneSimple({ file, onFiles, accept, disabled, onClear, defaultPath }: DropZoneSimpleProps) {
   const [isOver, setIsOver] = useState(false);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -793,37 +1116,37 @@ function DropZoneSimple({ file, onFiles, accept, disabled, onClear, defaultPath 
       onDrop={handleDrop}
       className={cn(
         "relative border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center transition-all duration-300 cursor-pointer min-h-[120px]",
-        isOver ? "border-blue-500 bg-blue-500/5" : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700",
-        file && "border-blue-500 bg-blue-500/5",
+        isOver ? "border-primary bg-primary/5" : "border-border hover:border-slate-300 dark:hover:border-slate-700",
+        file && "border-primary bg-primary/5",
         disabled && "opacity-50 cursor-not-allowed border-slate-100 dark:border-slate-900"
       )}
       onClick={async () => {
         if (disabled) return;
         const filters = accept ? [{ name: "Documentos", extensions: accept.replace(/\./g, '').split(',') }] : [];
-        const path = await (window as any).electronAPI.selectFile({ filters, defaultPath });
+        const path = await window.electronAPI.selectFile({ filters, defaultPath });
         if (path) onFiles([path]);
       }}
     >
       {file ? (
         <div className="flex items-center gap-4 w-full px-2">
-          <div className="p-2.5 rounded-xl bg-blue-500 text-white shadow-lg shrink-0">
+          <div className="p-2.5 rounded-xl bg-muted text-muted-foreground shrink-0">
              <FileText className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-black text-slate-900 dark:text-white truncate uppercase tracking-tight">{file.name}</p>
-            <p className="text-[10px] font-bold text-blue-500 uppercase">Listo para organizar</p>
+            <p className="text-xs font-bold text-foreground truncate uppercase tracking-tight">{file.name}</p>
+            <p className="text-xs font-bold text-primary uppercase">Listo para organizar</p>
           </div>
           {!disabled && (
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-500/10" onClick={(e) => { e.stopPropagation(); onClear?.(); }}>
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:text-red-500 hover:bg-red-500/10" onClick={(e) => { e.stopPropagation(); onClear?.(); }}>
               <X className="w-4 h-4" />
             </Button>
           )}
         </div>
       ) : (
         <div className="flex flex-col items-center gap-2">
-          <Upload className={cn("w-6 h-6", isOver ? "text-blue-500" : "text-slate-300")} />
-          <p className="text-xs font-bold text-slate-500 text-center">
-             {isOver ? "¡Suéltalo!" : <>Arrastra el Word o <span className="text-blue-500 underline decoration-2 underline-offset-2">selecciona</span></>}
+          <Upload className={cn("w-6 h-6", isOver ? "text-primary" : "text-muted-foreground")} />
+          <p className="text-xs font-bold text-muted-foreground text-center">
+             {isOver ? "¡Suéltalo!" : <>Arrastra el Word o <span className="text-primary underline decoration-2 underline-offset-2">selecciona</span></>}
           </p>
         </div>
       )}
