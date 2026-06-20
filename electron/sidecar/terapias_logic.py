@@ -5,10 +5,14 @@ Funciones sin dependencias de GUI o configuración, para facilitar tests.
 
 
 def sanitize_filename(name: str) -> str:
-    """Elimina caracteres inválidos para nombres de archivo en Windows."""
+    """Elimina caracteres inválidos para nombres de archivo en Windows y neutraliza secuencias de traversal."""
+    # Reemplazar separadores de ruta y caracteres no permitidos
     invalid = '<>:"/\\|?*'
     for ch in invalid:
         name = name.replace(ch, "_")
+    # Neutralizar secuencias ".."
+    while ".." in name:
+        name = name.replace("..", "__")
     return name.strip()
 
 

@@ -176,14 +176,22 @@ def handle_prepare(data):
         input_name = data.get("input_name", "").strip()
         filename = data.get("filename", "") # Si viene de la lista
         base_dest = os.path.abspath(data.get("base_dest", ""))
-        source_dir = data.get("source_dir", DEFAULT_SOURCE)
+        source_dir = os.path.abspath(data.get("source_dir", DEFAULT_SOURCE))
         
         if not input_name:
             return {"ok": False, "error": "El nombre de entrada está vacío"}
         
         source_path = ""
         if filename:
-            source_path = os.path.join(source_dir, filename)
+            # Requisito: Forzar basename para evitar traversal y aplicar sanitización al archivo
+            clean_filename = sanitize_filename(os.path.basename(filename))
+            source_path = os.path.join(source_dir, clean_filename)
+            
+            # Validar que source_path esté dentro de source_dir
+            source_dir_abs = os.path.realpath(source_dir)
+            source_path_abs = os.path.realpath(source_path)
+            if os.path.commonpath([source_dir_abs, source_path_abs]) != source_dir_abs:
+                return {"ok": False, "error": "Acceso no autorizado: la ruta de origen está fuera del directorio origen permitido."}
         else:
             # Si no hay filename, buscar el primero disponible
             docs = []
@@ -199,13 +207,14 @@ def handle_prepare(data):
 
         # 1. Extraer paciente y limpiar nombre
         patient = patient_from_user_input(input_name)
+        # Requisito: Sanitizar el nombre del paciente para evitar traversal en la creación de carpetas
+        patient = sanitize_filename(patient)
         clean_name = sanitize_filename(input_name)
         
         # 2. Construir rutas (AÑO/MES/DÍA)
         hoy = datetime.date.today()
         _, _, ruta_dia, _ = build_folder_structure(base_dest, hoy.year, hoy.month, hoy.day, MESES)
         patient_folder = os.path.join(ruta_dia, patient)
-        os.makedirs(patient_folder, exist_ok=True)
 
         # 3. Mover el archivo a la carpeta del paciente
         ext = os.path.splitext(source_path)[1].lower()
@@ -219,6 +228,22 @@ def handle_prepare(data):
 
         if not check_path_length(dest_doc_path):
             return {"ok": False, "error": "La ruta de destino es demasiado larga para Windows."}
+
+        # Requisito: Validar con realpath/abspath que el resultado sigue DENTRO de base_dest
+        base_dest_abs = os.path.realpath(base_dest)
+        patient_folder_abs = os.path.realpath(patient_folder)
+        dest_doc_path_abs = os.path.realpath(dest_doc_path)
+        
+        try:
+            if os.path.commonpath([base_dest_abs, patient_folder_abs]) != base_dest_abs:
+                return {"ok": False, "error": "Acceso no autorizado: la ruta de la carpeta del paciente está fuera del directorio destino."}
+            if os.path.commonpath([base_dest_abs, dest_doc_path_abs]) != base_dest_abs:
+                return {"ok": False, "error": "Acceso no autorizado: la ruta del documento de destino está fuera del directorio destino."}
+        except ValueError:
+            return {"ok": False, "error": "Acceso no autorizado: rutas en diferentes unidades de disco."}
+
+        # Crear el directorio destino solo después de validar la seguridad del path
+        os.makedirs(patient_folder, exist_ok=True)
 
         shutil.move(source_path, dest_doc_path)
 
