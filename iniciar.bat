@@ -1,4 +1,4 @@
 @echo off
-cd /d "C:\DEV\TODO EN UNO\ControlHub"
+cd /d "%~dp0"
 npm run dev
 pause

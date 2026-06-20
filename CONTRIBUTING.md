@@ -4,8 +4,8 @@ Gracias por tu interés en mejorar ControlHub. Este proyecto es una app Electron
 
 ## Antes de empezar
 
-1. Lee [CONTEXT.md](./CONTEXT.md) para entender arquitectura, IPC y decisiones ya tomadas.
-2. Revisa [BUSINESS_LOGIC_SPEC.md](./BUSINESS_LOGIC_SPEC.md) si tocas el escáner COTU.
+1. Lee [CONTEXT.md](./CONTEXT.md) para arquitectura, IPC, lógica COTU y decisiones ya tomadas.
+2. Revisa la sección **15. Lógica de negocio COTU** en CONTEXT si tocas el escáner.
 3. No reintroduzcas patrones descartados (ver sección "Lo que NO hacer" en CONTEXT.md).
 
 ## Entorno de desarrollo

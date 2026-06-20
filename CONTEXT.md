@@ -144,47 +144,40 @@ PDFTools UI → IPC pdf:* (22 handlers)
 
 ```
 ControlHub/
-├── CONTEXT.md                    ← este archivo
+├── CONTEXT.md                    ← documentación técnica (este archivo)
+├── README.md                     ← onboarding público
 ├── package.json                  ← versión, scripts, deps
 ├── vite.config.ts                ← build React + Electron, manualChunks
 ├── scripts/
 │   └── loadTest.ts               ← load test CLI (Node puro, sin Electron)
-├── diagnose_pdf.mjs              ← script diagnóstico PDF standalone (referencia)
 ├── electron/
 │   ├── main.ts                   ← IPC, sidecars, watcher, OCR, ventana
 │   ├── preload.ts                ← contextBridge → electronAPI
 │   ├── pdfWorker.ts              ← UtilityProcess: readFile + pdf-parse
-│   ├── workerPool.ts             ← pool UtilityProcess (Electron API)
+│   ├── workerPool.ts             ← pool UtilityProcess
 │   ├── database.ts               ← persistencia JSON userData
-│   ├── sidecar/
-│   │   ├── terapias_bridge.py    ← IPC Python terapias
-│   │   ├── terapias_logic.py     ← reglas SS/carpetas (copiado de Organizador)
-│   │   ├── pdf_bridge.py         ← 22+ comandos PDF
-│   │   └── tests/                ← 2 suites Python
-│   └── pdfTools/                 ← [CÓDIGO MUERTO] libreoffice.js, ghostscript.js, qpdf.js — no cableados en main.ts
+│   └── sidecar/
+│       ├── terapias_bridge.py    ← IPC Python terapias
+│       ├── terapias_logic.py     ← reglas SS/carpetas
+│       ├── pdf_bridge.py         ← 22 comandos PDF
+│       └── tests/                ← suites Python
 ├── src/
 │   ├── main.tsx                  ← entry React
-│   ├── electron.d.ts             ← tipos parciales electronAPI
-│   ├── shared/types.ts           ← tipos "fuente única" — **0 imports en el proyecto**
-│   └── app/
-│       ├── App.tsx               ← ThemeProvider + DataProvider + RouterProvider
-│       ├── routes.tsx            ← hash router, lazy routes
-│       ├── contexts/
-│       │   ├── DataContext.tsx   ← estado global COTU + sidecar status
-│       │   └── ThemeContext.tsx
-│       ├── components/
-│       │   ├── layouts/MainLayout.tsx
-│       │   └── navigation/{Sidebar,Header}.tsx
-│       ├── pages/
-│       │   ├── Scanner.tsx, Reports.tsx, History.tsx, Dashboard.tsx, Settings.tsx
-│       │   ├── Terapias/index.tsx
-│       │   └── PDFTools/index.tsx
-├── utils/
-│   ├── localScanner.ts   ← motor COTU v3.3.0
-│   └── mockData.ts         ← demo escaneo
-├── python-embed/                 ← Python embebido para producción (Windows)
-├── metrics/                      ← salida load-test (gitignored [INCIERTO])
-└── BUSINESS_LOGIC_SPEC.md        ← contrato lógica COTU
+│   ├── electron.d.ts             ← tipos electronAPI
+│   ├── shared/types.ts           ← fuente única de tipos de dominio
+│   ├── app/
+│   │   ├── App.tsx               ← ThemeProvider + DataProvider + Router
+│   │   ├── routes.tsx            ← hash router, lazy routes
+│   │   ├── config/validation.ts  ← validadores de settings
+│   │   ├── contexts/             ← DataContext, ThemeContext
+│   │   ├── components/           ← layouts, navigation, ui (solo usados)
+│   │   ├── pages/                ← Scanner, Reports, Terapias, PDFTools...
+│   │   └── utils/
+│   │       ├── localScanner.ts   ← motor COTU v3.3.0
+│   │       └── mockData.ts       ← modo demo (Scanner)
+│   └── tests/                    ← Vitest
+├── python-embed/                 ← Python embebido producción (gitignored)
+└── public/                       ← iconos estáticos
 ```
 
 ---
@@ -195,7 +188,7 @@ ControlHub/
 |----|----------|---------------|--------|
 | P01 | `profiler:save` IPC eliminado de main.ts pero preload expone `reportProfilerData` y DataContext lo invoca al unmount | **Confirmado** | ✅ RESUELTO — Código profiler eliminado y limpieza de hooks |
 | P02 | Optional chaining en filtros de Compañía y Año en Reports.tsx. activeScan cae a history[0] cuando currentScan es nulo. | **Confirmado** | ✅ RESUELTO — Unificación de activeScan (currentScan ?? history[0]) |
-| P03 | `src/shared/types.ts` declarado como fuente única pero **ningún archivo lo importa**; tipos duplicados en DataContext, localScanner, database.ts con campos distintos | **Confirmado** | **Corregido** — unificación de tipos completada, tres builds consecutivos sin errores |
+| P03 | Tipos centralizados en `src/shared/types.ts` | **Confirmado** | ✅ RESUELTO — fuente única importada en DataContext, localScanner, database, páginas |
 | P04 | Triple persistencia settings/history: `localStorage` (`ordertrack-*`), `database.json` IPC, `electron-store` | **Confirmado** | **Corregido** — Triple persistencia unificada; `updateSettings` restaurada tras regresión |
 | P05 | Claves terapias fragmentadas: `settings.terapiasDir` vs `terapiasSourceDir`; Settings solo escribe la primera; Terapias sincroniza ambas; main.ts IPC terapias lee `terapiasSourceDir` | **Confirmado** | ✅ RESUELTO — Unificación de claves de configuración y sincronización |
 | P06 | IPC `pdf:pdf_to_excel` / `pdf:pdf_to_ppt` registrados en main.ts; **no implementados** en pdf_bridge.py; **no expuestos** en UI PDFTools | **Confirmado** | ✅ RESUELTO — Handlers huérfanos eliminados |
@@ -279,8 +272,8 @@ Ordenada por **impacto real en producción/uso diario**, no severidad teórica:
 
 ### Tipos
 
-- **Estado deseado:** `src/shared/types.ts` como fuente única.
-- **Estado real:** tipos redefinidos en `DataContext.tsx`, `localScanner.ts`, `database.ts`. Riesgo de desincronización (p. ej. `ScanStats` con campos distintos).
+- **Fuente única:** `src/shared/types.ts` — Invoice, ScanResult, AppSettings, ScanStats, etc.
+- **Tipos IPC:** `src/electron.d.ts` complementa el contrato preload.
 
 ### Manejo de errores
 
@@ -345,8 +338,7 @@ npm run load-test
 # → escanea FACTURA DE MUESTRA/
 # → escribe metrics/loadtest_<timestamp>.json + .md
 
-# Diagnóstico manual de un PDF (legacy, .mjs)
-node diagnose_pdf.mjs
+# Diagnóstico manual de un PDF — usar load-test o escaneo real
 ```
 
 **Notas no obvias:**
@@ -389,193 +381,24 @@ Decisiones ya evaluadas y **descartadas** — no re-proponer sin justificación 
 
 ---
 
-## 11. Apéndice: puntuación de madurez (auditoría previa)
+## 11. Estado del producto y pendientes
 
-| Área | Score /100 | Nota breve |
-|------|------------|------------|
-| Frontend React | 72 | UI sólida; bugs estado Reports; tipos débiles |
-| Electron | 68 | IPC extenso; main.ts recuperado; sidecar frágil sin auto-restart |
-| Persistencia | 55 | Triple fuente; keys legacy |
-| Integración Python | 70 | Sidecars funcionales; paths hardcodeados; gaps IPC |
-| UX | 65 | Flujo COTU bueno; Terapias incompleto vs referencia |
-| Escalabilidad | 60 | Pool PDF OK; cache sin límite; JSON DB limit 200 scans |
-| Mantenibilidad | 58 | Tipos duplicados; código muerto; docs desactualizados |
-| Testing | 25 | 2 suites Python; nada más |
+**Veredicto:** ControlHub cumple el objetivo de unificar COTU + Terapias + PDF Tools. El núcleo COTU supera la referencia original; Terapias tiene paridad operativa; PDF Tools es extensión propia (22 herramientas).
 
-**Evaluación global:** apto para uso interno Windows con operador conocedor; **no listo para producción enterprise** sin cerrar P01–P05 y tests mínimos.
+**Pendientes activos:**
 
----
-
-## 12. Análisis de ControlHub: navegación, flujos y unificación
-
-ControlHub es una suite Electron + React (v3.2.0) que integra **COTU Analytics** (escáner/facturas), **Organizador robusto** (terapias) y un módulo **PDF Tools** nuevo. La arquitectura es sólida, pero la unificación está **completa en COTU** y **parcial en Terapias**; además hay fricción de navegación y deuda técnica que impide aprovechar todo el potencial integrado.
+| Prioridad | Tarea |
+|-----------|-------|
+| Alta | Puente Reportes → PDF Tools |
+| Media | Settings con anclas `#scanning`, `#terapias` |
+| Media | Dashboard → Terapias con doc pre-seleccionado |
+| Media | Deprecar claves `ordertrack-*` restantes en localStorage |
+| Baja | Atajos de teclado globales y en Terapias |
+| Baja | Virtualización de tablas (P27) |
 
 ---
 
-## 13. Veredicto: ¿Cumple “extraer lo mejor y unirlo”?
-
-| Origen | Estado en ControlHub | Evaluación |
-|--------|---------------------|------------|
-| **COTU Analytics** (`scrips/cotu-analytics`) | Dashboard, Escáner, Reportes, Historial, Settings portados y mejorados (scanner v3.3, OCR fallback, watcher, worker pool) | **Sí — ~90%+ y en varios puntos supera la referencia** |
-| **Organizador robusto** | Lógica core en `terapias_logic.py` + sidecar Word→PDF | **Parcial — lógica sí, salvaguardas de UX no** |
-| **PDF Tools** | Módulo nuevo con sidecar Python | **Extensión propia**, no viene de un proyecto referencia |
-
-```mermaid
-flowchart TB
-  subgraph refs [Proyectos referencia]
-    CA[COTU Analytics]
-    OR[Organizador robusto]
-  end
-  subgraph ch [ControlHub]
-    D[Dashboard]
-    S[Escáner]
-    R[Reportes]
-    H[Historial]
-    T[Terapias]
-    P[PDF Tools]
-  end
-  CA -->|Completo + mejoras| S
-  CA --> D & R & H
-  OR -->|Lógica core| T
-  P -->|Nuevo| P
-  D -.-|KPIs terapias| T
-  S -->|currentScan| R
-  H -->|setCurrentScan| R
-```
-
-**Conclusión:** ControlHub **sí es una app unificada usable**, pero **no es una unión 1:1 del “mejor de cada uno”**. El núcleo COTU está bien migrado; Terapias pierde confirmaciones y validaciones del Organizador; PDF Tools añade valor pero tiene huecos internos.
-
----
-
-## 14. Arquitectura actual (detallada)
-
-```mermaid
-flowchart TB
-  subgraph renderer [Renderer — React]
-    Pages[Pages: Scanner, Reports, Terapias, PDFTools...]
-    DC[DataContext]
-    LS[localScanner.ts v3.3]
-    Pages --> DC
-    Pages --> LS
-    LS -->|electronAPI| Preload
-  end
-
-  subgraph preload [Preload — contextBridge]
-    Preload[preload.ts → window.electronAPI]
-  end
-
-  subgraph main [Main Process — electron/main.ts]
-    IPC[ipcMain handlers]
-    WP[WorkerPool]
-    PW[pdfWorker.ts UtilityProcess]
-    DB[database.ts JSON]
-    ES[electron-store]
-    TW[SidecarManager Terapias]
-    PS[SidecarManager PDF]
-    OCR[Tesseract.js OCR fallback]
-    CH[chokidar watcher]
-    IPC --> WP --> PW
-    IPC --> DB
-    IPC --> ES
-    IPC --> TW
-    IPC --> PS
-    IPC --> OCR
-    IPC --> CH
-  end
-
-  subgraph python [Sidecars Python — stdin/stdout JSON]
-    TB[terapias_bridge.py]
-    PB[pdf_bridge.py]
-    TL[terapias_logic.py]
-    TW --> TB --> TL
-    PS --> PB
-  end
-
-  Preload --> IPC
-  PW -->|pdf-parse| PDFLib[pdf-parse npm]
-  PB -->|pikepdf fitz win32com| PyLibs[Python libs]
-```
-
----
-
-## 15. Flujo de trabajo — optimizaciones
-
-| Flujo | Fortalezas | Debilidades (✅ Resuelto) |
-|-------|------------|--------------------------|
-| **COTU (Escáner → Reportes → Historial)** | motor v3.3 con scoring en 2 capas, cancelación por `scanId`, OCR fallback, export CSV/XLSX/PDF. | Bug lógico en Reportes (`activeScan` vs `history[0]`) ✅ RESUELTO |
-| **Terapias** | Confirmación + validación SS en Terapias. Auto-detección Word. | Falta diálogos SS, atajos teclado ✅ RESUELTO |
-| **PDF Tools** | 22 herramientas, sidecar robusto. | README dice 23 tools, UI tiene 22 ✅ RESUELTO |
-
----
-
-## 16. Conexión entre módulos
-
-### Módulos bien conectados (núcleo COTU)
-
-| Módulo | Conecta con | Mecanismo |
-|--------|-------------|-----------|
-| Escáner | Reportes, Header | `currentScan`, `navigate` |
-| Historial | Reportes | `setCurrentScan` |
-| Dashboard | Escáner, Terapias, PDF, Historial | quick actions + KPIs de `currentScan` |
-| Settings | Escáner, Reportes | columnas, `maxDepth`, `customInsurers`, `rowsPerPage` |
-| Header | Reportes | alertas de duplicados/montos desde `currentScan` |
-
-### Módulos aislados
-
-| Módulo | Aislamiento | Oportunidad |
-|--------|-------------|-------------|
-| **Terapias** | Solo `settings.terapiasDir` + `dashboard.getStats` (docs pendientes) | Dashboard podría enlazar “3 docs pendientes” → Terapias con doc pre-seleccionado |
-| **PDF Tools** | Cero estado compartido con COTU | Preview de facturas, merge de anexos del escaneo |
-| **Sidecars** | Status en Sidebar, sin acción cruzada | Si PDF sidecar cae, sugerir reconectar desde la página que lo usa |
-
----
-
-## 17. Plan de acción priorizado
-
-### Quick wins (1–2 días)
-1. ✅ **RESUELTO (P02/P23):** Corregir bug `currentScan` vs `activeInvoices` en Reportes.
-2. ✅ **RESUELTO (Selector):** Selector de sesión en Reportes.
-3. ✅ **RESUELTO (P03/P08):** Adoptar `shared/types.ts` + completar `electron.d.ts` (eliminados todos los `(window as any)`).
-4. Iconos distintos Reportes vs PDF Tools.
-5. Eliminar ruta `/dashboard` duplicada o redirigir a `/`.
-
-### Mejoras de flujo (1 semana)
-6. ✅ **RESUELTO (P09):** Confirmación + validación SS en Terapias.
-7. ✅ **RESUELTO (Auto-Word):** Auto-detección de Word en Terapias.
-8. Settings con secciones ancladas (`#scanning`, `#terapias`).
-9. Unificar persistencia (deprecar `ordertrack-*` en localStorage con migración única).
-10. ✅ **RESUELTO (P05):** Unificación de configuración y rutas de Terapias.
-
-### Integración profunda (2+ weeks)
-11. Puente Reportes → PDF Tools (preview/merge de facturas).
-12. ✅ **RESUELTO (P17):** Tesseract path configurable y detección dinámica.
-13. Dashboard → Terapias con contexto (doc pendiente).
-14. ✅ **RESUELTO (P24):** Implementación de tests unitarios con Vitest.
-15. ✅ **RESUELTO (P01/P06):** Limpieza de código muerto e IPCs huérfanos.
-16. ✅ **RESUELTO (P15):** Handler `dialog:selectDirectory` expuesto y alineado.
-17. ✅ **RESUELTO (P07+P16):** Eliminación de código y dependencias muertas.
-
----
-
-## 18. Próximos pasos recomendados
-
-1. **Implementar pipeline de migración centralizada** (config migrations) y versión de esquema (`settings.schemaVersion`).
-2. **Ejecutar pruebas de integración** tras migración para validar que no haya regresiones en flujos existentes.
-3. **Diseñar UI para abrir PDF en PDF Tools desde Reportes** (acción “Abrir en PDF Tools”).
-4. **Documentar proceso de migración** para usuarios legacy (clave `cotu-last-path`).
-5. **Planificar pruebas de usuario** para validar la nueva navegación y la integración PDF Tools.
-
----
-
-## 19. Resumen ejecutivo
-
-ControlHub **logra la unificación en una sola app** y **supera a COTU Analytics** en el módulo de facturas. Se ha avanzado significativamente en la paridad con el **Organizador robusto** en Terapias, integrando confirmaciones operativas, detección dinámica de Word y auto-detección de archivos en carpeta origen. PDF Tools amplía el alcance pero permanece parcialmente **desconectado** del núcleo COTU. Las optimizaciones críticas resueltas incluyen coherencia de `currentScan` en Reportes con selector de sesión directo, robustez de la detección y manejo de Tesseract, y limpieza profunda de tipos y deuda técnica.
-
-El enfoque ahora se desplaza hacia la **unificación de la persistencia** y la **conexión funcional** entre el reporte de facturas y las herramientas PDF. Además, se prioriza la **migración de configuración centralizada** para soportar futuras evoluciones sin interrupciones.
-
----
-
-## 20. Comparativa histórica vs proyectos fuente
+## 12. Comparativa histórica vs proyectos fuente
 
 > Los proyectos originales ya no existen como repos separados; esta tabla documenta el grado de paridad alcanzado.
 
@@ -611,7 +434,7 @@ El enfoque ahora se desplaza hacia la **unificación de la persistencia** y la *
 
 ---
 
-## 21. Fricciones de navegación — estado
+## 13. Fricciones de navegación — estado
 
 | Problema | Impacto | Estado |
 |----------|---------|--------|
@@ -621,12 +444,12 @@ El enfoque ahora se desplaza hacia la **unificación de la persistencia** y la *
 | Iconos ambiguos Reportes vs PDF Tools | Medio | ✅ RESUELTO — `BarChart3` / `FileStack` |
 | Scanner → Settings genérico | Medio | Pendiente — anclas `#scanning` |
 | Suspense doble | Bajo | ✅ RESUELTO (P12) |
-| Branding legacy `ordertrack-*` | Bajo | Parcial — migración en `config/migration.ts` |
+| Branding legacy `ordertrack-*` | Bajo | Parcial — limpieza en arranque (`cotu-last-path`) y al guardar settings |
 | Atajos teclado globales | Medio | Pendiente |
 
 ---
 
-## 22. Changelog de sesiones recientes
+## 14. Changelog de sesiones recientes
 
 ### 2026-06-18 — PDF Tools UX
 
@@ -677,3 +500,36 @@ El enfoque ahora se desplaza hacia la **unificación de la persistencia** y la *
 - Eliminado `analisis y mejora.md` — contenido consolidado en este documento.
 - Eliminados artefactos locales (`compressed.pdf`, `merged.pdf`, stubs `src/electron/`).
 - Preparación para GitHub: `.gitignore`, README, LICENSE, CONTRIBUTING.
+
+---
+
+## 15. Lógica de negocio COTU
+
+> Contrato funcional del escáner. Implementación en `src/app/utils/localScanner.ts` y tipos en `src/shared/types.ts`.
+
+### Entidades
+
+| Entidad | Campos clave | Persistencia |
+|---------|---------------|--------------|
+| **Invoice** | `id`, `invoiceNumber` (regex COTU), `company`, `month`, `year`, `detail`, `filePath`, `amount` | Dentro de ScanResult |
+| **ScanResult** | `id`, `invoices[]`, `stats`, `scanPath`, `timestamp` | `database.json` vía IPC |
+| **AppSettings** | `columns`, `scanning`, `display`, `customInsurers`, `terapiasDir`, `operatorName` | IPC + electron-store |
+
+### Reglas de escaneo (`scanLocalDirectory`)
+
+- Ignora carpetas sistema: `.git`, `node_modules`, `$RECYCLE.BIN`, etc.
+- Scoring en 2 capas: nombre de archivo → contenido PDF (pdf-parse + OCR fallback).
+- Extracción regex: número COTU, monto COP, aseguradora (lista configurable), fechas.
+- Al finalizar: `addToHistory` → `setCurrentScan` → navegación a `/reports`.
+
+### Dashboard
+
+- KPIs y gráficos con Recharts (AreaChart tendencia, BarChart por año, PieChart aseguradoras).
+- Sin API REST — todo client-side + IPC.
+- Empty state limpio cuando no hay `currentScan` (sin datos mock).
+
+### Terapias (reglas en `terapias_logic.py`)
+
+- Código SS en nombre de archivo; estructura `AÑO/MES/DÍA/PACIENTE`.
+- Confirmación pre-movimiento con preview de ruta final.
+- Word → PDF vía sidecar persistente con backup.

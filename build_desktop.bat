@@ -1,18 +1,15 @@
 @echo off
 echo =======================================================
-echo          Generador de Ejecutable COTU Analytics
+echo          ControlHub - Generador de instalador Windows
 echo =======================================================
-echo.
-echo Iniciando proceso de compilacion para el entorno web (Vite)...
-echo Y posterior empaquetado para Escritorio Windows (Electron Builder)...
 echo.
 
 cd /d "%~dp0"
 
-echo [1/3] Limpiando procesos en segundo plano de COTU Analytics...
-taskkill /F /IM "COTU Analytics.exe" /T >nul 2>&1
+echo [1/3] Cerrando instancias previas de ControlHub...
+taskkill /F /IM "ControlHub.exe" /T >nul 2>&1
 
-echo [2/3] Limpiando antigua carpeta de compilacion (release/win-unpacked)...
+echo [2/3] Limpiando release/win-unpacked anterior...
 if exist "release\win-unpacked" rmdir /s /q "release\win-unpacked"
 
 echo [3/3] Compilando y empaquetando...
@@ -20,15 +17,11 @@ call npm run build:electron
 
 echo.
 if %errorlevel% neq 0 (
-    echo [ERROR] Hubo un problema compilando el proyecto. Asegurese de tener Node.js instalado y reiniciar el PC si recien lo instalo.
+    echo [ERROR] Fallo la compilacion. Verifique Node.js y dependencias.
     pause
     exit /b %errorlevel%
 )
 
-echo [EXITO] Compilacion completada con exito.
-echo Abriendo la carpeta 'release' donde se encuentra el .exe...
-echo.
-
+echo [EXITO] Instalador generado en la carpeta release.
 explorer "%~dp0release"
-
 pause

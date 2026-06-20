@@ -46,7 +46,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router'],
-          'vendor-ui': ['@radix-ui/react-accordion', '@radix-ui/react-dialog', 'lucide-react', 'motion'],
+          'vendor-ui': ['@radix-ui/react-dialog', '@radix-ui/react-select', 'lucide-react', 'motion'],
           'vendor-utils': ['date-fns', 'xlsx', 'jspdf', 'fuse.js'],
           'vendor-charts': ['recharts'],
         }

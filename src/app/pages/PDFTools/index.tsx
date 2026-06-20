@@ -63,8 +63,6 @@ import {
 } from "../../components/ui/alert-dialog";
 import { toast } from "sonner";
 import { cn } from "../../components/ui/utils";
-import { usePDFTools } from "./hooks/usePDFTools";
-import { useData } from "../../contexts/DataContext";
 
 // --- Types & Constants ---
 interface FileInfo {
@@ -136,17 +134,17 @@ export default function PDFTools() {
   const navigate = useNavigate();
   const [view, setView] = useState<'selector' | 'active' | 'result'>('selector');
   const [activeTool, setActiveTool] = useState<ToolConfig | null>(null);
-  // processing state handled by usePDFTools hook
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-  // result state handled by usePDFTools hook
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message?: string; error?: string; path?: string } | null>(null);
+  const [finalOutputPath, setFinalOutputPath] = useState("");
 
   // --- Common States ---
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [output, setOutput] = useState("");
   const [askBeforeSave, setAskBeforeSave] = useState(true);
-  const { isProcessing, result, setFinalOutputPath, executeAction: hookExecuteAction } = usePDFTools();
-const fileQueueRef = useRef<FileInfo[]>([]);
+  const fileQueueRef = useRef<FileInfo[]>([]);
   const [, setQueueTick] = useState(0);
   const fileQueue = fileQueueRef.current;
   const [searchTerm, setSearchTerm] = useState('');

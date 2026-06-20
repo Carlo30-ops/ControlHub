@@ -85,6 +85,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // Cargar historial y settings asincronamente desde DB (o localStorage en fallback)
   useEffect(() => {
     const initData = async () => {
+      // Limpieza idempotente de claves legacy en localStorage
+      try {
+        localStorage.removeItem('cotu-last-path');
+      } catch {
+        /* ignore */
+      }
+
       if (window.electronAPI?.getSettings) {
         try {
           const savedSettings = await window.electronAPI.getSettings();

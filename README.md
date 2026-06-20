@@ -95,8 +95,7 @@ ControlHub/
 
 | Archivo | Audiencia |
 |---------|-----------|
-| [CONTEXT.md](./CONTEXT.md) | Desarrolladores — arquitectura, IPC, problemas conocidos, changelog |
-| [BUSINESS_LOGIC_SPEC.md](./BUSINESS_LOGIC_SPEC.md) | Lógica de negocio COTU (regex, scoring, entidades) |
+| [CONTEXT.md](./CONTEXT.md) | Desarrolladores — arquitectura, IPC, lógica COTU, changelog |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | Guía para contribuir |
 
 ---
