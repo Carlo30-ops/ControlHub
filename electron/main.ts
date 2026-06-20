@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -453,18 +453,6 @@ app?.on('before-quit', async () => {
 app?.whenReady()?.then(async () => {
   terapiasSidecar.start();
   pdfSidecar.start();
-
-  // Protocolo custom para servir PDFs locales sin abrir el explorador
-  protocol.handle('cotu', (request) => {
-    const url = new URL(request.url);
-    if (url.hostname === 'pdf') {
-      const pathArg = url.searchParams.get('path');
-      if (pathArg) {
-        return net.fetch('file:///' + pathArg.replace(/\\/g, '/'));
-      }
-    }
-    return new Response('Not Found', { status: 404 });
-  });
   createWindow();
 });
 
