@@ -39,6 +39,8 @@ import {
   Unlock,
   Search,
   Layers,
+  AlertTriangle,
+  Cpu,
   Heart
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
@@ -135,7 +137,15 @@ export default function PDFTools() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; message?: string; error?: string; path?: string } | null>(null);
+  const [result, setResult] = useState<{ 
+    ok: boolean; 
+    message?: string; 
+    error?: string; 
+    path?: string;
+    warning?: string;
+    pdf_profile?: string;
+    engine?: string;
+  } | null>(null);
   const [finalOutputPath, setFinalOutputPath] = useState("");
 
   // --- Common States ---
@@ -525,10 +535,11 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
       if (res.ok) {
         setResult({
           ok: true,
-          message: res.warning
-            ? `${successMsg} ⚠️ ${res.warning}`
-            : successMsg,
-          path: res.output || (res.outputs && res.outputs[0])
+          message: successMsg,
+          path: res.output || (res.outputs && res.outputs[0]),
+          warning: res.warning,
+          pdf_profile: res.pdf_profile,
+          engine: res.engine,
         });
         setView('result');
         toast.success(successMsg);
@@ -1089,6 +1100,34 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
             </Button>
           </div>
         </div>
+
+        {/* Info de procesamiento */}
+        {(result.warning || result.pdf_profile || result.engine) && (
+          <div className="space-y-2">
+            {result.warning && (
+              <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <p className="text-sm font-medium">{result.warning}</p>
+              </div>
+            )}
+            {(result.pdf_profile || result.engine) && (
+              <div className="flex flex-wrap gap-2 justify-center">
+                {result.pdf_profile && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
+                    <FileText className="w-3 h-3" />
+                    {result.pdf_profile}
+                  </span>
+                )}
+                {result.engine && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
+                    <Cpu className="w-3 h-3" />
+                    {result.engine}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Banner para enviar a Terapias si el resultado es Word */}
         {result.path?.toLowerCase().endsWith('.docx') && (
