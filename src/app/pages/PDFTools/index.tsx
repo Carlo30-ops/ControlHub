@@ -132,7 +132,7 @@ const TOOLS: ToolConfig[] = [
 export default function PDFTools() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [view, setView] = useState<'selector' | 'active' | 'result'>('selector');
+  const [view, setView] = useState<'selector' | 'active' | 'queue' | 'result'>('selector');
   const [activeTool, setActiveTool] = useState<ToolConfig | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
@@ -157,6 +157,28 @@ export default function PDFTools() {
   const [, setQueueTick] = useState(0);
   const fileQueue = fileQueueRef.current;
   const [searchTerm, setSearchTerm] = useState('');
+
+  const setQueueFiles = (nextFiles: FileInfo[]) => {
+    fileQueueRef.current = nextFiles;
+    setQueueTick((tick) => tick + 1);
+  };
+
+  const handleQueueReorder = (idx: number, dir: number) => {
+    const next = [...fileQueueRef.current];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setQueueFiles(next);
+  };
+
+  const handleQueueRemove = (idx: number) => {
+    const next = [...fileQueueRef.current];
+    next.splice(idx, 1);
+    setQueueFiles(next);
+    if (next.length === 0) {
+      setView('active');
+    }
+  };
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -704,6 +726,117 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
     );
   }
 
+  // VISTA B: Cola de reordenación
+  if (view === 'queue' && activeTool) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6 animate-in slide-in-from-left-4 duration-500 pb-20 px-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-2 text-muted-foreground hover:text-foreground"
+          onClick={() => setView('active')}
+        >
+          <ChevronLeft className="w-4 h-4" /> Volver
+        </Button>
+
+        <Breadcrumb className="my-4">
+          <BreadcrumbItem>
+            <BreadcrumbLink href="/pdf-tools">PDF Tools</BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>{activeTool.name}</BreadcrumbPage>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>Reordenar cola</BreadcrumbPage>
+          </BreadcrumbItem>
+        </Breadcrumb>
+
+        <div className="rounded-3xl border border-border bg-card p-6 space-y-6">
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold text-foreground">Reordena tu cola de archivos</h2>
+            <p className="text-sm text-muted-foreground">Arrastra varias entradas antes de procesarlas en secuencia. Usa los controles para ajustar el orden de procesamiento.</p>
+          </div>
+
+          <ScrollArea className="h-72 rounded-3xl border border-border bg-muted/10 p-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {fileQueue.map((file, idx) => (
+                <div key={file.path} className="relative rounded-xl border border-border bg-card overflow-hidden group cursor-default">
+                  <div className="aspect-[3/4] bg-muted flex items-center justify-center overflow-hidden">
+                    {thumbs[file.path] ? (
+                      <img src={thumbs[file.path]} className="w-full h-full object-cover" />
+                    ) : (
+                      <FileText className="w-10 h-10 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="p-2 text-[10px] font-bold truncate text-foreground">{file.name}</div>
+                  <div className="absolute top-1.5 right-1.5 flex items-center gap-1 opacity-90">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 rounded"
+                      disabled={idx === 0}
+                      onClick={(e) => { e.stopPropagation(); handleQueueReorder(idx, -1); }}
+                    >
+                      <ArrowUp className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 rounded"
+                      disabled={idx === fileQueue.length - 1}
+                      onClick={(e) => { e.stopPropagation(); handleQueueReorder(idx, 1); }}
+                    >
+                      <ArrowDown className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 rounded text-destructive hover:bg-destructive/10"
+                      onClick={(e) => { e.stopPropagation(); handleQueueRemove(idx); }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-muted-foreground">
+              Archivos en cola: <span className="font-semibold text-foreground">{fileQueue.length}</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                className="h-12 px-5 rounded-lg bg-primary text-primary-foreground font-bold"
+                onClick={() => {
+                  if (fileQueue.length === 0) return;
+                  setFiles([fileQueue[0]]);
+                  setQueueFiles(fileQueue.slice(1));
+                  setView('active');
+                }}
+              >
+                Confirmar orden y continuar
+              </Button>
+              <Button
+                variant="secondary"
+                className="h-12 px-5 rounded-lg"
+                onClick={() => {
+                  setQueueFiles([]);
+                  setView('active');
+                }}
+              >
+                Cancelar cola
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // VISTA B: Herramienta Activa
   if (view === 'active' && activeTool) {
     return (
@@ -765,6 +898,15 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                       const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("\\"));
                       setOutput(`${base}\\Resultado_${Date.now()}${activeTool.newExt || '.pdf'}`);
                     }
+                  } else if (newFiles.length > 1) {
+                    setQueueFiles(newFiles);
+                    const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("."));
+                    if (activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg') {
+                      setOutput(newPaths[0].substring(0, newPaths[0].lastIndexOf("\\")));
+                    } else {
+                      setOutput(`${base}${activeTool.newExt || (activeTool.id === 'extract' ? '_extraido.pdf' : activeTool.id === 'delete_pages' ? '_editado.pdf' : activeTool.id === 'compress' ? '_comprimido.pdf' : activeTool.id === 'ocr' ? '_ocr.pdf' : '_procesado.pdf')}`);
+                    }
+                    setView('queue');
                   } else {
                     setFiles([newFiles[0]]);
                     const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("."));
