@@ -150,6 +150,13 @@ export default function PDFTools() {
   const [searchTerm, setSearchTerm] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    window.electronAPI.security.syncActiveFiles(files.map(f => f.path));
+    return () => {
+      window.electronAPI.security.syncActiveFiles([]);
+    };
+  }, [files]);
+
   const filteredTools = useMemo(() => {
     return TOOLS.filter(t =>
       t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1132,11 +1139,39 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
 function DropZone({ multiple, onFiles, accept, files, onRemove, onReorder, className }: any) {
   const [isOver, setIsOver] = useState(false);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     setIsOver(false);
     const droppedFiles = Array.from(e.dataTransfer.files).map(f => (f as any).path);
-    if (droppedFiles.length > 0) onFiles(droppedFiles);
+    if (droppedFiles.length === 0) return;
+
+    const accepted: string[] = [];
+    let hadRejection = false;
+
+    for (const filePath of droppedFiles) {
+      try {
+        const result = await window.electronAPI.security.validateAndRegisterDroppedFile(filePath);
+        if (result.ok) {
+          accepted.push(filePath);
+        } else {
+          hadRejection = true;
+          const fileName = filePath.split(/\\|\//).pop() || filePath;
+          toast.error(`${fileName}: ${result.error}`);
+        }
+      } catch (err: any) {
+        hadRejection = true;
+        const fileName = filePath.split(/\\|\//).pop() || filePath;
+        toast.error(`${fileName}: Error validando archivo`);
+        continue;
+      }
+    }
+
+    if (accepted.length > 0) {
+      onFiles(accepted);
+      if (hadRejection) {
+        toast.success(`${accepted.length} archivo${accepted.length === 1 ? '' : 's'} cargado${accepted.length === 1 ? '' : 's'} correctamente.`);
+      }
+    }
   }, [onFiles]);
 
   return (

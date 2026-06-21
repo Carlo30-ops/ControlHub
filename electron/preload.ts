@@ -92,12 +92,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── Configuración Persistente ─────────────────────────────────────────────
   config: {
-  get: (key: string) => ipcRenderer.invoke('config:get', key),
-  set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),
-  getAll: () => ipcRenderer.invoke('config:getAll'),
-  setAll: (obj: Record<string, any>) => ipcRenderer.invoke('config:setAll', obj),
-  delete: (key: string) => ipcRenderer.invoke('config:delete', key),
-},
+    get: (key: string) => ipcRenderer.invoke('config:get', key),
+    set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),
+    getAll: () => ipcRenderer.invoke('config:getAll'),
+    setAll: (obj: Record<string, any>) => ipcRenderer.invoke('config:setAll', obj),
+    delete: (key: string) => ipcRenderer.invoke('config:delete', key),
+  },
 
   dashboard: {
     getStats: () => ipcRenderer.invoke('dashboard:stats'),
@@ -148,5 +148,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     repair: (data: any) => ipcRenderer.invoke('pdf:repair', data),
     ocr: (data: any) => ipcRenderer.invoke('pdf:ocr', data),
     getPageInfo: (data: any) => ipcRenderer.invoke('pdf:get_page_info', data),
+    // ── Seguridad (IPC) ────────────────────────────────────────────────────────
+    security: {
+      /** Validate a dropped file path. Returns `{ok:true}` on success or `{ok:false,error}` */
+      validateAndRegisterDroppedFile: (path: string) =>
+        ipcRenderer.invoke('security:validateAndRegisterDroppedFile', path),
+
+      /** Sync the current active file list with the main‑process whitelist */
+      syncActiveFiles: (paths: string[]) =>
+        ipcRenderer.invoke('security:syncActiveFiles', paths),
+    },
   },
 });

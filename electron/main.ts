@@ -9,6 +9,9 @@ import Store from 'electron-store';
 import Tesseract from 'tesseract.js';
 import { dbOptions } from './database';
 import { WorkerPool } from './workerPool';
+
+// Allowed file extensions for dropped files
+const ALLOWED_EXTENSIONS = new Set(['.pdf', '.docx', '.doc', '.xls', '.xlsx', '.ppt', '.pptx', '.jpg', '.jpeg', '.png', '.html']);
 // ─────────────────────────────────────────────────────────────────────────────
 // main.ts — Proceso principal de Electron — ControlHub v1.0.0
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,6 +32,50 @@ process.env.VITE_PUBLIC = app?.isPackaged
 
 let win: BrowserWindowType | null;
 let globalWatcher: FSWatcher | null = null;
+// Security allowlists for IPC path validation
+const registeredDroppedPaths = new Set<string>(); // real paths validated via validateAndRegisterDroppedFile
+const CONTROLHUB_TEMP_DIR = path.join(os.tmpdir(), 'controlhub-pdftools');
+
+/**
+ * Validate a candidate file path for IPC operations.
+ * Returns true if the path is allowed according to the allowlist rules.
+ */
+function validateOperationPath(candidatePath: string, isOutput: boolean): boolean {
+  try {
+    const resolved = path.resolve(candidatePath);
+    const realPath = fs.existsSync(resolved) ? fs.realpathSync(resolved) : resolved;
+    const normalize = (p: string) => path.normalize(p).toLowerCase();
+    const normResolved = normalize(realPath);
+
+    if (!isOutput) {
+      // Input: must be explicitly allowed or be a subpath of an approved dialog directory
+      if (sessionAllowedFiles.has(normResolved)) return true;
+      for (const approved of dialogApprovedPaths) {
+        const approvedNorm = normalize(approved);
+        if (normResolved === approvedNorm) return true;
+        const rel = path.relative(approvedNorm, normResolved);
+        if (!rel.startsWith('..') && !path.isAbsolute(rel)) return true;
+      }
+      return false;
+    } else {
+      // Output: subpath of an approved dialog directory or the exclusive temp folder
+      for (const approved of dialogApprovedPaths) {
+        const approvedNorm = normalize(approved);
+        const rel = path.relative(approvedNorm, normResolved);
+        if (!rel.startsWith('..') && !path.isAbsolute(rel)) return true;
+      }
+      const tempNorm = normalize(CONTROLHUB_TEMP_DIR);
+      const relTemp = path.relative(tempNorm, normResolved);
+      if (!relTemp.startsWith('..') && !path.isAbsolute(relTemp)) return true;
+      return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+const dialogApprovedPaths = new Set<string>(); // paths selected via native dialogs
+const sessionAllowedFiles = new Set<string>(); // active allowlist synced with UI
 
 // Fix #10: Pool de Workers PDF — creado al primer uso, reutilizado durante toda la sesión
 let pdfWorkerPool: WorkerPool | null = null;
@@ -292,34 +339,56 @@ ipcMain.handle('terapias:search_patient', (_, data) => {
 
 // IPC Handlers para PDF Tools
 ipcMain.handle('pdf:ping', () => pdfSidecar.send({ cmd: 'ping' }));
-ipcMain.handle('pdf:merge', (_, data) => pdfSidecar.send({ cmd: 'merge', data }));
-ipcMain.handle('pdf:compress', (_, data) => pdfSidecar.send({ cmd: 'compress', data }));
-ipcMain.handle('pdf:split', (_, data) => pdfSidecar.send({ cmd: 'split', data }));
-ipcMain.handle('pdf:rotate', (_, data) => pdfSidecar.send({ cmd: 'rotate', data }));
-ipcMain.handle('pdf:extract', (_, data) => pdfSidecar.send({ cmd: 'extract', data }));
-ipcMain.handle('pdf:word_to_pdf', (_, data) => pdfSidecar.send({ cmd: 'word_to_pdf', data }));
-ipcMain.handle('pdf:pdf_to_word', (_, data) => pdfSidecar.send({ cmd: 'pdf_to_word', data }));
-ipcMain.handle('pdf:excel_to_pdf', (_, data) => pdfSidecar.send({ cmd: 'excel_to_pdf', data }));
-ipcMain.handle('pdf:ppt_to_pdf', (_, data) => pdfSidecar.send({ cmd: 'ppt_to_pdf', data }));
-
-// Handlers adicionales para PDF Tools
-ipcMain.handle('pdf:delete_pages', (_, data) => pdfSidecar.send({ cmd: 'delete_pages', data }));
-ipcMain.handle('pdf:reorder_pages', (_, data) => pdfSidecar.send({ cmd: 'reorder_pages', data }));
-ipcMain.handle('pdf:watermark', (_, data) => pdfSidecar.send({ cmd: 'watermark', data }));
-ipcMain.handle('pdf:watermark_image', (_, data) => pdfSidecar.send({ cmd: 'watermark_image', data }));
-ipcMain.handle('pdf:crop', (_, data) => pdfSidecar.send({ cmd: 'crop', data }));
-ipcMain.handle('pdf:add_page_numbers', (_, data) => pdfSidecar.send({ cmd: 'add_page_numbers', data }));
-ipcMain.handle('pdf:jpg_to_pdf', (_, data) => pdfSidecar.send({ cmd: 'jpg_to_pdf', data }));
-ipcMain.handle('pdf:pdf_to_jpg', (_, data) => pdfSidecar.send({ cmd: 'pdf_to_jpg', data }));
-ipcMain.handle('pdf:html_to_pdf', (_, data) => pdfSidecar.send({ cmd: 'html_to_pdf', data }));
-ipcMain.handle('pdf:protect', (_, data) => pdfSidecar.send({ cmd: 'protect', data }));
-ipcMain.handle('pdf:unlock', (_, data) => pdfSidecar.send({ cmd: 'unlock', data }));
-ipcMain.handle('pdf:repair', (_, data) => pdfSidecar.send({ cmd: 'repair', data }));
+// Wrapper to validate input paths before delegating to sidecar
+const validatePdfHandler = (cmd: string, data: any) => {
+  // For operations that include input paths, check them
+  if (data && data.input) {
+    if (!validateOperationPath(data.input, false)) {
+      throw new Error(`Invalid input path for ${cmd}`);
+    }
+  }
+  // For output directories, validate as output
+  if (data && data.output_dir) {
+    if (!validateOperationPath(data.output_dir, true)) {
+      throw new Error(`Invalid output directory for ${cmd}`);
+    }
+  }
+  // For single‑file output paths, validate as output
+  if (data && data.output) {
+    if (!validateOperationPath(data.output, true)) {
+      throw new Error(`Invalid output path for ${cmd}`);
+    }
+  }
+  return pdfSidecar.send({ cmd, data });
+};
+ipcMain.handle('pdf:merge', (_, data) => validatePdfHandler('merge', data));
+ipcMain.handle('pdf:compress', (_, data) => validatePdfHandler('compress', data));
+ipcMain.handle('pdf:split', (_, data) => validatePdfHandler('split', data));
+ipcMain.handle('pdf:rotate', (_, data) => validatePdfHandler('rotate', data));
+ipcMain.handle('pdf:extract', (_, data) => validatePdfHandler('extract', data));
+ipcMain.handle('pdf:word_to_pdf', (_, data) => validatePdfHandler('word_to_pdf', data));
+ipcMain.handle('pdf:pdf_to_word', (_, data) => validatePdfHandler('pdf_to_word', data));
+ipcMain.handle('pdf:excel_to_pdf', (_, data) => validatePdfHandler('excel_to_pdf', data));
+ipcMain.handle('pdf:ppt_to_pdf', (_, data) => validatePdfHandler('ppt_to_pdf', data));
+// Additional handlers
+ipcMain.handle('pdf:delete_pages', (_, data) => validatePdfHandler('delete_pages', data));
+ipcMain.handle('pdf:reorder_pages', (_, data) => validatePdfHandler('reorder_pages', data));
+ipcMain.handle('pdf:watermark', (_, data) => validatePdfHandler('watermark', data));
+ipcMain.handle('pdf:watermark_image', (_, data) => validatePdfHandler('watermark_image', data));
+ipcMain.handle('pdf:crop', (_, data) => validatePdfHandler('crop', data));
+ipcMain.handle('pdf:add_page_numbers', (_, data) => validatePdfHandler('add_page_numbers', data));
+ipcMain.handle('pdf:jpg_to_pdf', (_, data) => validatePdfHandler('jpg_to_pdf', data));
+ipcMain.handle('pdf:pdf_to_jpg', (_, data) => validatePdfHandler('pdf_to_jpg', data));
+ipcMain.handle('pdf:html_to_pdf', (_, data) => validatePdfHandler('html_to_pdf', data));
+ipcMain.handle('pdf:protect', (_, data) => validatePdfHandler('protect', data));
+ipcMain.handle('pdf:unlock', (_, data) => validatePdfHandler('unlock', data));
+ipcMain.handle('pdf:repair', (_, data) => validatePdfHandler('repair', data));
 ipcMain.handle('pdf:ocr', (_, data) => {
   const tesseractPath = store.get('tesseractPath') as string;
-  return pdfSidecar.send({ cmd: 'ocr', data: { ...data, tesseract_path: tesseractPath } });
+  const extended = { ...data, tesseract_path: tesseractPath };
+  return validatePdfHandler('ocr', extended);
 });
-ipcMain.handle('pdf:get_page_info', (_, data) => pdfSidecar.send({ cmd: 'get_page_info', data }));
+ipcMain.handle('pdf:get_page_info', (_, data) => validatePdfHandler('get_page_info', data));
 
 // IPC Handler para OCR Fallback (Main Process)
 ipcMain.handle('ocr:extractText', async (_, pdfPath: string) => {
@@ -383,6 +452,9 @@ ipcMain.handle('dashboard:stats', async () => {
 
 ipcMain.handle('fs:readPdfAsBase64', async (_: any, pdfPath: string) => {
   try {
+    if (!validateOperationPath(pdfPath, false)) {
+      return { success: false, error: 'Invalid PDF path' };
+    }
     const buffer = await fs.promises.readFile(pdfPath);
     return { success: true, data: buffer.toString('base64') };
   } catch (error: any) {
@@ -436,6 +508,8 @@ app?.on('window-all-closed', () => {
 
 app?.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
+    // Ensure exclusive temp directory exists for output operations
+    fs.mkdirSync(CONTROLHUB_TEMP_DIR, { recursive: true });
     createWindow();
   }
 });
@@ -453,6 +527,8 @@ app?.on('before-quit', async () => {
 app?.whenReady()?.then(async () => {
   terapiasSidecar.start();
   pdfSidecar.start();
+  // Ensure exclusive temp directory exists for output operations
+  fs.mkdirSync(CONTROLHUB_TEMP_DIR, { recursive: true });
   createWindow();
 });
 
@@ -467,6 +543,8 @@ ipcMain.handle('dialog:selectDirectory', async () => {
   if (canceled || filePaths.length === 0) return null;
   const dirPath = filePaths[0];
   store.set('settings.terapiasDir', dirPath);
+  // Register approved directory path
+  dialogApprovedPaths.add(path.resolve(dirPath));
   return dirPath;
 });
 
@@ -479,12 +557,19 @@ ipcMain.handle('dialog:selectFile', async (_, options) => {
     filters: filters || [],
     defaultPath
   });
-  return canceled ? null : filePaths[0];
+  if (canceled || filePaths.length === 0) return null;
+  const filePath = filePaths[0];
+  // Register approved file path
+  dialogApprovedPaths.add(path.resolve(filePath));
+  return filePath;
 });
 
 // IPC handler for Save Dialog
 ipcMain.handle('dialog-save-path', async (_, options) => {
   const result = await dialog.showSaveDialog(options);
+  if (!result.canceled && result.filePath) {
+    dialogApprovedPaths.add(path.resolve(result.filePath));
+  }
   return result.canceled ? null : result.filePath;
 });
 
@@ -501,13 +586,21 @@ ipcMain.handle('fs:listFiles', async (_, dirPath, extensions) => {
   }
 });
 
-ipcMain.handle('shell:openPath', (_, path) => {
-  shell.openPath(path);
+ipcMain.handle('shell:openPath', (_, targetPath) => {
+  // Validate output path
+  if (!validateOperationPath(targetPath, true)) {
+    throw new Error('Invalid output path for shell:openPath');
+  }
+  shell.openPath(targetPath);
 });
 
 ipcMain.handle('open-file', async (_, filePath: string) => {
   try {
     if (!filePath) return { ok: false, error: 'Ruta no proporcionada' };
+    // Validate input path (must be allowed)
+    if (!validateOperationPath(filePath, false)) {
+      return { ok: false, error: 'Invalid file path' };
+    }
     await shell.openPath(filePath);
     return { ok: true };
   } catch (err: any) {
@@ -518,6 +611,9 @@ ipcMain.handle('open-file', async (_, filePath: string) => {
 ipcMain.handle('reveal-in-folder', async (_, filePath: string) => {
   try {
     if (!filePath) return { ok: false, error: 'Ruta no proporcionada' };
+    if (!validateOperationPath(filePath, false)) {
+      return { ok: false, error: 'Invalid file path' };
+    }
     shell.showItemInFolder(filePath);
     return { ok: true };
   } catch (err: any) {
@@ -740,8 +836,52 @@ ipcMain?.handle('db:getStats', () => dbOptions.getDbStats());
 // ─────────────────────────────────────────────────────────────────────────────
 // IPC: Abrir PDF en aplicación externa
 // ─────────────────────────────────────────────────────────────────────────────
+ipcMain.handle('security:validateAndRegisterDroppedFile', async (_, filePath: string) => {
+  if (!filePath) return { ok: false, error: 'No path provided' };
+  try {
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+      return { ok: false, error: 'File does not exist or is not a regular file' };
+    }
+    const ext = path.extname(filePath).toLowerCase();
+    if (!ALLOWED_EXTENSIONS.has(ext)) {
+      return { ok: false, error: `Extension ${ext} not allowed` };
+    }
+    const real = fs.realpathSync(filePath);
+    registeredDroppedPaths.add(real);
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('security:syncActiveFiles', async (_, paths: string[]) => {
+  if (!Array.isArray(paths)) return { ok: false, error: 'Invalid input' };
+  const accepted: string[] = [];
+  for (const p of paths) {
+    const resolved = path.resolve(p);
+    if (registeredDroppedPaths.has(resolved)) {
+      accepted.push(resolved);
+      continue;
+    }
+    // Check if subpath of any dialog approved path
+    for (const approved of dialogApprovedPaths) {
+      const rel = path.relative(approved, resolved);
+      if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+        accepted.push(resolved);
+        break;
+      }
+    }
+  }
+  sessionAllowedFiles.clear();
+  accepted.forEach(r => sessionAllowedFiles.add(r));
+  return { ok: true, accepted: accepted.length };
+});
+
 ipcMain.handle('fs:openExternal', async (_: any, filePath: string) => {
   if (filePath) {
+    if (!validateOperationPath(filePath, false)) {
+      throw new Error('Invalid path for fs:openExternal');
+    }
     await shell.openPath(filePath);
   }
   return true;

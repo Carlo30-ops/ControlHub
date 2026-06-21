@@ -73,7 +73,7 @@ interface ElectronAPI {
   onScanProgress(callback: (data: ScanProgressData) => void): void;
   offScanProgress(): void;
 
-  // ── Watcher en tiempo real ────────────────────────────────────────────────
+  // ── Watcher de carpeta en tiempo real ─────────────────────────────────────
   startWatch(dirPath: string): Promise<boolean>;
   stopWatch(): Promise<boolean>;
   onFolderUpdated(callback: (data: FolderUpdatedData) => void): void;
@@ -117,10 +117,10 @@ interface ElectronAPI {
     ping(): Promise<{ ok: boolean }>;
     checkWord(): Promise<{ ok: boolean; word_installed: boolean; message?: string; error?: string }>;
     listDocs(): Promise<{ ok: boolean; files: { name: string; modified: number; size: number }[]; error?: string }>;
-    prepare(data: { input_name: string; filename: string; base_dest: string }): Promise<{ ok: boolean; folder: string; doc_path: string; patient: string; error?: string }>;
-    finalize(data: { doc_path: string; backup: string; patient: string }): Promise<{ ok: boolean; pdf_path: string; backup_path: string; error?: string }>;
+    prepare(data: any): Promise<{ ok: boolean; folder: string; doc_path: string; patient: string; error?: string }>;
+    finalize(data: any): Promise<{ ok: boolean; pdf_path: string; backup_path: string; error?: string }>;
     getHistory(): Promise<{ ok: boolean; history: any[]; error?: string }>;
-    searchPatient(data: { query: string; dest_root: string }): Promise<{ ok: boolean; results: any[]; error?: string }>;
+    searchPatient(data: any): Promise<{ ok: boolean; results: any[]; error?: string }>;
   };
 
   pdfTools: {
@@ -148,6 +148,13 @@ interface ElectronAPI {
     repair(data: any): Promise<any>;
     ocr(data: any): Promise<any>;
     getPageInfo(data: any): Promise<any>;
+    // ── Seguridad (IPC) ────────────────────────────────────────────────────────
+    security: {
+      /** Validate a dropped file path. Returns `{ok:true}` if allowed, otherwise `{ok:false, error}` */
+      validateAndRegisterDroppedFile(path: string): Promise<{ ok: boolean; error?: string }>;
+      /** Sync current active file list with the main‑process whitelist */
+      syncActiveFiles(paths: string[]): Promise<{ ok: boolean; accepted?: number }>;
+    };
   };
 }
 
