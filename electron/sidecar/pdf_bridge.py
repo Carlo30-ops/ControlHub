@@ -489,112 +489,191 @@ def handle_pdf_to_word(data):
         except Exception as e:
             return False, str(e)
 
-    def _ok_result(output_path, warning=None):
+    def _classify_pdf(path, sample_pages=5):
+        """
+        Analiza el contenido de un PDF y retorna su perfil.
+        Solo usa fitz/PyMuPDF — sin dependencias adicionales.
+        """
+        try:
+            doc = fitz.open(path)
+            page_count = doc.page_count
+            pages_to_sample = min(sample_pages, page_count)
+            
+            text_chars = []
+            image_counts = []
+            drawing_counts = []
+            has_forms = False
+            column_layouts = 0
+            
+            for i in range(pages_to_sample):
+                page = doc[i]
+                
+                # Dimensión 1: texto
+                words = page.get_text("words")
+                chars = sum(len(w[4]) for w in words) if words else 0
+                text_chars.append(chars)
+                
+                # Dimensión 2: imágenes
+                images = page.get_images()
+                image_counts.append(len(images))
+                
+                # Dimensión 3: trazos vectoriales
+                drawings = page.get_drawings()
+                drawing_counts.append(len(drawings))
+                
+                # Dimensión 4: formularios/firmas digitales
+                try:
+                    widgets = list(page.widgets())
+                    if widgets:
+                        has_forms = True
+                except Exception:
+                    pass
+                
+                # Dimensión 5: detectar layout multi-columna
+                # Si los bloques de texto tienen posiciones X muy dispersas
+                blocks = page.get_text("blocks")
+                if blocks and len(blocks) > 4:
+                    x_positions = [b[0] for b in blocks if b[6] == 0]
+                    if x_positions:
+                        x_range = max(x_positions) - min(x_positions)
+                        page_width = page.rect.width
+                        if x_range > page_width * 0.4:
+                            column_layouts += 1
+            
+            doc.close()
+            
+            avg_text = sum(text_chars) / len(text_chars) if text_chars else 0
+            avg_images = sum(image_counts) / len(image_counts) if image_counts else 0
+            avg_drawings = sum(drawing_counts) / len(drawing_counts) if drawing_counts else 0
+            has_text = avg_text > 30
+            has_images = avg_images > 0
+            has_drawings = avg_drawings > 5
+            is_multi_column = column_layouts > pages_to_sample * 0.4
+            
+            if not has_text and has_images:
+                profile = "scanned"
+                confidence = "high"
+                recommendation = "PDF escaneado detectado. Se usará pdf2docx con OCR."
+            elif has_forms or (has_drawings and not has_text):
+                profile = "form_signature"
+                confidence = "high"
+                recommendation = "Formulario o firma digital detectada. Word COM dará mejor resultado."
+            elif has_text and has_images and avg_images > 1:
+                profile = "mixed"
+                confidence = "medium"
+                recommendation = "PDF mixto (texto + imágenes). Word COM intentará preservar el layout."
+            elif is_multi_column and has_text:
+                profile = "complex_layout"
+                confidence = "medium"
+                recommendation = "Layout complejo detectado. La conversión puede variar en fidelidad."
+            elif has_text and not has_images:
+                profile = "digital_clean"
+                confidence = "high"
+                recommendation = "PDF digital limpio. Conversión de alta fidelidad esperada."
+            else:
+                profile = "digital_rich"
+                confidence = "medium"
+                recommendation = "PDF digital con contenido mixto. Word COM es el motor recomendado."
+            
+            return {
+                "profile": profile,
+                "has_text": has_text,
+                "has_images": has_images,
+                "has_drawings": has_drawings,
+                "has_forms": has_forms,
+                "avg_text_density": round(avg_text, 1),
+                "avg_image_count": round(avg_images, 1),
+                "avg_drawing_count": round(avg_drawings, 1),
+                "page_count": page_count,
+                "confidence": confidence,
+                "recommendation": recommendation
+            }
+        except Exception as e:
+            return {
+                "profile": "unknown",
+                "has_text": False,
+                "has_images": False,
+                "has_drawings": False,
+                "has_forms": False,
+                "avg_text_density": 0,
+                "avg_image_count": 0,
+                "avg_drawing_count": 0,
+                "page_count": 0,
+                "confidence": "low",
+                "recommendation": f"No se pudo analizar el PDF: {str(e)}"
+            }
+
+    pdf_info = _classify_pdf(input_file)
+    profile = pdf_info["profile"]
+
+    def _ok_result(output_path, warning=None, pdf_profile=None):
         valid, reason = _validate_docx(output_path)
         if not valid:
             return {"ok": False, "error": f"Conversión completada pero resultado inválido: {reason}"}
         result = {"ok": True, "output": output_path}
         if warning:
             result["warning"] = warning
+        if pdf_profile:
+            result["pdf_profile"] = pdf_profile
         return result
 
-    def _pdf_has_text(path, min_chars=50):
-        try:
-            doc = fitz.open(path)
-            text = ""
-            for page in doc:
-                text += page.get_text()
-                if len(text) >= min_chars:
-                    doc.close()
-                    return True
-            doc.close()
-            return False
-        except Exception:
-            return False
+    if profile == "scanned":
+        strategy_order = ["pdf2docx", "word_com"]
+    elif profile in ("digital_clean", "digital_rich", "form_signature", "mixed"):
+        strategy_order = ["word_com", "pdf2docx"]
+    elif profile == "complex_layout":
+        strategy_order = ["word_com", "pdf2docx"]
+    else:
+        strategy_order = ["word_com", "pdf2docx"]
 
-    has_text = _pdf_has_text(input_file)
+    base_warning = None
+    if pdf_info["confidence"] != "high" or profile in ("mixed", "complex_layout"):
+        base_warning = pdf_info["recommendation"]
+
+    errors = []
     try:
-        if has_text:
-            # Estrategia 1: Word COM nativo (mejor fidelidad para layouts complejos)
-            word = win32com.client.DispatchEx("Word.Application")
-            word.Visible = False
-            word.DisplayAlerts = 0
-            doc = word.Documents.Open(
-                input_file,
-                ConfirmConversions=False,
-                ReadOnly=True
-            )
-            doc.SaveAs2(output_file, 16)  # 16 = wdFormatDocumentDefault (.docx)
-            doc.Close(False)
-            word.Quit()
-            word = None
-            pythoncom.CoUninitialize()
-            return _ok_result(output_file)
-
-        from pdf2docx import Converter
-        cv = Converter(input_file)
-        cv.convert(output_file,
-            start=0,
-            end=None,
-            multi_processing=False,
-            connected_border_tolerance=0,
-            line_overlap_threshold=0.9,
-            image_overlap_threshold=0.0,
-        )
-        cv.close()
-        pythoncom.CoUninitialize()
-        return _ok_result(output_file, "Conversión via pdf2docx. Layouts complejos pueden variar.")
-    except Exception as e_first:
-        if word:
-            try: word.Quit()
-            except Exception: pass
-            word = None
-        try: pythoncom.CoUninitialize()
-        except Exception: pass
-
-        if has_text:
+        for strategy in strategy_order:
             try:
-                from pdf2docx import Converter
-                cv = Converter(input_file)
-                cv.convert(output_file,
-                    start=0,
-                    end=None,
-                    multi_processing=False,
-                    connected_border_tolerance=0,
-                    line_overlap_threshold=0.9,
-                    image_overlap_threshold=0.0,
-                )
-                cv.close()
-                pythoncom.CoUninitialize()
-                return _ok_result(output_file, "Conversión via pdf2docx. Layouts complejos pueden variar.")
-            except Exception as e_pdf2docx:
-                try: pythoncom.CoUninitialize()
-                except Exception: pass
-                return {"ok": False, "error": f"Word COM: {str(e_first)} | pdf2docx: {str(e_pdf2docx)}"}
-        else:
-            try:
-                word = win32com.client.DispatchEx("Word.Application")
-                word.Visible = False
-                word.DisplayAlerts = 0
-                doc = word.Documents.Open(
-                    input_file,
-                    ConfirmConversions=False,
-                    ReadOnly=True
-                )
-                doc.SaveAs2(output_file, 16)  # 16 = wdFormatDocumentDefault (.docx)
-                doc.Close(False)
-                word.Quit()
-                word = None
-                pythoncom.CoUninitialize()
-                return _ok_result(output_file)
-            except Exception as e_word:
+                if strategy == "word_com":
+                    word = win32com.client.DispatchEx("Word.Application")
+                    word.Visible = False
+                    word.DisplayAlerts = 0
+                    doc = word.Documents.Open(
+                        input_file, ConfirmConversions=False, ReadOnly=True)
+                    doc.SaveAs2(output_file, 16)
+                    doc.Close(False)
+                    word.Quit()
+                    word = None
+                    return _ok_result(output_file, base_warning, profile)
+                elif strategy == "pdf2docx":
+                    pythoncom.CoInitialize()
+                    from pdf2docx import Converter
+                    cv = Converter(input_file)
+                    cv.convert(output_file,
+                        start=0, end=None,
+                        multi_processing=False,
+                        connected_border_tolerance=0,
+                        line_overlap_threshold=0.9,
+                        image_overlap_threshold=0.0,
+                    )
+                    cv.close()
+                    warning = base_warning or "Conversión via pdf2docx. Layouts complejos pueden variar."
+                    return _ok_result(output_file, warning, profile)
+            except Exception as e:
                 if word:
                     try: word.Quit()
                     except Exception: pass
                     word = None
-                try: pythoncom.CoUninitialize()
-                except Exception: pass
-                return {"ok": False, "error": f"pdf2docx: {str(e_first)} | Word COM: {str(e_word)}"}
+                errors.append(f"{strategy}: {str(e)}")
+                continue
+
+        return {"ok": False, "error": " | ".join(errors)}
+    finally:
+        if word:
+            try: word.Quit()
+            except Exception: pass
+        try: pythoncom.CoUninitialize()
+        except Exception: pass
 
 def handle_excel_to_pdf(data):
     pythoncom.CoInitialize()
