@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Upload, Trash2, ArrowUp, ArrowDown, FileText, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
@@ -42,6 +42,7 @@ export function FileDropZone({
   className,
 }: FileDropZoneProps) {
   const [isOver, setIsOver] = useState(false);
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
 
   // ====== HANDLE DROP - SEGURIDAD OBLIGATORIA ======
   const handleDrop = useCallback(
@@ -92,6 +93,30 @@ export function FileDropZone({
     const path = await window.electronAPI.selectFile({ filters, defaultPath });
     if (path) onFiles([path]);
   }, [accept, defaultPath, disabled, onFiles]);
+
+  useEffect(() => {
+    if (!multiple) return;
+    files.forEach(async (file) => {
+      if (thumbs[file.path]) return;
+      try {
+        const res = await window.electronAPI.pdfTools.pdfThumbnail({
+          input: file.path,
+          dpi: 100,
+        });
+        if (res.ok && res.thumb_path) {
+          const thumbName = res.thumb_path.split(/[\\/]/).pop();
+          if (thumbName) {
+            setThumbs((prev) => ({
+              ...prev,
+              [file.path]: `pdfthumb://${thumbName}`,
+            }));
+          }
+        }
+      } catch {
+        // sin thumbnail, muestra ícono
+      }
+    });
+  }, [files, multiple, thumbs]);
 
   // ====== RENDER: COMPACT MODE (SINGLE-FILE) ======
   if (compact && !multiple) {
@@ -180,61 +205,91 @@ export function FileDropZone({
           <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
             Seleccionados ({files.length})
           </label>
-          <ScrollArea className={cn("w-full rounded-lg border border-border bg-muted/10 p-1", multiple ? 'h-40' : 'h-auto')}>
-            <div className="space-y-1">
-              {files.map((file: { name: string; path: string }, idx: number) => (
-                <div key={idx} className="group flex items-center gap-3 p-2 bg-card rounded border border-border shadow-sm">
-                  <div className="w-6 h-6 rounded bg-muted flex items-center justify-center text-muted-foreground font-bold text-[10px]">
-                    {idx + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold truncate text-foreground">{file.name}</p>
-                    <p className="text-[9px] text-muted-foreground truncate">{file.path}</p>
-                  </div>
-                  <div className="flex items-center gap-0.5">
-                    {multiple && onReorder && (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 rounded"
-                          disabled={idx === 0}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onReorder(idx, -1);
-                          }}
-                        >
-                          <ArrowUp className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 rounded"
-                          disabled={idx === files.length - 1}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onReorder(idx, 1);
-                          }}
-                        >
-                          <ArrowDown className="w-3.5 h-3.5" />
-                        </Button>
-                      </>
-                    )}
+          <ScrollArea className={cn("w-full rounded-lg border border-border bg-muted/10 p-1", multiple ? 'h-64' : 'h-auto')}>
+            {multiple ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 p-1">
+                {files.map((file: { name: string; path: string }, idx: number) => (
+                  <div key={idx} className="relative rounded-xl border border-border bg-card overflow-hidden group cursor-default">
+                    <div className="aspect-[3/4] bg-muted flex items-center justify-center overflow-hidden">
+                      {thumbs[file.path] ? (
+                        <img src={thumbs[file.path]} className="w-full h-full object-cover" />
+                      ) : (
+                        <FileText className="w-10 h-10 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="p-2 text-[10px] font-bold truncate text-foreground">
+                      {file.name}
+                    </div>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 rounded text-destructive hover:bg-destructive/10"
+                      className="absolute top-1.5 right-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
                       onClick={(e) => {
                         e.stopPropagation();
                         onRemove?.(idx);
                       }}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <X className="w-4 h-4" />
                     </Button>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-1 p-1">
+                {files.map((file: { name: string; path: string }, idx: number) => (
+                  <div key={idx} className="group flex items-center gap-3 p-2 bg-card rounded border border-border shadow-sm">
+                    <div className="w-6 h-6 rounded bg-muted flex items-center justify-center text-muted-foreground font-bold text-[10px]">
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold truncate text-foreground">{file.name}</p>
+                      <p className="text-[9px] text-muted-foreground truncate">{file.path}</p>
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                      {multiple && onReorder && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded"
+                            disabled={idx === 0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onReorder(idx, -1);
+                            }}
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded"
+                            disabled={idx === files.length - 1}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onReorder(idx, 1);
+                            }}
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </Button>
+                        </>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded text-destructive hover:bg-destructive/10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemove?.(idx);
+                        }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </ScrollArea>
         </div>
       )}

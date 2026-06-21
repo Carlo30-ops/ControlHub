@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, protocol } from 'electron';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -417,6 +417,7 @@ ipcMain.handle('pdf:crop', (_, data) => validatePdfHandler('crop', data));
 ipcMain.handle('pdf:add_page_numbers', (_, data) => validatePdfHandler('add_page_numbers', data));
 ipcMain.handle('pdf:jpg_to_pdf', (_, data) => validatePdfHandler('jpg_to_pdf', data));
 ipcMain.handle('pdf:pdf_to_jpg', (_, data) => validatePdfHandler('pdf_to_jpg', data));
+ipcMain.handle('pdf:pdf_thumbnail', (_, data) => validatePdfHandler('pdf_thumbnail', data));
 ipcMain.handle('pdf:html_to_pdf', (_, data) => validatePdfHandler('html_to_pdf', data));
 ipcMain.handle('pdf:protect', (_, data) => validatePdfHandler('protect', data));
 ipcMain.handle('pdf:unlock', (_, data) => validatePdfHandler('unlock', data));
@@ -634,6 +635,38 @@ app?.on('before-quit', async () => {
 });
 
 app?.whenReady()?.then(async () => {
+  // Registrar protocolo pdfthumb:// para servir thumbnails
+  protocol.handle('pdfthumb', async (request) => {
+    const { net } = require('electron');
+    const os = require('os');
+    const path = require('path');
+    const fs = require('fs');
+    
+    try {
+      const url = new URL(request.url);
+      const filename = url.hostname + url.pathname.replace(/\//g, '');
+      // Seguridad: solo archivos que empiecen con pdfthumb_
+      if (!filename.startsWith('pdfthumb_') || !filename.endsWith('.png')) {
+        return new Response('Forbidden', { status: 403 });
+      }
+      const filePath = path.join(os.tmpdir(), filename);
+      // Seguridad: verificar que el path resuelto está dentro de temp
+      const tmpDir = os.tmpdir();
+      if (!filePath.startsWith(tmpDir)) {
+        return new Response('Forbidden', { status: 403 });
+      }
+      if (!fs.existsSync(filePath)) {
+        return new Response('Not Found', { status: 404 });
+      }
+      const buffer = fs.readFileSync(filePath);
+      return new Response(buffer, {
+        headers: { 'Content-Type': 'image/png' }
+      });
+    } catch (e) {
+      return new Response('Error', { status: 500 });
+    }
+  });
+  
   terapiasSidecar.start();
   pdfSidecar.start();
   // Ensure exclusive temp directory exists for output operations

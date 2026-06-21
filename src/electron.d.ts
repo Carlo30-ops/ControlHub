@@ -146,6 +146,7 @@ interface ElectronAPI {
     addPageNumbers(data: any): Promise<any>;
     jpgToPdf(data: any): Promise<any>;
     pdfToJpg(data: any): Promise<any>;
+    pdfThumbnail(data: { input: string; dpi?: number }): Promise<{ ok: boolean; thumb_path?: string; error?: string }>;
     htmlToPdf(data: any): Promise<any>;
     protect(data: any): Promise<any>;
     unlock(data: any): Promise<any>;

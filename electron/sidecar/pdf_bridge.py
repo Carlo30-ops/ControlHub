@@ -483,6 +483,44 @@ def handle_pdf_to_jpg(data):
         return {"ok": True, "outputs": outputs}
     except Exception as e: return {"ok": False, "error": str(e)}
 
+
+def handle_pdf_thumbnail(data):
+    """
+    Renderiza solo la primera página de un PDF como PNG 
+    para uso como thumbnail. Retorna la ruta del PNG generado.
+    """
+    doc = None
+    try:
+        import tempfile
+        input_file = os.path.abspath(data.get("input", ""))
+        dpi = int(data.get("dpi", 100))
+
+        if not input_file or not os.path.exists(input_file):
+            return {"ok": False, "error": "Archivo no encontrado."}
+
+        doc = fitz.open(input_file)
+        if doc.page_count == 0:
+            return {"ok": False, "error": "El PDF no tiene páginas."}
+
+        page = doc[0]
+        pix = page.get_pixmap(dpi=dpi)
+
+        # Guardar en temp con nombre único basado en el path del PDF
+        import hashlib
+        file_hash = hashlib.md5(input_file.encode()).hexdigest()[:8]
+        thumb_name = f"pdfthumb_{file_hash}.png"
+        thumb_path = os.path.join(tempfile.gettempdir(), thumb_name)
+        pix.save(thumb_path)
+
+        return {"ok": True, "thumb_path": thumb_path}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        if doc:
+            try: doc.close()
+            except Exception: pass
+
+
 def handle_html_to_pdf(data):
     try:
         input_file = os.path.abspath(data.get("input", ""))

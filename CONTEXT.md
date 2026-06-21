@@ -234,6 +234,11 @@ ControlHub/
 | P46 | `handle_watermark`, `handle_watermark_image`, `handle_extract`, `handle_add_page_numbers`, `handle_ocr` sin finally | **Confirmado** | ✅ RESUELTO — finally defensivo + validaciones en los 5 handlers |
 | P47 | `_ok_result` definida dos veces en `handle_pdf_to_word` — versión sin `pdf_profile` quedaba muerta | **Confirmado** | ✅ RESUELTO — Unificada en una sola definición con pdf_profile opcional |
 | P48 | `pythoncom.CoUninitialize()` llamado dos veces en happy path de `handle_pdf_to_word` | **Confirmado** | ✅ RESUELTO — finally externo como único responsable de CoUninitialize |
+| P49 | FileDropZone modo múltiple sin preview visual — solo lista de texto | **Confirmado** | ✅ RESUELTO — Grid de cards con thumbnail via pdfthumb:// protocolo |
+| P50 | Sin protocolo para servir imágenes PNG locales al renderer | **Confirmado** | ✅ RESUELTO — Protocolo pdfthumb:// registrado en whenReady |
+| P51 | Sin IPC para thumbnail de PDF | **Confirmado** | ✅ RESUELTO — handle_pdf_thumbnail en pdf_bridge.py + IPC pdf:pdf_thumbnail |
+| P52 | UI resultado no mostraba warning ni motor usado | **Confirmado** | ✅ RESUELTO — Banner amarillo warning + chips pdf_profile y engine |
+| P53 | Cola automática multi-archivo en herramientas single-file — pendiente | **Nuevo** | 🔄 EN PROGRESO — UI de reordenación de archivos antes de procesar |
 
 ---
 
@@ -411,11 +416,8 @@ Decisiones ya evaluadas y **descartadas** — no re-proponer sin justificación 
 
 | Prioridad | Tarea |
 |-----------|-------|
-| Alta | Puente Reportes → PDF Tools ✅ RESUELTO |
-| Media | Settings con anclas `#scanning`, `#terapias` ✅ RESUELTO |
-| Media | Dashboard → Terapias con doc pre-seleccionado ✅ RESUELTO |
-| Media | Deprecar claves `ordertrack-*` restantes en localStorage ✅ RESUELTO |
-| Baja | Atajos de teclado globales y en Terapias ✅ RESUELTO |
+| Alta | Cola automática multi-archivo con UI de reordenación (P53) |
+| Baja | Virtualización de tablas (P27) |
 
 ---
 
@@ -473,6 +475,13 @@ Decisiones ya evaluadas y **descartadas** — no re-proponer sin justificación 
 ---
 
 ## 14. Changelog de sesiones recientes
+
+### 2026-06-21 — PDF Tools: thumbnails, protocolo pdfthumb, UI resultado
+- P49/P50/P51: FileDropZone modo múltiple con grid de cards y thumbnails 
+  via nuevo protocolo pdfthumb:// y handler handle_pdf_thumbnail.
+- P52: Vista resultado — warning en amarillo, chips pdf_profile y engine.
+- P53: Cola multi-archivo con UI reordenación — en progreso.
+- Build limpio confirmado post-sesión.
 
 ### 2026-06-21 — PDF Tools: hardening completo de motores
 - P38: compress con cadena GS → fitz → pikepdf.

@@ -147,6 +147,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     addPageNumbers: (data: any) => ipcRenderer.invoke('pdf:add_page_numbers', data),
     jpgToPdf: (data: any) => ipcRenderer.invoke('pdf:jpg_to_pdf', data),
     pdfToJpg: (data: any) => ipcRenderer.invoke('pdf:pdf_to_jpg', data),
+    pdfThumbnail: (data: any) => ipcRenderer.invoke('pdf:pdf_thumbnail', data),
     htmlToPdf: (data: any) => ipcRenderer.invoke('pdf:html_to_pdf', data),
     protect: (data: any) => ipcRenderer.invoke('pdf:protect', data),
     unlock: (data: any) => ipcRenderer.invoke('pdf:unlock', data),
