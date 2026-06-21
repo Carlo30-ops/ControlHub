@@ -214,12 +214,17 @@ def handle_rotate(data):
                 pass
 
 def handle_extract(data):
+    doc = None
+    new_doc = None
     try:
         input_file = os.path.abspath(data.get("input", ""))
         output_file = os.path.abspath(data.get("output", "extracted.pdf"))
+        pages_param = data.get("pages", "").strip()
+        if not pages_param:
+            return {"ok": False, "error": "No se especificaron páginas para extraer."}
         doc = fitz.open(input_file)
         new_doc = fitz.open()
-        for part in data.get("pages", "").split(","):
+        for part in pages_param.split(","):
             part = part.strip()
             if "-" in part:
                 s, e = part.split("-")
@@ -229,11 +234,23 @@ def handle_extract(data):
             else:
                 idx = int(part) - 1
                 new_doc.insert_pdf(doc, from_page=idx, to_page=idx)
+        if new_doc.page_count == 0:
+            return {"ok": False, "error": "No se extrajeron páginas válidas."}
         new_doc.save(output_file)
-        new_doc.close()
-        doc.close()
         return {"ok": True, "output": output_file}
-    except Exception as e: return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
+        if new_doc:
+            try:
+                new_doc.close()
+            except Exception:
+                pass
 
 def handle_delete_pages(data):
     doc = None
@@ -291,6 +308,7 @@ def handle_reorder_pages(data):
                 pass
 
 def handle_watermark(data):
+    doc = None
     try:
         input_file = os.path.abspath(data.get("input", ""))
         output_file = os.path.abspath(data.get("output", "watermarked.pdf"))
@@ -309,17 +327,25 @@ def handle_watermark(data):
                 rotate=int(angle)
             )
         doc.save(output_file)
-        doc.close()
         return {"ok": True, "output": output_file}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+    finally:
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
 
 def handle_watermark_image(data):
+    doc = None
     try:
         input_file = os.path.abspath(data.get("input", ""))
         output_file = os.path.abspath(data.get("output", "watermarked_img.pdf"))
         img_path = os.path.abspath(data.get("image", ""))
         opacity = float(data.get("opacity", 0.3))
+        if not os.path.exists(img_path):
+            return {"ok": False, "error": f"Imagen de marca de agua no encontrada: {img_path}"}
         doc = fitz.open(input_file)
         for page in doc:
             page_rect = page.rect
@@ -336,10 +362,15 @@ def handle_watermark_image(data):
                 alpha=int(opacity * 255)
             )
         doc.save(output_file)
-        doc.close()
         return {"ok": True, "output": output_file}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+    finally:
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
 
 def handle_crop(data):
     try:
@@ -364,6 +395,7 @@ def handle_crop(data):
     except Exception as e: return {"ok": False, "error": str(e)}
 
 def handle_add_page_numbers(data):
+    doc = None
     try:
         input_file = os.path.abspath(data.get("input", ""))
         output_file = os.path.abspath(data.get("output", "numbered.pdf"))
@@ -378,9 +410,15 @@ def handle_add_page_numbers(data):
             else: p = (rect.width/2, 30)
             page.insert_text(p, text, fontsize=10, color=(0.5, 0.5, 0.5))
         doc.save(output_file)
-        doc.close()
         return {"ok": True, "output": output_file}
-    except Exception as e: return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
 
 def handle_jpg_to_pdf(data):
     doc = None
@@ -488,6 +526,8 @@ def handle_repair(data):
     except Exception as e: return {"ok": False, "error": str(e)}
 
 def handle_ocr(data):
+    doc = None
+    output_pdf = None
     try:
         if not pytesseract:
             return {"ok": False, "error": "Librería pytesseract no instalada"}
@@ -524,10 +564,20 @@ def handle_ocr(data):
                     os.remove(f)
         
         output_pdf.save(output_file)
-        doc.close()
-        output_pdf.close()
         return {"ok": True, "output": output_file}
-    except Exception as e: return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
+        if output_pdf:
+            try:
+                output_pdf.close()
+            except Exception:
+                pass
 
 def handle_word_to_pdf(data):
     pythoncom.CoInitialize()
