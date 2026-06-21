@@ -462,6 +462,42 @@ def handle_pdf_to_word(data):
     input_file = os.path.abspath(data.get("input", ""))
     output_file = os.path.abspath(data.get("output", ""))
 
+    def _is_pdf_protected(path):
+        try:
+            doc = fitz.open(path)
+            protected = doc.needs_pass
+            doc.close()
+            return protected
+        except Exception:
+            return False
+
+    if _is_pdf_protected(input_file):
+        return {
+            "ok": False,
+            "error": "El PDF está protegido con contraseña. Usa la herramienta 'Desbloquear PDF' primero."
+        }
+
+    def _validate_docx(path):
+        """Verifica que el .docx resultante tenga contenido mínimo."""
+        try:
+            if not os.path.exists(path):
+                return False, "El archivo de salida no fue creado."
+            size = os.path.getsize(path)
+            if size < 1024:  # menos de 1KB es sospechoso
+                return False, f"El archivo resultante es demasiado pequeño ({size} bytes). Posible conversión vacía."
+            return True, None
+        except Exception as e:
+            return False, str(e)
+
+    def _ok_result(output_path, warning=None):
+        valid, reason = _validate_docx(output_path)
+        if not valid:
+            return {"ok": False, "error": f"Conversión completada pero resultado inválido: {reason}"}
+        result = {"ok": True, "output": output_path}
+        if warning:
+            result["warning"] = warning
+        return result
+
     def _pdf_has_text(path, min_chars=50):
         try:
             doc = fitz.open(path)
@@ -493,7 +529,7 @@ def handle_pdf_to_word(data):
             word.Quit()
             word = None
             pythoncom.CoUninitialize()
-            return {"ok": True, "output": output_file}
+            return _ok_result(output_file)
 
         from pdf2docx import Converter
         cv = Converter(input_file)
@@ -507,7 +543,7 @@ def handle_pdf_to_word(data):
         )
         cv.close()
         pythoncom.CoUninitialize()
-        return {"ok": True, "output": output_file, "warning": "Conversión via pdf2docx. Layouts complejos pueden variar."}
+        return _ok_result(output_file, "Conversión via pdf2docx. Layouts complejos pueden variar.")
     except Exception as e_first:
         if word:
             try: word.Quit()
@@ -530,7 +566,7 @@ def handle_pdf_to_word(data):
                 )
                 cv.close()
                 pythoncom.CoUninitialize()
-                return {"ok": True, "output": output_file, "warning": "Conversión via pdf2docx. Layouts complejos pueden variar."}
+                return _ok_result(output_file, "Conversión via pdf2docx. Layouts complejos pueden variar.")
             except Exception as e_pdf2docx:
                 try: pythoncom.CoUninitialize()
                 except Exception: pass
@@ -550,7 +586,7 @@ def handle_pdf_to_word(data):
                 word.Quit()
                 word = None
                 pythoncom.CoUninitialize()
-                return {"ok": True, "output": output_file}
+                return _ok_result(output_file)
             except Exception as e_word:
                 if word:
                     try: word.Quit()

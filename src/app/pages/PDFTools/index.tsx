@@ -523,7 +523,13 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
       }
 
       if (res.ok) {
-        setResult({ ok: true, message: successMsg, path: res.output || (res.outputs && res.outputs[0]) });
+        setResult({
+          ok: true,
+          message: res.warning
+            ? `${successMsg} ⚠️ ${res.warning}`
+            : successMsg,
+          path: res.output || (res.outputs && res.outputs[0])
+        });
         setView('result');
         toast.success(successMsg);
       } else {
