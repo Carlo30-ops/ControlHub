@@ -223,6 +223,17 @@ ControlHub/
 | P35 | Claves legacy ordertrack-* y cotu-last-path en localStorage sin respaldo IPC | **Confirmado** | ✅ RESUELTO — Migrado theme y lastScanPath a AppSettings; eliminado todo localStorage del renderer |
 | P36 | ThemeProvider por encima de DataProvider — useData() fallaba en runtime | **Confirmado** | ✅ RESUELTO — Invertido orden en App.tsx: DataProvider envuelve ThemeProvider |
 | P37 | Cero atajos de teclado globales y en Terapias | **Confirmado** | ✅ RESUELTO — Globales Ctrl+1..5/H en MainLayout; Ctrl+O/F5/Ctrl+F en Terapias |
+| P38 | `handle_compress` sin fallback fitz — sin GS el resultado era compresión básica | **Confirmado** | ✅ RESUELTO — Cadena GS → fitz → pikepdf; mejor compresión sin Ghostscript |
+| P39 | `finally` defensivo faltante en conversiones COM (`word_to_pdf`, `excel_to_pdf`, `ppt_to_pdf`) | **Confirmado** | ✅ RESUELTO — finally defensivo en los 3 handlers COM |
+| P40 | `handle_crop` usaba primera página como referencia — páginas mixtas se desplazaban | **Confirmado** | ✅ RESUELTO — Cropbox absoluto con clamp por página |
+| P41 | `handle_pdf_to_word` sin detección de tipo PDF — mismo motor para todo | **Confirmado** | ✅ RESUELTO — Clasificador 5D (_classify_pdf): texto, imágenes, trazos, formularios, columnas; strategy_order según perfil |
+| P42 | `handle_pdf_to_word` sin detección de PDF protegido | **Confirmado** | ✅ RESUELTO — _is_pdf_protected antes de intentar conversión |
+| P43 | `handle_pdf_to_word` sin validación post-conversión — .docx vacío devolvía ok:True | **Confirmado** | ✅ RESUELTO — _validate_docx valida existencia y tamaño mínimo |
+| P44 | `warning` del sidecar silenciado en UI — usuario no sabía que usó fallback | **Confirmado** | ✅ RESUELTO — warning en banner amarillo, pdf_profile y engine como chips en vista resultado |
+| P45 | `handle_split`, `handle_jpg_to_pdf`, `handle_rotate`, `handle_delete_pages`, `handle_reorder_pages` sin finally ni validaciones | **Confirmado** | ✅ RESUELTO — finally defensivo + validación de inputs y outputs en los 5 handlers |
+| P46 | `handle_watermark`, `handle_watermark_image`, `handle_extract`, `handle_add_page_numbers`, `handle_ocr` sin finally | **Confirmado** | ✅ RESUELTO — finally defensivo + validaciones en los 5 handlers |
+| P47 | `_ok_result` definida dos veces en `handle_pdf_to_word` — versión sin `pdf_profile` quedaba muerta | **Confirmado** | ✅ RESUELTO — Unificada en una sola definición con pdf_profile opcional |
+| P48 | `pythoncom.CoUninitialize()` llamado dos veces en happy path de `handle_pdf_to_word` | **Confirmado** | ✅ RESUELTO — finally externo como único responsable de CoUninitialize |
 
 ---
 
@@ -439,7 +450,9 @@ Decisiones ya evaluadas y **descartadas** — no re-proponer sin justificación 
 ### PDF Tools (módulo propio)
 
 - **22 herramientas** en UI (no 23).
-- **14 a nivel producción**, 7 funcionales con limitaciones, 1 básica (HTML→PDF).
+- **22 herramientas a nivel producción. Todos los handlers tienen finally defensivo, 
+   validación de inputs/outputs y errores descriptivos. handle_pdf_to_word incluye 
+   clasificador de contenido 5D y selección automática de motor.**
 - Sidecar `pdf_bridge.py` con pikepdf, PyMuPDF, win32com, pytesseract.
 
 ---
@@ -460,6 +473,16 @@ Decisiones ya evaluadas y **descartadas** — no re-proponer sin justificación 
 ---
 
 ## 14. Changelog de sesiones recientes
+
+### 2026-06-21 — PDF Tools: hardening completo de motores
+- P38: compress con cadena GS → fitz → pikepdf.
+- P39: finally defensivo en word_to_pdf, excel_to_pdf, ppt_to_pdf.
+- P40: crop con cropbox absoluto y clamp por página.
+- P41/P42/P43/P47/P48: handle_pdf_to_word — clasificador 5D, detección protección, validación .docx, COM balanceado, _ok_result unificada.
+- P44: UI resultado — warning en amarillo, chips pdf_profile y engine.
+- P45: split, jpg_to_pdf, rotate, delete_pages, reorder_pages — finally + validaciones input/output.
+- P46: watermark, watermark_image, extract, add_page_numbers, ocr — finally + validaciones.
+- Build limpio confirmado post-sesión.
 
 ### 2026-06-21 — Sesión de mejoras y limpieza
 - P32: `incomingFile` migrado a useState en PDFTools; banner de archivo recibido desde Reportes.
