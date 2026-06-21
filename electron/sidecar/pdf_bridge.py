@@ -138,43 +138,80 @@ def handle_compress(data):
     except Exception as e: return {"ok": False, "error": str(e)}
 
 def handle_split(data):
+    doc = None
     try:
         input_file = os.path.abspath(data.get("input", ""))
         output_dir = os.path.abspath(data.get("output_dir", "."))
         ranges = data.get("ranges", "")
+        if not input_file:
+            return {"ok": False, "error": "No se proporcionó archivo de entrada."}
+        if not ranges or not ranges.strip():
+            return {"ok": False, "error": "No se especificaron rangos de páginas válidos."}
         if not os.path.exists(output_dir): os.makedirs(output_dir)
         doc = fitz.open(input_file)
         range_list = [r.strip() for r in ranges.split(",") if r.strip()]
+        if not range_list:
+            return {"ok": False, "error": "No se especificaron rangos de páginas válidos."}
         outputs = []
         for idx, r in enumerate(range_list):
             out_part = os.path.join(output_dir, f"part_{idx+1}_{r.replace('-', '_')}.pdf")
-            if "-" in r:
-                s_s, e_s = r.split("-")
-                start = int(s_s) - 1
-                end = doc.page_count - 1 if e_s.lower() == 'z' else int(e_s) - 1
-            else: start = end = int(r) - 1
-            new_doc = fitz.open()
-            new_doc.insert_pdf(doc, from_page=start, to_page=end)
-            new_doc.save(out_part)
-            new_doc.close()
-            outputs.append(out_part)
-        doc.close()
+            new_doc = None
+            try:
+                if "-" in r:
+                    s_s, e_s = r.split("-")
+                    start = int(s_s) - 1
+                    end = doc.page_count - 1 if e_s.lower() == 'z' else int(e_s) - 1
+                else:
+                    start = end = int(r) - 1
+                new_doc = fitz.open()
+                new_doc.insert_pdf(doc, from_page=start, to_page=end)
+                new_doc.save(out_part)
+                if os.path.exists(out_part) and os.path.getsize(out_part) > 0:
+                    outputs.append(out_part)
+            finally:
+                if new_doc:
+                    try:
+                        new_doc.close()
+                    except Exception:
+                        pass
+        if not outputs:
+            return {"ok": False, "error": "No se generaron archivos de salida."}
         return {"ok": True, "outputs": outputs}
-    except Exception as e: return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
 
 def handle_rotate(data):
+    doc = None
     try:
         input_file = os.path.abspath(data.get("input", ""))
         output_file = os.path.abspath(data.get("output", "rotated.pdf"))
         angle = int(data.get("angle", 90))
+        if not input_file:
+            return {"ok": False, "error": "No se proporcionó archivo de entrada."}
         doc = fitz.open(input_file)
         page_indices = parse_pages_param(data.get("pages", ""), doc.page_count)
+        if not page_indices:
+            return {"ok": False, "error": "No se especificaron páginas válidas para rotar."}
         for p_idx in page_indices:
             doc[p_idx].set_rotation((doc[p_idx].rotation + angle) % 360)
         doc.save(output_file)
-        doc.close()
+        if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+            return {"ok": False, "error": "No se generó el archivo rotado de salida."}
         return {"ok": True, "output": output_file}
-    except Exception as e: return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
 
 def handle_extract(data):
     try:
@@ -199,32 +236,59 @@ def handle_extract(data):
     except Exception as e: return {"ok": False, "error": str(e)}
 
 def handle_delete_pages(data):
+    doc = None
     try:
         input_file = os.path.abspath(data.get("input", ""))
         output_file = os.path.abspath(data.get("output", "deleted.pdf"))
+        if not input_file:
+            return {"ok": False, "error": "No se proporcionó archivo de entrada."}
         doc = fitz.open(input_file)
         to_delete = parse_pages_param(data.get("pages", ""), doc.page_count)
+        if not to_delete:
+            return {"ok": False, "error": "No se especificaron páginas válidas para eliminar."}
         if len(to_delete) >= doc.page_count:
             return {"ok": False, "error": "No se pueden eliminar todas las páginas del documento"}
         for idx in reversed(to_delete):
             doc.delete_page(idx)
         doc.save(output_file)
-        doc.close()
+        if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+            return {"ok": False, "error": "No se generó el archivo de salida."}
         return {"ok": True, "output": output_file}
-    except Exception as e: return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
 
 def handle_reorder_pages(data):
+    doc = None
     try:
         input_file = os.path.abspath(data.get("input", ""))
         output_file = os.path.abspath(data.get("output", "reordered.pdf"))
-        # Convertir de 1-based (UI) a 0-based (PyMuPDF)
+        if not input_file:
+            return {"ok": False, "error": "No se proporcionó archivo de entrada."}
         order = [int(x) - 1 for x in data.get("order", [])]
+        if not order:
+            return {"ok": False, "error": "No se especificó un orden de páginas."}
         doc = fitz.open(input_file)
+        if len(order) != doc.page_count:
+            return {"ok": False, "error": f"El orden debe incluir todas las páginas ({doc.page_count} páginas)."}
         doc.select(order)
         doc.save(output_file)
-        doc.close()
+        if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+            return {"ok": False, "error": "No se generó el archivo de salida."}
         return {"ok": True, "output": output_file}
-    except Exception as e: return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
 
 def handle_watermark(data):
     try:
@@ -319,20 +383,50 @@ def handle_add_page_numbers(data):
     except Exception as e: return {"ok": False, "error": str(e)}
 
 def handle_jpg_to_pdf(data):
+    doc = None
+    warnings = []
     try:
         images = [os.path.abspath(f) for f in data.get("images", [])]
         output = os.path.abspath(data.get("output", "images.pdf"))
+        if not images:
+            return {"ok": False, "error": "No se proporcionaron imágenes."}
         doc = fitz.open()
         for img in images:
-            img_doc = fitz.open(img)
-            pdf_bytes = img_doc.convert_to_pdf()
-            img_doc.close()
+            if not os.path.exists(img):
+                warnings.append(f"Imagen no encontrada: {img}")
+                continue
+            img_doc = None
+            try:
+                img_doc = fitz.open(img)
+                pdf_bytes = img_doc.convert_to_pdf()
+            except Exception:
+                warnings.append(f"Imagen inválida o no compatible: {img}")
+                continue
+            finally:
+                if img_doc:
+                    try:
+                        img_doc.close()
+                    except Exception:
+                        pass
             with fitz.open("pdf", pdf_bytes) as pdf_img:
                 doc.insert_pdf(pdf_img)
+        if doc.page_count == 0:
+            return {"ok": False, "error": "No se pudo insertar ninguna imagen válida."}
         doc.save(output)
-        doc.close()
-        return {"ok": True, "output": output}
-    except Exception as e: return {"ok": False, "error": str(e)}
+        if not os.path.exists(output) or os.path.getsize(output) == 0:
+            return {"ok": False, "error": "No se pudo generar el PDF de salida."}
+        result = {"ok": True, "output": output}
+        if warnings:
+            result["warning"] = "; ".join(warnings)
+        return result
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
 
 def handle_pdf_to_jpg(data):
     try:
