@@ -98,9 +98,10 @@ const renderCustomPieLabel = ({
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const { history, currentScan } = useData();
+  const { history, currentScan, settings } = useData();
   const [stats, setStats] = useState({ pendingDocs: 0 });
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pendingDocList, setPendingDocList] = useState<{ name: string; modified: number; size: number }[]>([]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -109,6 +110,24 @@ export function Dashboard() {
     } catch (err) {
       console.error("Error fetching dashboard stats:", err);
     }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await window.electronAPI?.terapias?.listDocs?.();
+        if (!mounted) return;
+        if (res && res.ok && Array.isArray(res.files)) {
+          setPendingDocList(res.files);
+        } else {
+          setPendingDocList([]);
+        }
+      } catch (err) {
+        setPendingDocList([]);
+      }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
@@ -263,6 +282,8 @@ export function Dashboard() {
         data={dashboardData} 
         historyLength={history.length} 
         pendingDocs={stats.pendingDocs}
+        pendingDocList={pendingDocList}
+        terapiasDir={settings?.terapiasDir || ""}
         onNavigate={navigate}
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
@@ -275,6 +296,8 @@ interface DashboardViewProps {
   data: DashboardData;
   historyLength: number;
   pendingDocs: number;
+  pendingDocList: { name: string; modified: number; size: number }[];
+  terapiasDir: string;
   onNavigate: (path: string, options?: NavigateOptions) => void;
   onRefresh: () => void;
   isRefreshing: boolean;
@@ -289,7 +312,7 @@ interface QuickActionCardProps {
   onClick: () => void;
 }
 
-function DashboardView({ data, historyLength, pendingDocs, onNavigate, onRefresh, isRefreshing }: DashboardViewProps) {
+function DashboardView({ data, historyLength, pendingDocs, pendingDocList, terapiasDir, onNavigate, onRefresh, isRefreshing }: DashboardViewProps) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const tooltipStyle = isDark
@@ -357,14 +380,44 @@ function DashboardView({ data, historyLength, pendingDocs, onNavigate, onRefresh
 
       {/* Accesos Rápidos Estilo PDF Tools */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <QuickActionCard 
-            title="Terapias" 
-            label={`${pendingDocs} docs`}
-            desc="Pendientes por procesar"
-            icon={<Heart className="w-5 h-5" />}
-            color="bg-muted"
+          <Card
+            className="bg-card border-border shadow-sm hover:border-primary/50 transition-all cursor-pointer group rounded-lg overflow-hidden"
             onClick={() => onNavigate('/terapias', { state: { autoSearch: true } })}
-          />
+          >
+            <CardContent className="p-5 flex items-start gap-4">
+              <div className={cn("p-3 rounded-lg text-[#64748B] bg-muted group-hover:bg-accent transition-colors")}>{<Heart className="w-5 h-5" />}</div>
+              <div className="min-w-0 w-full">
+                <div className="flex items-center gap-2 justify-between">
+                  <h3 className="font-bold text-foreground text-sm uppercase tracking-tight">Terapias</h3>
+                  <Badge variant="secondary" className="bg-muted text-muted-foreground text-[9px] font-bold px-1.5 h-3.5 border-none">{`${pendingDocs} docs`}</Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground font-medium truncate">Pendientes por procesar</p>
+
+                {pendingDocList && pendingDocList.length > 0 && (
+                  <ul className="mt-3 space-y-1">
+                    {pendingDocList.slice(0,3).map((doc, idx) => (
+                      <li key={doc.name}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const fullPath = `${terapiasDir}\\${doc.name}`;
+                            onNavigate('/terapias', { state: { preloadedDoc: fullPath } });
+                          }}
+                          className="text-sm text-foreground/90 hover:text-primary font-medium truncate"
+                          title={doc.name}
+                        >
+                          {doc.name.replace(/\.[^/.]+$/, '')}
+                        </button>
+                      </li>
+                    ))}
+                    {pendingDocList.length > 3 && (
+                      <li className="text-xs text-muted-foreground">y {pendingDocList.length - 3} más...</li>
+                    )}
+                  </ul>
+                )}
+              </div>
+            </CardContent>
+          </Card>
           <QuickActionCard 
             title="PDF Tools" 
             label="Motores V2.0"

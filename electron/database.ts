@@ -36,6 +36,35 @@ const WARN_SIZE_MB = 50;
 const DB_PATH = path.join(app.getPath('userData'), 'database.json');
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
 
+/** Valores por defecto para settings.json (incluye campos migrados desde localStorage) */
+const DEFAULT_SETTINGS = {
+    columns: {
+        invoiceNumber: true,
+        company: true,
+        month: true,
+        year: true,
+        detail: true,
+        filePath: false,
+        amount: true,
+    },
+    scanning: {
+        onlyCotuFolders: true,
+        ignoreSystemFolders: true,
+        maxDepth: 10,
+    },
+    display: {
+        rowsPerPage: 100,
+        compactMode: false,
+    },
+    customInsurers: [],
+    operatorName: 'Usuario Admin',
+    operatorEmail: 'admin@cotu.com',
+    terapiasDir: '',
+    // Campos añadidos en la migración: tema y carpeta reciente
+    theme: 'dark',
+    lastScanPath: '',
+};
+
 // ── Helpers de I/O async ─────────────────────────────────────────────────────
 
 async function readDB(): Promise<ScanResult[]> {
@@ -136,7 +165,8 @@ export const dbOptions = {
     },
 
     getSettings: async (): Promise<any> => {
-        return readSettings();
+        const s = await readSettings();
+        return s ?? DEFAULT_SETTINGS;
     },
 
     saveSettings: async (settings: any): Promise<any> => {

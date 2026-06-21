@@ -85,12 +85,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // Cargar historial y settings asincronamente desde DB (o localStorage en fallback)
   useEffect(() => {
     const initData = async () => {
-      // Limpieza idempotente de claves legacy en localStorage
-      try {
-        localStorage.removeItem('cotu-last-path');
-      } catch {
-        /* ignore */
-      }
+      // Limpieza idempotente de claves legacy (migradas); ya no usamos localStorage
 
       if (window.electronAPI?.getSettings) {
         try {
@@ -163,11 +158,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       
       // Persistir vía IPC
       if (window.electronAPI?.saveSettings) {
-        window.electronAPI.saveSettings(updated).then(saved => {
-          if (saved) {
-            localStorage.removeItem("ordertrack-settings");
-          }
-        });
+        window.electronAPI.saveSettings(updated).catch(err => console.error('[DataContext] Error saving settings via IPC:', err));
       }
       return updated;
     });

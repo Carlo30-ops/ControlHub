@@ -6,11 +6,11 @@ import { Toaster } from "./components/ui/sonner";
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <DataProvider>
+    <DataProvider>
+      <ThemeProvider>
         <RouterProvider router={router} />
         <Toaster position="top-right" richColors />
-      </DataProvider>
-    </ThemeProvider>
+      </ThemeProvider>
+    </DataProvider>
   );
 }

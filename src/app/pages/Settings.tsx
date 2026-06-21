@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "react-router";
 import { useData } from "../contexts/DataContext";
 import type { DbStats } from "../../electron.d";
 import { useTheme } from "../contexts/ThemeContext";
@@ -61,6 +62,16 @@ export function Settings() {
     }
   }, [history]);
 
+  const location = useLocation();
+
+  useEffect(() => {
+    const target = location.state?.scrollTo as string | undefined;
+    if (target) {
+      const el = document.getElementById(target);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [location.state]);
+
   const handleTrimHistory = async () => {
     setIsTrimming(true);
     try {
@@ -116,7 +127,7 @@ export function Settings() {
           </Card>
 
           {/* Motor de Escaneo Glass */}
-          <Card className="bg-card shadow-md rounded-2xl overflow-hidden">
+          <Card id="scanning" className="bg-card shadow-md rounded-2xl overflow-hidden">
             <CardHeader className="p-8 border-b border-border">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-muted text-muted-foreground shadow-lg"><ScanSearch className="w-5 h-5" /></div>
@@ -201,7 +212,7 @@ export function Settings() {
           </Card>
 
           {/* Rutas del Sistema */}
-          <Card className="bg-card shadow-md rounded-2xl overflow-hidden">
+          <Card id="terapias" className="bg-card shadow-md rounded-2xl overflow-hidden">
             <CardHeader className="p-8 border-b border-border">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-muted text-muted-foreground shadow-lg"><HardDrive className="w-5 h-5" /></div>

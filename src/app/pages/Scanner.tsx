@@ -55,7 +55,7 @@ import { cn } from "../components/ui/utils";
 export function Scanner() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { addToHistory, setCurrentScan, settings } = useData();
+  const { addToHistory, setCurrentScan, settings, updateSettings } = useData();
   const [scanType, setScanType] = useState<"day" | "week" | "month" | "year" | "custom">("month");
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
@@ -72,15 +72,13 @@ export function Scanner() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    (async () => {
-      const raw = await window.electronAPI?.config?.get('settings.lastScanPath');
-      const saved = validateStringSetting(raw);
-      if (saved) {
-        setSelectedFiles(saved);
-        const folderName = saved.split(/[\\/]/).pop() || saved;
-        setBasePath(folderName);
-      }
-    })();
+    // Leer la carpeta seleccionada desde settings (migrado desde localStorage)
+    const saved = validateStringSetting(settings?.lastScanPath);
+    if (saved) {
+      setSelectedFiles(saved);
+      const folderName = saved.split(/[\\\/]/).pop() || saved;
+      setBasePath(folderName);
+    }
     if (window.electronAPI?.onFolderUpdated) {
       // @ts-ignore
       window.electronAPI.onFolderUpdated((data: any) => {
@@ -114,7 +112,7 @@ export function Scanner() {
         setSelectedFiles(dirPath);
         const folderName = dirPath.split(/[\\\/]/).pop() || "Carpeta seleccionada";
         setBasePath(folderName);
-        await window.electronAPI?.config?.set('settings.lastScanPath', dirPath);
+        if (updateSettings) updateSettings({ lastScanPath: dirPath });
         setLastStats(null);
         setLastInvoiceCount(null);
         toast.success(`Carpeta seleccionada: ${folderName}`);
@@ -261,7 +259,7 @@ export function Scanner() {
           {settings.scanning.onlyCotuFolders && (
             <Badge className="h-7 text-xs font-bold bg-muted text-muted-foreground border-none uppercase tracking-widest">Solo COTU</Badge>
           )}
-          <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl" onClick={() => navigate('/settings')}>
+          <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl" onClick={() => navigate('/settings', { state: { scrollTo: 'scanning' } })}>
             <HardDrive className="w-4 h-4 text-muted-foreground" />
           </Button>
         </div>

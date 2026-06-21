@@ -51,6 +51,7 @@ import { Switch } from "../../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Slider } from "../../components/ui/slider";
+import { FileDropZone } from "../../components/shared/FileDropZone";
 import { 
   AlertDialog,
   AlertDialogAction,
@@ -70,9 +71,6 @@ interface FileInfo {
   name: string;
   size?: string;
 }
-
-// Module-level variable to hold file passed via navigation
-let incomingFile: FileInfo | null = null;
 
 type ToolId = 
   | 'merge' | 'split' | 'extract' | 'delete_pages' | 'reorder_pages'
@@ -144,6 +142,7 @@ export default function PDFTools() {
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [output, setOutput] = useState("");
   const [askBeforeSave, setAskBeforeSave] = useState(true);
+  const [incomingFile, setIncomingFile] = useState<FileInfo | null>(null);
   const fileQueueRef = useRef<FileInfo[]>([]);
   const [, setQueueTick] = useState(0);
   const fileQueue = fileQueueRef.current;
@@ -310,9 +309,7 @@ export default function PDFTools() {
     if (location.state?.fileToProcess) {
       const path = location.state.fileToProcess;
       const fileInfo = getFileInfo(path);
-      
-      // Store in module-level variable for later processing
-      incomingFile = fileInfo;
+      setIncomingFile(fileInfo);
 
       if (view === 'active' && activeTool) {
         // Tool already active, load directly
@@ -333,6 +330,7 @@ export default function PDFTools() {
             setOutput(`${base}${activeTool.newExt || '_procesado.pdf'}`);
           }
         }
+        setIncomingFile(null);
       } else {
         // No active tool yet, just keep the file in incomingFile
         toast.success('Archivo listo. Selecciona una herramienta.');
@@ -383,9 +381,8 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
   };
 
   const resetToolState = (tool: ToolConfig | null) => {
-    // Use the module-level incomingFile if available
     const file = incomingFile;
-    incomingFile = null; // clear after using
+    setIncomingFile(null); // clear after using
     const initialFiles = file ? [file] : [];
     setFiles(initialFiles);
     setOutput('');
@@ -652,8 +649,13 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
           className="mb-4 w-full"
         />
 
-        {/* Pending files UI removed – handling now via incomingFile ref */}
-        
+        {incomingFile && !activeTool && (
+          <div className="mb-4 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-sm text-primary shadow-sm">
+            <span className="mr-2">📄</span>
+            <span>Archivo desde Reportes: <span className="font-semibold">{incomingFile.name}</span>. Elige una herramienta para continuar.</span>
+          </div>
+        )}
+
         {Object.entries(displayedGroups).map(([cat, tools]) => (
           <div key={cat} className="space-y-4">
             <div className="flex items-center gap-4">
@@ -733,7 +735,7 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
           
           <CardContent className="p-6 space-y-6">
             {/* DropZone Unificada */}
-            <DropZone 
+            <FileDropZone 
               multiple={activeTool.id === 'merge' || activeTool.id === 'jpg_to_pdf'}
               accept={activeTool.accept}
               files={files}
@@ -902,7 +904,7 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                 <>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Imagen (PNG/JPG)</label>
-                    <DropZone 
+                    <FileDropZone 
                       className="min-h-[80px] p-2"
                       accept=".png,.jpg,.jpeg"
                       files={wmImage ? [wmImage] : []}
@@ -1133,113 +1135,4 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
   }
 
   return null;
-}
-
-// --- Component: DropZone ---
-function DropZone({ multiple, onFiles, accept, files, onRemove, onReorder, className }: any) {
-  const [isOver, setIsOver] = useState(false);
-
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsOver(false);
-    const droppedFiles = Array.from(e.dataTransfer.files).map(f => (f as any).path);
-    if (droppedFiles.length === 0) return;
-
-    const accepted: string[] = [];
-    let hadRejection = false;
-
-    for (const filePath of droppedFiles) {
-      try {
-        const result = await window.electronAPI.security.validateAndRegisterDroppedFile(filePath);
-        if (result.ok) {
-          accepted.push(filePath);
-        } else {
-          hadRejection = true;
-          const fileName = filePath.split(/\\|\//).pop() || filePath;
-          toast.error(`${fileName}: ${result.error}`);
-        }
-      } catch (err: any) {
-        hadRejection = true;
-        const fileName = filePath.split(/\\|\//).pop() || filePath;
-        toast.error(`${fileName}: Error validando archivo`);
-        continue;
-      }
-    }
-
-    if (accepted.length > 0) {
-      onFiles(accepted);
-      if (hadRejection) {
-        toast.success(`${accepted.length} archivo${accepted.length === 1 ? '' : 's'} cargado${accepted.length === 1 ? '' : 's'} correctamente.`);
-      }
-    }
-  }, [onFiles]);
-
-  return (
-    <div className="space-y-4 w-full">
-      <div
-        onDragOver={(e) => { e.preventDefault(); setIsOver(true); }}
-        onDragLeave={() => setIsOver(false)}
-        onDrop={handleDrop}
-        className={cn(
-          "relative border border-dashed rounded-lg p-8 flex flex-col items-center justify-center transition-all duration-200 group cursor-pointer min-h-[180px]",
-          isOver ? "border-primary bg-primary/5 scale-[0.99]" : "border-border hover:border-primary/40 hover:bg-accent/5",
-          className
-        )}
-        onClick={async () => {
-          const filters = accept ? [{ name: "Archivos", extensions: accept.replace(/\./g, '').split(',') }] : [];
-          const path = await window.electronAPI.selectFile(filters);
-          if (path) onFiles([path]);
-        }}
-      >
-        <div className={cn(
-          "p-4 rounded-lg bg-muted mb-3 transition-transform group-hover:scale-110",
-          isOver && "bg-primary text-primary-foreground"
-        )}>
-          <Upload className={cn("w-8 h-8", isOver ? "text-primary-foreground" : "text-[#64748B]")} />
-        </div>
-        <p className="text-base font-bold text-foreground text-center">
-          {isOver ? "¡Suéltalo ahora!" : <>Arrastra {multiple ? "archivos" : "un archivo"} aquí o <span className="text-primary underline decoration-1 underline-offset-4">selecciona</span></>}
-        </p>
-        <p className="text-[10px] font-bold text-muted-foreground mt-2 uppercase tracking-[0.2em]">{accept}</p>
-      </div>
-
-      {files && files.length > 0 && (
-        <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-300">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
-            Seleccionados ({files.length})
-          </label>
-          <ScrollArea className={cn("w-full rounded-lg border border-border bg-muted/10 p-1", multiple ? 'h-40' : 'h-auto')}>
-            <div className="space-y-1">
-              {files.map((file: FileInfo, idx: number) => (
-                <div key={idx} className="group flex items-center gap-3 p-2 bg-card rounded border border-border shadow-sm">
-                  <div className="w-6 h-6 rounded bg-muted flex items-center justify-center text-muted-foreground font-bold text-[10px]">
-                    {idx + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold truncate text-foreground">{file.name}</p>
-                    <p className="text-[9px] text-muted-foreground truncate">{file.path}</p>
-                  </div>
-                  <div className="flex items-center gap-0.5">
-                    {multiple && onReorder && (
-                      <>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 rounded" disabled={idx === 0} onClick={(e) => { e.stopPropagation(); onReorder(idx, -1); }}>
-                          <ArrowUp className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 rounded" disabled={idx === files.length - 1} onClick={(e) => { e.stopPropagation(); onReorder(idx, 1); }}>
-                          <ArrowDown className="w-3.5 h-3.5" />
-                        </Button>
-                      </>
-                    )}
-                    <Button variant="ghost" size="icon" className="h-7 w-7 rounded text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); onRemove(idx); }}>
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
-        </div>
-      )}
-    </div>
-  );
 }

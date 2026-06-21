@@ -50,6 +50,7 @@ import {
   CollapsibleContent, 
   CollapsibleTrigger 
 } from "../../components/ui/collapsible";
+import { FileDropZone } from "../../components/shared/FileDropZone";
 import { toast } from "sonner";
 import { cn } from "../../components/ui/utils";
 
@@ -158,10 +159,42 @@ export default function Terapias() {
   const [isSearching, setIsSearching] = useState(false);
 
   const inputNameRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const hasSourceDir = sourceDir.trim().length > 0;
   const engineReady = !status.loading && status.ping === true;
   const interactionsLocked = !hasSourceDir || !engineReady || isProcessing;
+
+  useEffect(() => {
+    if (location.pathname !== "/terapias") return;
+
+    const handler = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName;
+      const isInputFocused = activeTag === "INPUT" || activeTag === "TEXTAREA" || document.activeElement?.isContentEditable;
+
+      if (e.ctrlKey && e.key.toLowerCase() === "o") {
+        if (!isInputFocused) {
+          e.preventDefault();
+          handleAutoDetectWord();
+        }
+      }
+
+      if (e.key === "F5") {
+        if (!isInputFocused) {
+          e.preventDefault();
+          fetchDocs();
+        }
+      }
+
+      if (e.ctrlKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [location.pathname, handleAutoDetectWord, fetchDocs]);
 
   // Detectar estados de navegación (Dashboard -> Terapias o PDF Tools -> Terapias)
   useEffect(() => {
@@ -576,6 +609,7 @@ export default function Terapias() {
               isSearching ? "text-primary animate-pulse" : "text-muted-foreground group-focus-within:text-primary"
             )} />
             <Input 
+              ref={searchInputRef}
               placeholder="Buscar paciente antiguo..." 
               value={searchQuery}
               onChange={e => handleSearch(e.target.value)}
@@ -684,8 +718,10 @@ export default function Terapias() {
                       Buscar Word en carpeta
                     </Button>
                  </div>
-                 <DropZoneSimple 
-                   file={form.filename ? { name: form.filename, path: sourceDir + "\\" + form.filename } : null}
+                 <FileDropZone 
+                   multiple={false}
+                   compact={true}
+                   files={form.filename ? [{ name: form.filename, path: sourceDir + "\\" + form.filename }] : []}
                    onFiles={(paths) => {
                      const name = paths[0].split(/[\\/]/).pop() || "";
                      setForm(prev => ({ ...prev, filename: name }));

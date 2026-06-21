@@ -91,6 +91,9 @@ export interface AppSettings {
   operatorEmail?: string;
   terapiasDir?: string;
   tesseractPath?: string;
+  // Theme and recent folder (migrated from legacy localStorage)
+  theme?: 'light' | 'dark';
+  lastScanPath?: string;
 }
 
 /** Opciones para el motor de escaneo localScanner */

@@ -1,7 +1,7 @@
 # CONTEXT.md — ControlHub
 
 > Documento técnico para IAs y sesiones nuevas. **No es documentación de usuario.**
-> Última revisión contra código: 2026-06-19. Versión app: **3.2.0** (`package.json`).
+> Última revisión contra código: 2026-06-21. Versión app: **3.2.0** (`package.json`).
 > Repositorio standalone — proyectos de referencia (COTU Analytics, Organizador robusto) ya integrados y eliminados del workspace.
 
 ---
@@ -217,6 +217,12 @@ ControlHub/
 | P29 | Auto-detección de Word en carpeta origen (Terapias) | **Nuevo** | ✅ RESUELTO — Botón "Buscar Word en carpeta" con selección inteligente |
 | P30 | Validación de código SS en nombre de entrada (Terapias) | **Nuevo** | ✅ RESUELTO — Diálogo de advertencia y normalización de PACIENTE_DESCONOCIDO |
 | P31 | Terapias no auto-detecta archivos Word al entrar al módulo — `fetchDocs` useEffect con dependencias incorrectas | **Confirmado** | ✅ RESUELTO — settings.terapiasDir agregado a dependencias del useEffect en Terapias/index.tsx |
+| P32 | `incomingFile` en PDFTools era variable de módulo fuera del ciclo React | **Confirmado** | ✅ RESUELTO — Migrado a useState; banner visible cuando llega archivo sin herramienta activa |
+| P33 | Settings sin anclas — imposible navegar a sección específica | **Confirmado** | ✅ RESUELTO — ids scanning/terapias + scroll por location.state (evita conflicto con createHashRouter) |
+| P34 | Dashboard mostraba solo contador de Terapias, sin acceso a docs individuales | **Confirmado** | ✅ RESUELTO — Lista hasta 3 docs clickeables con preloadedDoc; fallback silencioso si listDocs falla |
+| P35 | Claves legacy ordertrack-* y cotu-last-path en localStorage sin respaldo IPC | **Confirmado** | ✅ RESUELTO — Migrado theme y lastScanPath a AppSettings; eliminado todo localStorage del renderer |
+| P36 | ThemeProvider por encima de DataProvider — useData() fallaba en runtime | **Confirmado** | ✅ RESUELTO — Invertido orden en App.tsx: DataProvider envuelve ThemeProvider |
+| P37 | Cero atajos de teclado globales y en Terapias | **Confirmado** | ✅ RESUELTO — Globales Ctrl+1..5/H en MainLayout; Ctrl+O/F5/Ctrl+F en Terapias |
 
 ---
 
@@ -253,6 +259,11 @@ Ordenada por **impacto real en producción/uso diario**, no severidad teórica:
 9. **P20** — ✅ DESCARTADO: Memory leak pdfTextCache no existe.
 10. **P27** — Virtualización de tablas (Baja prioridad)
 11. **P31** — ✅ RESUELTO: Auto-detect Word al montar Terapias (useEffect dependencia fix).
+12. **P32** — ✅ RESUELTO: Puente Reportes → PDF Tools (P32)
+13. **P33** — ✅ RESUELTO: Settings anclas → `#scanning`, `#terapias` (P33)
+14. **P34** — ✅ RESUELTO: Dashboard → Terapias doc pre-seleccionado (P34)
+15. **P35/P36** — ✅ RESUELTO: Deprecar ordertrack-* y orden providers App.tsx (P35, P36)
+16. **P37** — ✅ RESUELTO: Atajos de teclado globales y en Terapias (P37)
 
 ---
 
@@ -389,11 +400,11 @@ Decisiones ya evaluadas y **descartadas** — no re-proponer sin justificación 
 
 | Prioridad | Tarea |
 |-----------|-------|
-| Alta | Puente Reportes → PDF Tools |
-| Media | Settings con anclas `#scanning`, `#terapias` |
-| Media | Dashboard → Terapias con doc pre-seleccionado |
-| Media | Deprecar claves `ordertrack-*` restantes en localStorage |
-| Baja | Atajos de teclado globales y en Terapias |
+| Alta | Puente Reportes → PDF Tools ✅ RESUELTO |
+| Media | Settings con anclas `#scanning`, `#terapias` ✅ RESUELTO |
+| Media | Dashboard → Terapias con doc pre-seleccionado ✅ RESUELTO |
+| Media | Deprecar claves `ordertrack-*` restantes en localStorage ✅ RESUELTO |
+| Baja | Atajos de teclado globales y en Terapias ✅ RESUELTO |
 | Baja | Virtualización de tablas (P27) |
 
 ---
@@ -450,6 +461,14 @@ Decisiones ya evaluadas y **descartadas** — no re-proponer sin justificación 
 ---
 
 ## 14. Changelog de sesiones recientes
+
+### 2026-06-21 — Sesión de mejoras y limpieza
+- P32: `incomingFile` migrado a useState en PDFTools; banner de archivo recibido desde Reportes.
+- P33: Anclas Settings — ids `scanning`/`terapias` + scroll por `location.state.scrollTo`.
+- P34: Dashboard muestra hasta 3 docs Word pendientes clickeables con pre-selección en Terapias.
+- P35/P36: Eliminado todo localStorage del renderer; `theme` y `lastScanPath` migrados a AppSettings vía IPC. Fix orden providers App.tsx.
+- P37: Atajos globales `Ctrl+1..5`, `Ctrl+H` en MainLayout; `Ctrl+O`, `F5`, `Ctrl+F` en Terapias.
+- Build limpio confirmado post-sesión.
 
 ### 2026-06-18 — PDF Tools UX
 

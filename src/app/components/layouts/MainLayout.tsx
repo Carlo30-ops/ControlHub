@@ -1,10 +1,48 @@
-import { Outlet, useLocation } from "react-router";
+import { useEffect } from "react";
+import { Outlet, useLocation, useNavigate } from "react-router";
 import { Sidebar } from "../navigation/Sidebar";
 import { Header } from "../navigation/Header";
 import { motion, AnimatePresence } from "motion/react";
 
 export function MainLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName;
+      const isInputFocused = activeTag === "INPUT" || activeTag === "TEXTAREA" || document.activeElement?.isContentEditable;
+      if (isInputFocused) return;
+
+      if (e.ctrlKey && e.key.toLowerCase() === "1") {
+        e.preventDefault();
+        navigate("/scanner");
+      }
+      if (e.ctrlKey && e.key.toLowerCase() === "2") {
+        e.preventDefault();
+        navigate("/reports");
+      }
+      if (e.ctrlKey && e.key.toLowerCase() === "3") {
+        e.preventDefault();
+        navigate("/terapias");
+      }
+      if (e.ctrlKey && e.key.toLowerCase() === "4") {
+        e.preventDefault();
+        navigate("/pdf-tools");
+      }
+      if (e.ctrlKey && e.key.toLowerCase() === "5") {
+        e.preventDefault();
+        navigate("/settings");
+      }
+      if (e.ctrlKey && e.key.toLowerCase() === "h") {
+        e.preventDefault();
+        navigate("/history");
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [navigate]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950">
