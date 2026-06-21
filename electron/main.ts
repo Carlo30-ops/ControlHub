@@ -143,6 +143,7 @@ class SidecarManager {
   private readonly maxRestarts: number = 0; // disabled automatic restarts per user request
   private readonly backoffTimes: number[] = [2000, 4000, 8000];
   private status: 'running' | 'closed' | 'stalled' | 'reconnecting' | 'failed' | 'ok' | 'unknown' = 'unknown';
+  private commandTimestamps = new Map<string, { cmd: string; startTime: number; inputPath: string }>();
 
   constructor(name: string, scriptPath: string) {
     this.name = name;
@@ -257,9 +258,23 @@ class SidecarManager {
       const cmd = payload.cmd || "";
       const timeoutMs = SIDECAR_COMMAND_TIMEOUTS[cmd] || SIDECAR_DEFAULT_TIMEOUT_MS;
 
+      // --- PDF-PERF: Capture input path for performance logging ---
+      const inputPath = (payload.data?.input || payload.data?.inputs?.[0] || 'N/A') as string;
+      const truncatedPath = typeof inputPath === 'string' && inputPath.length > 40 
+        ? '...' + inputPath.slice(-40) 
+        : inputPath;
+      this.commandTimestamps.set(id, { cmd, startTime: Date.now(), inputPath: truncatedPath });
+
       const timer = setTimeout(() => {
         if (this.pendingResolvers.has(id)) {
           this.pendingResolvers.delete(id);
+          // --- PDF-PERF: Log timeout event ---
+          const timing = this.commandTimestamps.get(id);
+          if (timing) {
+            const duration = Date.now() - timing.startTime;
+            console.log(`[PDF-PERF] ${this.name} cmd="${cmd}" duration=${duration}ms ok=false input="${timing.inputPath}" error="timeout"`);
+            this.commandTimestamps.delete(id);
+          }
           this.setStatus('stalled');
           reject(new Error(`Timeout: La operación '${cmd}' en el sidecar ${this.name} tardó más de ${timeoutMs / 1000}s. El servicio ha sido marcado como atascado.`));
         }
@@ -267,6 +282,24 @@ class SidecarManager {
       
       this.pendingResolvers.set(id, (value) => {
         clearTimeout(timer);
+        
+        // --- PDF-PERF: Log operation duration and result ---
+        const timing = this.commandTimestamps.get(id);
+        if (timing) {
+          const duration = Date.now() - timing.startTime;
+          let okStatus: 'true' | 'false' | 'unknown';
+          if (value?.ok === true) {
+            okStatus = 'true';
+          } else if (value?.ok === false) {
+            okStatus = 'false';
+          } else {
+            okStatus = 'unknown';
+          }
+          const errorMsg = okStatus !== 'true' && value?.error ? ` error="${value.error.substring(0, 50)}"` : '';
+          console.log(`[PDF-PERF] ${this.name} cmd="${cmd}" duration=${duration}ms ok=${okStatus} input="${timing.inputPath}"${errorMsg}`);
+          this.commandTimestamps.delete(id);
+        }
+        
         resolve(value);
       });
 
@@ -275,6 +308,8 @@ class SidecarManager {
       } catch (writeErr) {
         clearTimeout(timer);
         this.pendingResolvers.delete(id);
+        // --- PDF-PERF: Clean up timing on write error ---
+        this.commandTimestamps.delete(id);
         reject(new Error(`Failed to write to sidecar ${this.name}: ${writeErr}`));
       }
     });
