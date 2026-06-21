@@ -212,7 +212,7 @@ ControlHub/
 | P24 | Tests: solo 2 suites Python sidecar; **cero** tests Electron/React/E2E | **Confirmado** | ✅ RESUELTO — Suite de tests Vitest para localScanner implementada |
 | P25 | Operador default distinto: Sidebar "Operador ControlHub" vs DataContext default "Usuario Admin" | **Confirmado** | ✅ RESUELTO — Unificado operador y consumo centralizado de settings |
 | P26 | Rendimiento Parsing PDF: No es cuello de botella. 37ms promedio, 0 errores en 67 archivos. | **Optimizado** | Comportamiento esperado |
-| P27 | Virtualización de tablas: Baja prioridad confirmada. Dataset real = 67 PDFs máximo observado. | **Baja Prioridad** | Pendiente |
+| P27 | Virtualización de tablas | Baja Prioridad | ✅ DESCARTADO — Paginación activa con rowsPerPage ya limita el render. Dataset real = 67 filas máximo; virtualización agrega complejidad sin beneficio medible. |
 | P28 | Selector de sesión en Reportes (dropdown con fecha, N facturas y ruta) | **Nuevo** | ✅ RESUELTO — Implementado dropdown en Reports.tsx |
 | P29 | Auto-detección de Word en carpeta origen (Terapias) | **Nuevo** | ✅ RESUELTO — Botón "Buscar Word en carpeta" con selección inteligente |
 | P30 | Validación de código SS en nombre de entrada (Terapias) | **Nuevo** | ✅ RESUELTO — Diálogo de advertencia y normalización de PACIENTE_DESCONOCIDO |
@@ -405,7 +405,6 @@ Decisiones ya evaluadas y **descartadas** — no re-proponer sin justificación 
 | Media | Dashboard → Terapias con doc pre-seleccionado ✅ RESUELTO |
 | Media | Deprecar claves `ordertrack-*` restantes en localStorage ✅ RESUELTO |
 | Baja | Atajos de teclado globales y en Terapias ✅ RESUELTO |
-| Baja | Virtualización de tablas (P27) |
 
 ---
 
