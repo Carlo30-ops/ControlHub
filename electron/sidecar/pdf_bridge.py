@@ -109,10 +109,25 @@ def handle_compress(data):
         import shutil
         gs_cmd = shutil.which("gswin64c") or shutil.which("gswin32c") or shutil.which("gs")
         if not gs_cmd:
-            # Fallback: compresión básica con pikepdf si no hay Ghostscript
+            # Fallback 1: PyMuPDF (mejor compresión de imágenes)
+            try:
+                doc = fitz.open(input_file)
+                doc.save(output_file, 
+                         garbage=4,      # elimina objetos no referenciados
+                         deflate=True,   # comprime streams
+                         clean=True)     # limpia estructura
+                doc.close()
+                return {"ok": True, "output": output_file, 
+                        "engine": "fitz-fallback",
+                        "warning": "Ghostscript no encontrado. Compresión via PyMuPDF."}
+            except Exception as e_fitz:
+                pass
+            # Fallback 2: pikepdf básico (último recurso)
             with pikepdf.open(input_file) as pdf:
                 pdf.save(output_file, compress_streams=True, linearize=True)
-            return {"ok": True, "output": output_file, "engine": "pikepdf-fallback", "warning": "Ghostscript no encontrado. Compresión básica aplicada."}
+            return {"ok": True, "output": output_file, 
+                    "engine": "pikepdf-fallback",
+                    "warning": "Ghostscript no encontrado. Compresión básica aplicada."}
 
         settings = f"/{level}" if not level.startswith("/") else level
         cmd = [gs_cmd, "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4", f"-dPDFSETTINGS={settings}", 
@@ -269,24 +284,16 @@ def handle_crop(data):
         rect_data = data.get("rect", [0, 0, 100, 100])
         doc = fitz.open(input_file)
         if doc.page_count > 0:
-            first_page = doc[0]
-            w1 = first_page.rect.width
-            h1 = first_page.rect.height
             for page in doc:
                 wp = page.rect.width
                 hp = page.rect.height
-                if w1 > 0 and h1 > 0:
-                    scale_x = wp / w1
-                    scale_y = hp / h1
-                    scaled_rect = fitz.Rect(
-                        rect_data[0] * scale_x,
-                        rect_data[1] * scale_y,
-                        rect_data[2] * scale_x,
-                        rect_data[3] * scale_y
-                    )
-                    page.set_cropbox(scaled_rect)
-                else:
-                    page.set_cropbox(fitz.Rect(rect_data))
+                # Clamp al tamaño real de cada página
+                x0 = max(0, min(rect_data[0], wp))
+                y0 = max(0, min(rect_data[1], hp))
+                x1 = max(0, min(rect_data[2], wp))
+                y1 = max(0, min(rect_data[3], hp))
+                if x1 > x0 and y1 > y0:
+                    page.set_cropbox(fitz.Rect(x0, y0, x1, y1))
         doc.save(output_file)
         doc.close()
         return {"ok": True, "output": output_file}
@@ -442,7 +449,11 @@ def handle_word_to_pdf(data):
         return {"ok": True, "output": output_file}
     except Exception as e: return {"ok": False, "error": str(e)}
     finally:
-        if word: word.Quit()
+        if word:
+            try:
+                word.Quit()
+            except Exception:
+                pass
         pythoncom.CoUninitialize()
 
 def handle_pdf_to_word(data):
@@ -450,49 +461,104 @@ def handle_pdf_to_word(data):
     word = None
     input_file = os.path.abspath(data.get("input", ""))
     output_file = os.path.abspath(data.get("output", ""))
+
+    def _pdf_has_text(path, min_chars=50):
+        try:
+            doc = fitz.open(path)
+            text = ""
+            for page in doc:
+                text += page.get_text()
+                if len(text) >= min_chars:
+                    doc.close()
+                    return True
+            doc.close()
+            return False
+        except Exception:
+            return False
+
+    has_text = _pdf_has_text(input_file)
     try:
-        # Estrategia 1: Word COM nativo (mejor fidelidad para layouts complejos)
-        word = win32com.client.DispatchEx("Word.Application")
-        word.Visible = False
-        word.DisplayAlerts = 0
-        doc = word.Documents.Open(
-            input_file,
-            ConfirmConversions=False,
-            ReadOnly=True
+        if has_text:
+            # Estrategia 1: Word COM nativo (mejor fidelidad para layouts complejos)
+            word = win32com.client.DispatchEx("Word.Application")
+            word.Visible = False
+            word.DisplayAlerts = 0
+            doc = word.Documents.Open(
+                input_file,
+                ConfirmConversions=False,
+                ReadOnly=True
+            )
+            doc.SaveAs2(output_file, 16)  # 16 = wdFormatDocumentDefault (.docx)
+            doc.Close(False)
+            word.Quit()
+            word = None
+            pythoncom.CoUninitialize()
+            return {"ok": True, "output": output_file}
+
+        from pdf2docx import Converter
+        cv = Converter(input_file)
+        cv.convert(output_file,
+            start=0,
+            end=None,
+            multi_processing=False,
+            connected_border_tolerance=0,
+            line_overlap_threshold=0.9,
+            image_overlap_threshold=0.0,
         )
-        doc.SaveAs2(output_file, 16)  # 16 = wdFormatDocumentDefault (.docx)
-        doc.Close(False)
-        word.Quit()
-        word = None
+        cv.close()
         pythoncom.CoUninitialize()
-        return {"ok": True, "output": output_file}
-    except Exception as e_word:
+        return {"ok": True, "output": output_file, "warning": "Conversión via pdf2docx. Layouts complejos pueden variar."}
+    except Exception as e_first:
         if word:
             try: word.Quit()
-            except: pass
+            except Exception: pass
             word = None
         try: pythoncom.CoUninitialize()
-        except: pass
-        # Estrategia 2: pdf2docx (mejor para PDFs con texto plano)
-        try:
-            from pdf2docx import Converter
-            pythoncom.CoInitialize()
-            cv = Converter(input_file)
-            cv.convert(output_file,
-                start=0,
-                end=None,
-                multi_processing=False,
-                connected_border_tolerance=0,
-                line_overlap_threshold=0.9,
-                image_overlap_threshold=0.0,
-            )
-            cv.close()
-            pythoncom.CoUninitialize()
-            return {"ok": True, "output": output_file, "warning": "Conversión via pdf2docx. Layouts complejos pueden variar."}
-        except Exception as e_pdf2docx:
-            try: pythoncom.CoUninitialize()
-            except: pass
-            return {"ok": False, "error": f"Word COM: {str(e_word)} | pdf2docx: {str(e_pdf2docx)}"}
+        except Exception: pass
+
+        if has_text:
+            try:
+                from pdf2docx import Converter
+                cv = Converter(input_file)
+                cv.convert(output_file,
+                    start=0,
+                    end=None,
+                    multi_processing=False,
+                    connected_border_tolerance=0,
+                    line_overlap_threshold=0.9,
+                    image_overlap_threshold=0.0,
+                )
+                cv.close()
+                pythoncom.CoUninitialize()
+                return {"ok": True, "output": output_file, "warning": "Conversión via pdf2docx. Layouts complejos pueden variar."}
+            except Exception as e_pdf2docx:
+                try: pythoncom.CoUninitialize()
+                except Exception: pass
+                return {"ok": False, "error": f"Word COM: {str(e_first)} | pdf2docx: {str(e_pdf2docx)}"}
+        else:
+            try:
+                word = win32com.client.DispatchEx("Word.Application")
+                word.Visible = False
+                word.DisplayAlerts = 0
+                doc = word.Documents.Open(
+                    input_file,
+                    ConfirmConversions=False,
+                    ReadOnly=True
+                )
+                doc.SaveAs2(output_file, 16)  # 16 = wdFormatDocumentDefault (.docx)
+                doc.Close(False)
+                word.Quit()
+                word = None
+                pythoncom.CoUninitialize()
+                return {"ok": True, "output": output_file}
+            except Exception as e_word:
+                if word:
+                    try: word.Quit()
+                    except Exception: pass
+                    word = None
+                try: pythoncom.CoUninitialize()
+                except Exception: pass
+                return {"ok": False, "error": f"pdf2docx: {str(e_first)} | Word COM: {str(e_word)}"}
 
 def handle_excel_to_pdf(data):
     pythoncom.CoInitialize()
@@ -508,7 +574,11 @@ def handle_excel_to_pdf(data):
         return {"ok": True, "output": output_file}
     except Exception as e: return {"ok": False, "error": str(e)}
     finally:
-        if excel: excel.Quit()
+        if excel:
+            try:
+                excel.Quit()
+            except Exception:
+                pass
         pythoncom.CoUninitialize()
 
 def handle_ppt_to_pdf(data):
@@ -524,7 +594,11 @@ def handle_ppt_to_pdf(data):
         return {"ok": True, "output": output_file}
     except Exception as e: return {"ok": False, "error": str(e)}
     finally:
-        if ppt: ppt.Quit()
+        if ppt:
+            try:
+                ppt.Quit()
+            except Exception:
+                pass
         pythoncom.CoUninitialize()
 
 def handle_get_page_info(data):
