@@ -36,6 +36,9 @@ let globalWatcher: FSWatcher | null = null;
 const registeredDroppedPaths = new Set<string>(); // real paths validated via validateAndRegisterDroppedFile
 const CONTROLHUB_TEMP_DIR = path.join(os.tmpdir(), 'controlhub-pdftools');
 
+// C4: Config allowlist — únicamente estas claves pueden ser leídas/escritas desde el renderer vía config:get/config:set
+const ALLOWED_CONFIG_KEYS = ['settings.terapiasDir', 'terapias.baseDest', 'terapias.backup'];
+
 /**
  * Validate a candidate file path for IPC operations.
  * Returns true if the path is allowed according to the allowlist rules.
@@ -383,8 +386,17 @@ ipcMain.handle('pdf:html_to_pdf', (_, data) => validatePdfHandler('html_to_pdf',
 ipcMain.handle('pdf:protect', (_, data) => validatePdfHandler('protect', data));
 ipcMain.handle('pdf:unlock', (_, data) => validatePdfHandler('unlock', data));
 ipcMain.handle('pdf:repair', (_, data) => validatePdfHandler('repair', data));
-ipcMain.handle('pdf:ocr', (_, data) => {
-  const tesseractPath = store.get('tesseractPath') as string;
+ipcMain.handle('pdf:ocr', async (_, data) => {
+  let tesseractPath = store.get('tesseractPath') as string;
+  
+  // C5: Validación de seguridad real — si tesseractPath está configurado, validarlo antes de usar
+  if (tesseractPath) {
+    const validationResult = await validateTesseractPath(tesseractPath);
+    if (!validationResult.ok) {
+      return { ok: false, error: `Tesseract inválido: ${validationResult.error}` };
+    }
+  }
+  
   const extended = { ...data, tesseract_path: tesseractPath };
   return validatePdfHandler('ocr', extended);
 });
@@ -423,10 +435,72 @@ ipcMain.handle('ocr:extractText', async (_, pdfPath: string) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// C5: Validación de Tesseract — Función interna reutilizable
+// ─────────────────────────────────────────────────────────────────────────────
+async function validateTesseractPath(exePath: string): Promise<{ ok: boolean; error?: string }> {
+  const { execFile } = await import('child_process');
+  const path_module = await import('path');
+
+  try {
+    // 1. Verificar que el archivo existe
+    if (!fs.existsSync(exePath)) {
+      return { ok: false, error: 'Archivo no encontrado' };
+    }
+
+    // 2. Verificar que el nombre del archivo es tesseract.exe (case-insensitive)
+    const baseName = path_module.default.basename(exePath).toLowerCase();
+    if (baseName !== 'tesseract.exe') {
+      return { ok: false, error: 'El archivo debe ser tesseract.exe' };
+    }
+
+    // 3. Ejecutar con --version y timeout 5s, capturando salida
+    return new Promise((resolve) => {
+      const child = execFile(exePath, ['--version'], { timeout: 5000 }, (error, stdout, stderr) => {
+        if (error) {
+          if ((error as any).code === 'ETIMEDOUT') {
+            return resolve({ ok: false, error: 'Tiempo de espera agotado al validar el ejecutable' });
+          }
+          return resolve({ ok: false, error: 'No se puede ejecutar el binario' });
+        }
+
+        // 4. Verificar que la salida contiene 'tesseract'
+        const output = (stdout + stderr).toLowerCase();
+        if (output.includes('tesseract')) {
+          return resolve({ ok: true });
+        } else {
+          return resolve({ ok: false, error: 'El ejecutable no responde como Tesseract OCR' });
+        }
+      });
+    });
+  } catch (err: any) {
+    return { ok: false, error: 'Error al validar el ejecutable' };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // IPC: Configuración Persistente
 // ─────────────────────────────────────────────────────────────────────────────
-ipcMain.handle('config:get', (_, key) => store.get(key));
-ipcMain.handle('config:set', (_, key, value) => store.set(key, value));
+ipcMain.handle('config:get', (_, key) => {
+  if (!ALLOWED_CONFIG_KEYS.includes(key)) {
+    console.warn(`[CONFIG] Intento de lectura de clave no permitida: "${key}"`);
+    return undefined;
+  }
+  return store.get(key);
+});
+
+ipcMain.handle('config:set', (_, key, value) => {
+  if (!ALLOWED_CONFIG_KEYS.includes(key)) {
+    throw new Error(
+      `Clave no permitida: "${key}". Claves permitidas: ${ALLOWED_CONFIG_KEYS.join(', ')}`
+    );
+  }
+  return store.set(key, value);
+});
+
+// C5: Handler IPC para validar Tesseract (capa fina que reutiliza validateTesseractPath)
+ipcMain.handle('tesseract:validate', async (_, exePath: string) => {
+  return validateTesseractPath(exePath);
+});
 
 // IPC Handlers para Dashboard
 ipcMain.handle('dashboard:stats', async () => {

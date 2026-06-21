@@ -1,14 +1,14 @@
-import { ipcRenderer, contextBridge } from 'electron';
+﻿import { ipcRenderer, contextBridge } from 'electron';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// preload.ts — Bridge seguro entre Renderer y Main process
-// Fix #9:  Todos los métodos bien tipados (se eliminaron @ts-ignore en renderer)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// preload.ts â€” Bridge seguro entre Renderer y Main process
+// Fix #9:  Todos los mÃ©todos bien tipados (se eliminaron @ts-ignore en renderer)
 // Fix #3:  cancelScan expuesto para abortar traversal en main process
-// Fix #11: trimHistory / getDbStats expuestos para gestión de almacenamiento
-// ─────────────────────────────────────────────────────────────────────────────
+// Fix #11: trimHistory / getDbStats expuestos para gestiÃ³n de almacenamiento
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // ── Diálogos ──────────────────────────────────────────────────────────────
+  // â”€â”€ DiÃ¡logos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   selectDirectory: () =>
     ipcRenderer.invoke('dialog:selectDirectory'),
   // New: Show Save Dialog
@@ -17,9 +17,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: (options?: { filters?: { name: string; extensions: string[] }[]; defaultPath?: string } | { name: string; extensions: string[] }[]) =>
     ipcRenderer.invoke('dialog:selectFile', options),
 
-  // ── Sistema de archivos ───────────────────────────────────────────────────
+  // â”€â”€ Sistema de archivos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  /** Fix #3: Acepta scanId para habilitar cancelación IPC real */
+  /** Fix #3: Acepta scanId para habilitar cancelaciÃ³n IPC real */
   readDirectory: (
     dirPath: string,
     options?: { ignoredFolders?: string[]; maxDepth?: number; scanId?: string }
@@ -29,7 +29,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cancelScan: (scanId: string) =>
     ipcRenderer.invoke('fs:cancelScan', scanId),
 
-  /** maxPages=1 para identificación rápida, sin maxPages para extracción completa */
+  /** maxPages=1 para identificaciÃ³n rÃ¡pida, sin maxPages para extracciÃ³n completa */
   parsePdf: (pdfPath: string, maxPages?: number) =>
     ipcRenderer.invoke('fs:parsePdf', pdfPath, maxPages),
 
@@ -48,7 +48,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     filters?: { name: string; extensions: string[] }[];
   }) => ipcRenderer.invoke('fs:exportFile', options),
 
-  // ── Progreso de escaneo ───────────────────────────────────────────────────
+  // â”€â”€ Progreso de escaneo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   onScanProgress: (callback: (data: { currentFile: string; scannedCount: number; foundCount: number }) => void) => {
     ipcRenderer.on('scan-progress', (_event, data) => callback(data));
   },
@@ -56,7 +56,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('scan-progress');
   },
 
-  // ── Watcher de carpeta en tiempo real ─────────────────────────────────────
+  // â”€â”€ Watcher de carpeta en tiempo real â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   startWatch: (dirPath: string) => ipcRenderer.invoke('fs:startWatch', dirPath),
   stopWatch: () => ipcRenderer.invoke('fs:stopWatch'),
   onFolderUpdated: (callback: (data: { type: string; path: string }) => void) => {
@@ -66,7 +66,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('scanner:new-file');
   },
 
-  // ── Base de Datos Local ───────────────────────────────────────────────────
+  // â”€â”€ Base de Datos Local â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   getHistory: () => ipcRenderer.invoke('db:getHistory'),
   saveScan: (scan: any) => ipcRenderer.invoke('db:saveScan', scan),
   deleteScan: (id: string) => ipcRenderer.invoke('db:deleteScan', id),
@@ -78,10 +78,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** Fix: OCR Fallback desde el proceso principal */
   ocrExtractText: (pdfPath: string) => ipcRenderer.invoke('ocr:extractText', pdfPath),
 
-  /** Fix #11: Recortar historial conservando solo los últimos `keepCount` escaneos */
+  /** Fix #11: Recortar historial conservando solo los Ãºltimos `keepCount` escaneos */
   trimHistory: (keepCount: number) => ipcRenderer.invoke('db:trimHistory', keepCount),
 
-  /** Fix #11: Obtener estadísticas del archivo de base de datos (tamaño, cantidad) */
+  /** Fix #11: Obtener estadÃ­sticas del archivo de base de datos (tamaÃ±o, cantidad) */
   getDbStats: () => ipcRenderer.invoke('db:getStats'),
 
   shell: {
@@ -90,7 +90,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     revealInFolder: (path: string) => ipcRenderer.invoke('reveal-in-folder', path),
   },
 
-  // ── Configuración Persistente ─────────────────────────────────────────────
+  // â”€â”€ ConfiguraciÃ³n Persistente â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   config: {
     get: (key: string) => ipcRenderer.invoke('config:get', key),
     set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),
@@ -99,11 +99,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (key: string) => ipcRenderer.invoke('config:delete', key),
   },
 
+  // ── Tesseract validation (C5) ───────────────────────────────────────────
+  tesseract: {
+    validate: (exePath: string) => ipcRenderer.invoke('tesseract:validate', exePath),
+  },
+
   dashboard: {
     getStats: () => ipcRenderer.invoke('dashboard:stats'),
   },
 
-  // ── Módulo de Terapias (Sidecar Python) ───────────────────────────────────
+  // â”€â”€ MÃ³dulo de Terapias (Sidecar Python) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   onSidecarStatus: (callback: (data: { name: string; status: string; code?: number }) => void) => {
     ipcRenderer.on('sidecar:status', (_event, data) => callback(data));
   },
@@ -148,13 +153,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     repair: (data: any) => ipcRenderer.invoke('pdf:repair', data),
     ocr: (data: any) => ipcRenderer.invoke('pdf:ocr', data),
     getPageInfo: (data: any) => ipcRenderer.invoke('pdf:get_page_info', data),
-    // ── Seguridad (IPC) ────────────────────────────────────────────────────────
+    // â”€â”€ Seguridad (IPC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     security: {
       /** Validate a dropped file path. Returns `{ok:true}` on success or `{ok:false,error}` */
       validateAndRegisterDroppedFile: (path: string) =>
         ipcRenderer.invoke('security:validateAndRegisterDroppedFile', path),
 
-      /** Sync the current active file list with the main‑process whitelist */
+      /** Sync the current active file list with the mainâ€‘process whitelist */
       syncActiveFiles: (paths: string[]) =>
         ipcRenderer.invoke('security:syncActiveFiles', paths),
     },

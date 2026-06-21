@@ -1,7 +1,7 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// electron.d.ts — Declaración de tipos globales para window.electronAPI
+﻿// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// electron.d.ts â€” DeclaraciÃ³n de tipos globales para window.electronAPI
 // Fix #8:  Tipado completo para eliminar (window as any).electronAPI
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import { ScanResult, AppSettings } from './shared/types';
 
@@ -46,12 +46,12 @@ export interface FolderUpdatedData {
 }
 
 interface ElectronAPI {
-  // ── Diálogos ──────────────────────────────────────────────────────────────
+  // â”€â”€ DiÃ¡logos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   selectDirectory(): Promise<string | null>;
   selectFile(options?: SelectFileOptions | FileFilter[]): Promise<string | null>;
   selectSavePath(options?: any): Promise<string | null>;
 
-  // ── Sistema de archivos ───────────────────────────────────────────────────
+  // â”€â”€ Sistema de archivos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   readDirectory(
     dirPath: string,
     options?: { ignoredFolders?: string[]; maxDepth?: number; scanId?: string }
@@ -69,17 +69,17 @@ interface ElectronAPI {
 
   exportFile(options: ExportFileOptions): Promise<{ success: boolean; filePath?: string; error?: string }>;
 
-  // ── Progreso de escaneo ───────────────────────────────────────────────────
+  // â”€â”€ Progreso de escaneo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   onScanProgress(callback: (data: ScanProgressData) => void): void;
   offScanProgress(): void;
 
-  // ── Watcher de carpeta en tiempo real ─────────────────────────────────────
+  // â”€â”€ Watcher de carpeta en tiempo real â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   startWatch(dirPath: string): Promise<boolean>;
   stopWatch(): Promise<boolean>;
   onFolderUpdated(callback: (data: FolderUpdatedData) => void): void;
   offFolderUpdated(): void;
 
-  // ── Base de datos local ───────────────────────────────────────────────────
+  // â”€â”€ Base de datos local â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   getHistory(): Promise<ScanResult[]>;
   saveScan(scan: ScanResult): Promise<ScanResult[]>;
   deleteScan(id: string): Promise<ScanResult[]>;
@@ -104,11 +104,15 @@ interface ElectronAPI {
     set(key: string, value: any): Promise<void>;
   };
 
+  tesseract: {
+    validate(exePath: string): Promise<{ ok: boolean; error?: string }>;
+  };
+
   dashboard: {
     getStats(): Promise<{ pendingDocs: number }>;
   };
 
-  // ── Módulo de Terapias (Sidecar Python) ───────────────────────────────────
+  // â”€â”€ MÃ³dulo de Terapias (Sidecar Python) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   onSidecarStatus(callback: (data: SidecarStatus) => void): void;
   offSidecarStatus(): void;
   reconnectSidecar(name: string): Promise<{ ok: boolean }>;
@@ -148,11 +152,11 @@ interface ElectronAPI {
     repair(data: any): Promise<any>;
     ocr(data: any): Promise<any>;
     getPageInfo(data: any): Promise<any>;
-    // ── Seguridad (IPC) ────────────────────────────────────────────────────────
+    // â”€â”€ Seguridad (IPC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     security: {
       /** Validate a dropped file path. Returns `{ok:true}` if allowed, otherwise `{ok:false, error}` */
       validateAndRegisterDroppedFile(path: string): Promise<{ ok: boolean; error?: string }>;
-      /** Sync current active file list with the main‑process whitelist */
+      /** Sync current active file list with the mainâ€‘process whitelist */
       syncActiveFiles(paths: string[]): Promise<{ ok: boolean; accepted?: number }>;
     };
   };

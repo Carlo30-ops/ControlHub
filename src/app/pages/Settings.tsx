@@ -261,8 +261,28 @@ export function Settings() {
                           defaultPath: "C:\\Program Files\\Tesseract-OCR"
                         });
                         if (newPath) {
+                          const base = newPath.split(/[\\/]/).pop()?.toLowerCase();
+                          if (base !== 'tesseract.exe') {
+                            toast.error('El archivo seleccionado no es tesseract.exe');
+                            return;
+                          }
+                          try {
+                            if (window.electronAPI?.tesseract?.validate) {
+                              const result = await window.electronAPI.tesseract.validate(newPath);
+                              if (!result?.ok) {
+                                toast.error(result?.error || 'Validación de Tesseract fallida');
+                                return;
+                              }
+                            } else {
+                              toast.error('No se puede validar Tesseract (API no disponible)');
+                              return;
+                            }
+                          } catch (err) {
+                            toast.error(err?.message || 'Error al validar Tesseract');
+                            return;
+                          }
                           updateSettings({ tesseractPath: newPath });
-                          toast.success(`Ruta de Tesseract actualizada`, {
+                          toast.success('Ruta de Tesseract actualizada', {
                             description: newPath,
                           });
                         }
