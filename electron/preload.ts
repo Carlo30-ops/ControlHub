@@ -1,6 +1,7 @@
-﻿import { ipcRenderer, contextBridge } from 'electron';
+﻿import { ipcRenderer, contextBridge, webUtils } from 'electron';
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
 // preload.ts â€” Bridge seguro entre Renderer y Main process
 // Fix #9:  Todos los mÃ©todos bien tipados (se eliminaron @ts-ignore en renderer)
 // Fix #3:  cancelScan expuesto para abortar traversal en main process
@@ -16,6 +17,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('dialog-save-path', options),
   selectFile: (options?: { filters?: { name: string; extensions: string[] }[]; defaultPath?: string } | { name: string; extensions: string[] }[]) =>
     ipcRenderer.invoke('dialog:selectFile', options),
+
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
+
+  security: {
+    validateAndRegisterDroppedFile: (path: string) =>
+      ipcRenderer.invoke('security:validateAndRegisterDroppedFile', path),
+
+    syncActiveFiles: (paths: string[]) =>
+      ipcRenderer.invoke('security:syncActiveFiles', paths),
+  },
 
   // â”€â”€ Sistema de archivos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -154,15 +165,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     repair: (data: any) => ipcRenderer.invoke('pdf:repair', data),
     ocr: (data: any) => ipcRenderer.invoke('pdf:ocr', data),
     getPageInfo: (data: any) => ipcRenderer.invoke('pdf:get_page_info', data),
-    // â”€â”€ Seguridad (IPC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    security: {
-      /** Validate a dropped file path. Returns `{ok:true}` on success or `{ok:false,error}` */
-      validateAndRegisterDroppedFile: (path: string) =>
-        ipcRenderer.invoke('security:validateAndRegisterDroppedFile', path),
-
-      /** Sync the current active file list with the mainâ€‘process whitelist */
-      syncActiveFiles: (paths: string[]) =>
-        ipcRenderer.invoke('security:syncActiveFiles', paths),
-    },
+    // (security moved to root level)
   },
 });

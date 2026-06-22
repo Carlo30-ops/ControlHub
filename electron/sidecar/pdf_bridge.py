@@ -522,17 +522,61 @@ def handle_pdf_thumbnail(data):
 
 
 def handle_html_to_pdf(data):
+    """
+    Genera un PDF a partir de HTML.
+    - Si `data` contiene la clave `input`, se interpreta como ruta a archivo .html (legacy).
+    - Si `data` contiene la clave `html`, se interpreta como el contenido HTML en texto plano
+      y en ese caso se devuelve el PDF codificado en base64 en la clave `pdf_base64`.
+
+    Este handler evita escribir a disco cuando el renderer envía `html` (más seguro y evita
+    problemas de validación de paths desde el renderer). Si se proporciona `output` y se
+    valida en el main, el sidecar intentará escribirlo en disco.
+    """
     try:
-        input_file = os.path.abspath(data.get("input", ""))
+        # Caso 1: contenido HTML directo (preferred for IPC from renderer)
+        html_content = data.get("html")
+        output_file = data.get("output")
+        if html_content:
+            # Render HTML -> PDF en memoria
+            doc = fitz.open(stream=html_content.encode("utf-8"), filetype="html")
+            pdf_bytes = doc.convert_to_pdf()
+            doc.close()
+            try:
+                import base64
+                pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+            except Exception:
+                # Fallback: devolver bytes como string ISO-8859-1 (raramente usado)
+                pdf_b64 = None
+
+            # Si el caller solicitó escritura en disco, intentamos salvarlo allí también
+            if output_file:
+                try:
+                    out_path = os.path.abspath(output_file)
+                    with open(out_path, 'wb') as f:
+                        f.write(pdf_bytes)
+                except Exception as e_out:
+                    # No fatal: seguimos devolviendo base64 y advertencia
+                    return {"ok": True, "pdf_base64": pdf_b64, "warning": f"No se pudo escribir output: {str(e_out)}"}
+
+            return {"ok": True, "pdf_base64": pdf_b64}
+
+        # Caso 2: legacy — ruta a archivo HTML en disco
+        input_file = data.get("input")
+        if not input_file:
+            return {"ok": False, "error": "No se proporcionó 'input' ni 'html' para html_to_pdf"}
+
+        input_file = os.path.abspath(input_file)
         output_file = os.path.abspath(data.get("output", "html.pdf"))
-        with open(input_file, "r", encoding="utf-8") as f: html_content = f.read()
+        with open(input_file, "r", encoding="utf-8") as f:
+            html_content = f.read()
         doc = fitz.open(stream=html_content.encode("utf-8"), filetype="html")
         pdf_bytes = doc.convert_to_pdf()
         doc.close()
         with fitz.open("pdf", pdf_bytes) as pdf:
             pdf.save(output_file)
         return {"ok": True, "output": output_file, "warning": "El renderizado HTML es básico. Para CSS avanzado usa un navegador externo."}
-    except Exception as e: return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 def handle_protect(data):
     try:

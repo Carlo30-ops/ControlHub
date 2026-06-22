@@ -51,7 +51,9 @@ export function FileDropZone({
       if (disabled) return;
       setIsOver(false);
 
-      const droppedFiles = Array.from(e.dataTransfer.files).map(f => (f as any).path);
+      const droppedFiles = Array.from(e.dataTransfer.files).map(f =>
+        window.electronAPI.getPathForFile(f)
+      );
       if (droppedFiles.length === 0) return;
 
       const accepted: string[] = [];
@@ -71,12 +73,22 @@ export function FileDropZone({
         } catch (err: any) {
           hadRejection = true;
           const fileName = filePath.split(/\\|\//).pop() || filePath;
-          toast.error(`${fileName}: Error validando archivo`);
+          toast.error(`${fileName}: ${err?.message || 'Error validando archivo'}`);
           continue;
         }
       }
 
       if (accepted.length > 0) {
+        // Combine existing session files with newly accepted ones to avoid clearing previous allowlist
+        const existingPaths = files.map(f => f.path);
+        const combined = Array.from(new Set([...existingPaths, ...accepted]));
+
+        try {
+          await window.electronAPI.security.syncActiveFiles(combined);
+        } catch (err: any) {
+          console.warn('Failed to sync active files:', err);
+        }
+
         onFiles(accepted);
         if (hadRejection) {
           toast.success(`${accepted.length} archivo${accepted.length === 1 ? '' : 's'} cargado${accepted.length === 1 ? '' : 's'} correctamente.`);
@@ -98,22 +110,27 @@ export function FileDropZone({
     if (!multiple) return;
     files.forEach(async (file) => {
       if (thumbs[file.path]) return;
+      console.log('[THUMB DEBUG] Solicitando thumbnail para:', file.path);
       try {
         const res = await window.electronAPI.pdfTools.pdfThumbnail({
           input: file.path,
           dpi: 100,
         });
         if (res.ok && res.thumb_path) {
-          const thumbName = res.thumb_path.split(/[\\/]/).pop();
-          if (thumbName) {
-            setThumbs((prev) => ({
-              ...prev,
-              [file.path]: `pdfthumb://${thumbName}`,
-            }));
+          const thumbName = res.thumb_path?.split(/[\\/]/).pop();
+          if (!thumbName) {
+            console.log('[THUMB DEBUG] thumbName vacío, abortando');
+            return;
           }
+          setThumbs((prev) => ({
+            ...prev,
+            [file.path]: `pdfthumb://${thumbName}`,
+          }));
+        } else {
+          console.log('[THUMB DEBUG] res.ok es false o falta thumb_path:', res);
         }
-      } catch {
-        // sin thumbnail, muestra ícono
+      } catch (err) {
+        console.log('[THUMB DEBUG] Excepción capturada:', err);
       }
     });
   }, [files, multiple, thumbs]);

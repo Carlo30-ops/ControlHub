@@ -50,6 +50,11 @@ interface ElectronAPI {
   selectDirectory(): Promise<string | null>;
   selectFile(options?: SelectFileOptions | FileFilter[]): Promise<string | null>;
   selectSavePath(options?: any): Promise<string | null>;
+  getPathForFile(file: File): string;
+  security: {
+    validateAndRegisterDroppedFile(path: string): Promise<{ ok: boolean; error?: string }>;
+    syncActiveFiles(paths: string[]): Promise<{ ok: boolean; accepted?: number }>;
+  };
 
   // â”€â”€ Sistema de archivos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   readDirectory(
@@ -154,12 +159,7 @@ interface ElectronAPI {
     ocr(data: any): Promise<any>;
     getPageInfo(data: any): Promise<any>;
     // â”€â”€ Seguridad (IPC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    security: {
-      /** Validate a dropped file path. Returns `{ok:true}` if allowed, otherwise `{ok:false, error}` */
-      validateAndRegisterDroppedFile(path: string): Promise<{ ok: boolean; error?: string }>;
-      /** Sync current active file list with the mainâ€‘process whitelist */
-      syncActiveFiles(paths: string[]): Promise<{ ok: boolean; accepted?: number }>;
-    };
+    // security moved to root level
   };
 }
 

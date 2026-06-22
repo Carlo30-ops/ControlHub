@@ -67,7 +67,20 @@ MESES = {
     9: "SEPTIEMBRE", 10: "OCTUBRE", 11: "NOVIEMBRE", 12: "DICIEMBRE"
 }
 
-DEFAULT_SOURCE = r"C:\Users\factu\OneDrive\Documentos 1\TERAPIAS\DOCUMENTOS PARA ARMAR"
+def compute_default_source():
+    home = os.path.expanduser('~')
+    candidates = [
+        os.path.join(home, 'OneDrive', 'Documentos 1', 'TERAPIAS', 'DOCUMENTOS PARA ARMAR'),
+        os.path.join(home, 'OneDrive', 'Documentos', 'TERAPIAS', 'DOCUMENTOS PARA ARMAR'),
+        os.path.join(home, 'OneDrive', 'Documentos 1', 'TERAPIAS'),
+        os.path.join(home, 'OneDrive', 'Documentos', 'TERAPIAS'),
+    ]
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return candidates[0]
+
+DEFAULT_SOURCE = compute_default_source()
 
 # Referencia global para mantener Word "caliente"
 _word_app = None

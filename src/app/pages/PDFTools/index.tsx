@@ -41,7 +41,8 @@ import {
   Layers,
   AlertTriangle,
   Cpu,
-  Heart
+  Heart,
+  Circle
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -72,6 +73,14 @@ interface FileInfo {
   path: string;
   name: string;
   size?: string;
+}
+
+interface QueuedFile extends FileInfo {
+  id: string;
+  status: 'pending' | 'processing' | 'completed' | 'error';
+  outputPath?: string;
+  errorMessage?: string;
+  progress?: number; // 0-100
 }
 
 type ToolId = 
@@ -132,7 +141,7 @@ const TOOLS: ToolConfig[] = [
 export default function PDFTools() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [view, setView] = useState<'selector' | 'active' | 'queue' | 'result'>('selector');
+  const [view, setView] = useState<'selector' | 'active' | 'queue' | 'processing' | 'result'>('selector');
   const [activeTool, setActiveTool] = useState<ToolConfig | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
@@ -156,6 +165,15 @@ export default function PDFTools() {
   const fileQueueRef = useRef<FileInfo[]>([]);
   const [, setQueueTick] = useState(0);
   const fileQueue = fileQueueRef.current;
+  
+  // --- Sequential Queue Processing States ---
+  const [processingQueue, setProcessingQueue] = useState<QueuedFile[]>([]);
+  const [processingStats, setProcessingStats] = useState({ 
+    completed: 0, 
+    failed: 0, 
+    currentIndex: -1 
+  });
+  const processingRef = useRef<boolean>(false);
   const [searchTerm, setSearchTerm] = useState('');
 
   const setQueueFiles = (nextFiles: FileInfo[]) => {
@@ -181,10 +199,150 @@ export default function PDFTools() {
   };
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // --- Sequential Processing Function ---
+  const processQueueSequentially = async (queue: FileInfo[]) => {
+    if (processingRef.current || !activeTool) return;
+    processingRef.current = true;
+
+    const queuedFiles: QueuedFile[] = queue.map((f, i) => ({
+      ...f,
+      id: `${i}-${f.path}`,
+      status: 'pending' as const,
+    }));
+    
+    setProcessingQueue(queuedFiles);
+    setView('processing');
+    setProcessingStats({ completed: 0, failed: 0, currentIndex: -1 });
+
+    for (let i = 0; i < queuedFiles.length; i++) {
+      const qFile = queuedFiles[i];
+      
+      // Update current processing file
+      setProcessingQueue(prev => prev.map((f, idx) => 
+        idx === i ? { ...f, status: 'processing' as const } : f
+      ));
+      setProcessingStats(prev => ({ ...prev, currentIndex: i }));
+
+      try {
+        // Prepare output path
+        const base = qFile.path.substring(0, qFile.path.lastIndexOf('.'));
+        let finalOutput = '';
+
+        if (['split', 'pdf_to_jpg'].includes(activeTool.id)) {
+          finalOutput = qFile.path.substring(0, qFile.path.lastIndexOf('\\'));
+        } else if (activeTool.id === 'merge' || activeTool.id === 'jpg_to_pdf') {
+          // Multi-file tools: use provided output from form
+          finalOutput = output || `${base}${activeTool.newExt || '_procesado.pdf'}`;
+        } else {
+          // Single-file tools: create unique output per file
+          finalOutput = `${base}${activeTool.newExt || '_procesado.pdf'}`;
+        }
+
+        // Execute the operation
+        let res: any;
+        const api = window.electronAPI.pdfTools;
+
+        switch (activeTool.id) {
+          case 'split':
+            res = await api.split({ input: qFile.path, output_dir: finalOutput, ranges: splitRanges });
+            break;
+          case 'extract':
+            res = await api.extract({ input: qFile.path, output: finalOutput, pages: extractPages });
+            break;
+          case 'delete_pages':
+            res = await api.deletePages({ input: qFile.path, output: finalOutput, pages: deletePagesInput });
+            break;
+          case 'reorder_pages':
+            res = await api.reorderPages({ input: qFile.path, output: finalOutput, order: pageOrder });
+            break;
+          case 'compress':
+            res = await api.compress({ input: qFile.path, output: finalOutput, level: compressLevel });
+            break;
+          case 'rotate':
+            res = await api.rotate({ input: qFile.path, output: finalOutput, angle: parseInt(rotateAngle), pages: rotatePages });
+            break;
+          case 'crop':
+            res = await api.crop({ input: qFile.path, output: finalOutput, rect: [cropRect.x0, cropRect.y0, cropRect.x1, cropRect.y1] });
+            break;
+          case 'repair':
+            res = await api.repair({ input: qFile.path, output: finalOutput });
+            break;
+          case 'add_page_numbers':
+            res = await api.addPageNumbers({ input: qFile.path, output: finalOutput, position: pageNumberPos, start: parseInt(pageNumberStart) });
+            break;
+          case 'watermark':
+            res = await api.watermark({ input: qFile.path, output: finalOutput, text: wmText, opacity: wmOpacity[0], angle: parseInt(wmAngle) });
+            break;
+          case 'watermark_image':
+            res = await api.watermarkImage({ input: qFile.path, output: finalOutput, image: wmImage?.path, opacity: wmOpacity[0] });
+            break;
+          case 'pdf_to_jpg':
+            res = await api.pdfToJpg({ input: qFile.path, output_dir: finalOutput, dpi: parseInt(dpi) });
+            break;
+          case 'html_to_pdf':
+            res = await api.htmlToPdf({ input: qFile.path, output: finalOutput });
+            break;
+          case 'protect':
+            res = await api.protect({ input: qFile.path, output: finalOutput, password });
+            break;
+          case 'unlock':
+            res = await api.unlock({ input: qFile.path, output: finalOutput, password });
+            break;
+          case 'ocr':
+            res = await api.ocr({ input: qFile.path, output: finalOutput, lang: ocrLang });
+            break;
+          case 'w2p': res = await api.wordToPdf({ input: qFile.path, output: finalOutput }); break;
+          case 'p2w': res = await api.pdfToWord({ input: qFile.path, output: finalOutput }); break;
+          case 'e2p': res = await api.excelToPdf({ input: qFile.path, output: finalOutput }); break;
+          case 'pp2p': res = await api.pptToPdf({ input: qFile.path, output: finalOutput }); break;
+        }
+
+        if (res.ok) {
+          setProcessingQueue(prev => prev.map((f, idx) => 
+            idx === i ? { 
+              ...f, 
+              status: 'completed' as const,
+              outputPath: res.output || (res.outputs && res.outputs[0]),
+              progress: 100
+            } : f
+          ));
+          setProcessingStats(prev => ({ ...prev, completed: prev.completed + 1 }));
+          toast.success(`✓ ${qFile.name} procesado`);
+        } else {
+          setProcessingQueue(prev => prev.map((f, idx) => 
+            idx === i ? { 
+              ...f, 
+              status: 'error' as const,
+              errorMessage: res.error,
+              progress: 0
+            } : f
+          ));
+          setProcessingStats(prev => ({ ...prev, failed: prev.failed + 1 }));
+          toast.error(`✗ ${qFile.name}: ${res.error}`);
+        }
+      } catch (err: any) {
+        setProcessingQueue(prev => prev.map((f, idx) => 
+          idx === i ? { 
+            ...f, 
+            status: 'error' as const,
+            errorMessage: err.message,
+            progress: 0
+          } : f
+        ));
+        setProcessingStats(prev => ({ ...prev, failed: prev.failed + 1 }));
+        toast.error(`✗ ${qFile.name}: ${err.message}`);
+      }
+    }
+
+    processingRef.current = false;
+    setProcessingStats(prev => ({ ...prev, currentIndex: -1 }));
+  };
+
   useEffect(() => {
-    window.electronAPI.security.syncActiveFiles(files.map(f => f.path));
+    // syncActiveFiles no existe en window.electronAPI, se elimina la llamada para evitar crash.
+    // window.electronAPI.security.syncActiveFiles(files.map(f => f.path));
     return () => {
-      window.electronAPI.security.syncActiveFiles([]);
+      // window.electronAPI.security.syncActiveFiles([]);
     };
   }, [files]);
 
@@ -338,38 +496,50 @@ export default function PDFTools() {
 
   // Detect file coming from Reports via navigation
   useEffect(() => {
-    if (location.state?.fileToProcess) {
-      const path = location.state.fileToProcess;
-      const fileInfo = getFileInfo(path);
-      setIncomingFile(fileInfo);
+    const navState = location.state as { fileToProcess?: string; filesToProcess?: string[]; preferredToolId?: ToolId } | null;
+    const paths = navState?.filesToProcess?.length
+      ? navState.filesToProcess
+      : navState?.fileToProcess
+      ? [navState.fileToProcess]
+      : [];
 
-      if (view === 'active' && activeTool) {
-        // Tool already active, load directly
-        const isMultiple = activeTool.id === 'merge' || activeTool.id === 'jpg_to_pdf';
-        if (isMultiple) {
-          setFiles(prev => {
-            const exists = prev.some(f => f.path === fileInfo.path);
-            return exists ? prev : [...prev, fileInfo];
-          });
-          toast.success(`Añadido a ${activeTool.name}`);
-        } else {
-          setFiles([fileInfo]);
-          toast.success(`Cargado en ${activeTool.name}`);
-          const base = path.substring(0, path.lastIndexOf('.'));
-          if (activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg') {
-            setOutput(path.substring(0, path.lastIndexOf('\\')));
-          } else {
-            setOutput(`${base}${activeTool.newExt || '_procesado.pdf'}`);
-          }
-        }
+    if (paths.length === 0) return;
+
+    const validFiles = paths
+      .map(getFileInfo)
+      .filter(file => !!file.path);
+
+    const preferredTool = navState?.preferredToolId
+      ? TOOLS.find(tool => tool.id === navState.preferredToolId)
+      : null;
+
+    if (preferredTool) {
+      if (validFiles.length > 1) {
+        setQueueFiles(validFiles);
         setIncomingFile(null);
-      } else {
-        // No active tool yet, just keep the file in incomingFile
-        toast.success('Archivo listo. Selecciona una herramienta.');
+        resetToolState(preferredTool);
+        setView('queue');
+        toast.success(`Escaneo cargado en ${preferredTool.name} con ${validFiles.length} archivos.`);
+      } else if (validFiles.length === 1) {
+        setQueueFiles([]);
+        setIncomingFile(validFiles[0]);
+        resetToolState(preferredTool);
+        setView('active');
+        toast.success(`Archivo cargado en ${preferredTool.name}.`);
       }
-      // Clean navigation state so effect runs only once
-      navigate(location.pathname, { replace: true, state: {} });
+    } else {
+      if (validFiles.length > 1) {
+        setIncomingFile(validFiles[0]);
+        setQueueFiles(validFiles.slice(1));
+        toast.success(`Archivos listos para PDF Tools. Selecciona una herramienta.`);
+      } else if (validFiles.length === 1) {
+        setIncomingFile(validFiles[0]);
+        setQueueFiles([]);
+        toast.success(`Archivo listo para PDF Tools. Selecciona una herramienta.`);
+      }
     }
+
+    navigate(location.pathname, { replace: true, state: {} });
   }, [location, navigate, view, activeTool]);
   
   // --- Tool Specific States ---
@@ -764,11 +934,7 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
               {fileQueue.map((file, idx) => (
                 <div key={file.path} className="relative rounded-xl border border-border bg-card overflow-hidden group cursor-default">
                   <div className="aspect-[3/4] bg-muted flex items-center justify-center overflow-hidden">
-                    {thumbs[file.path] ? (
-                      <img src={thumbs[file.path]} className="w-full h-full object-cover" />
-                    ) : (
-                      <FileText className="w-10 h-10 text-muted-foreground" />
-                    )}
+                    <FileText className="w-10 h-10 text-muted-foreground" />
                   </div>
                   <div className="p-2 text-[10px] font-bold truncate text-foreground">{file.name}</div>
                   <div className="absolute top-1.5 right-1.5 flex items-center gap-1 opacity-90">
@@ -837,7 +1003,7 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
     );
   }
 
-  // VISTA B: Herramienta Activa
+  // VISTA C: Herramienta Activa
   if (view === 'active' && activeTool) {
     return (
       <div className="max-w-4xl mx-auto space-y-6 animate-in slide-in-from-left-4 duration-500 pb-20 px-4">
@@ -899,6 +1065,7 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                       setOutput(`${base}\\Resultado_${Date.now()}${activeTool.newExt || '.pdf'}`);
                     }
                   } else if (newFiles.length > 1) {
+                    // Multiple files for single-file tool: start sequential processing
                     setQueueFiles(newFiles);
                     const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("."));
                     if (activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg') {
@@ -906,7 +1073,8 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                     } else {
                       setOutput(`${base}${activeTool.newExt || (activeTool.id === 'extract' ? '_extraido.pdf' : activeTool.id === 'delete_pages' ? '_editado.pdf' : activeTool.id === 'compress' ? '_comprimido.pdf' : activeTool.id === 'ocr' ? '_ocr.pdf' : '_procesado.pdf')}`);
                     }
-                    setView('queue');
+                    // Auto-start processing after a brief delay for UX
+                    setTimeout(() => processQueueSequentially(newFiles), 500);
                   } else {
                     setFiles([newFiles[0]]);
                     const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("."));
@@ -1221,7 +1389,133 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
     );
   }
 
-  // VISTA C: Resultado
+  // VISTA C: Progreso de Cola Secuencial
+  if (view === 'processing' && activeTool) {
+    const progressPercent = processingQueue.length > 0 
+      ? Math.round(((processingStats.completed + processingStats.failed) / processingQueue.length) * 100)
+      : 0;
+
+    return (
+      <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500 pb-20 px-4">
+        <div className="rounded-3xl border border-border bg-card p-6 space-y-6">
+          <div className="text-center space-y-4">
+            <h2 className="text-2xl font-bold text-foreground">Procesando cola</h2>
+            <p className="text-sm text-muted-foreground">{activeTool.name} — {processingStats.completed + processingStats.failed} de {processingQueue.length} archivos</p>
+          </div>
+
+          {/* Barra de progreso general */}
+          <div className="space-y-3">
+            <div className="flex justify-between items-center text-xs font-semibold">
+              <span className="text-muted-foreground">Progreso general</span>
+              <span className="text-foreground">{progressPercent}%</span>
+            </div>
+            <div className="w-full h-3 rounded-full bg-muted overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-primary to-emerald-500 transition-all duration-300"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Lista de archivos con estado */}
+          <ScrollArea className="h-96 rounded-2xl border border-border bg-muted/10 p-3">
+            <div className="space-y-2">
+              {processingQueue.map((file, idx) => {
+                const isCurrentFile = idx === processingStats.currentIndex;
+                const statusIcon = 
+                  file.status === 'pending' ? <Circle className="w-4 h-4 text-muted-foreground" /> :
+                  file.status === 'processing' ? <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" /> :
+                  file.status === 'completed' ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> :
+                  <AlertCircle className="w-4 h-4 text-destructive" />;
+
+                return (
+                  <div 
+                    key={file.id}
+                    className={cn(
+                      "p-4 rounded-xl border transition-all",
+                      isCurrentFile ? "border-primary/50 bg-primary/5" : "border-border bg-card",
+                      file.status === 'error' && "border-destructive/30 bg-destructive/5"
+                    )}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="pt-1">{statusIcon}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">{file.name}</p>
+                        <p className="text-[11px] text-muted-foreground truncate mt-1">{file.path}</p>
+                        {file.errorMessage && (
+                          <p className="text-[11px] text-destructive mt-2 line-clamp-2">{file.errorMessage}</p>
+                        )}
+                        {file.outputPath && (
+                          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-2 truncate">✓ {file.outputPath.split('\\').pop()}</p>
+                        )}
+                      </div>
+                      {file.status === 'completed' && file.outputPath && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                          onClick={() => handleOpenFolder(file.outputPath)}
+                          title="Abrir archivo"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollArea>
+
+          {/* Estadísticas */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
+              <div className="text-2xl font-bold text-emerald-600">{processingStats.completed}</div>
+              <div className="text-[10px] font-semibold text-emerald-600/70 uppercase tracking-wide mt-1">Completados</div>
+            </div>
+            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-center">
+              <div className="text-2xl font-bold text-destructive">{processingStats.failed}</div>
+              <div className="text-[10px] font-semibold text-destructive/70 uppercase tracking-wide mt-1">Errores</div>
+            </div>
+            <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-center">
+              <div className="text-2xl font-bold text-blue-600">{processingQueue.length - processingStats.completed - processingStats.failed}</div>
+              <div className="text-[10px] font-semibold text-blue-600/70 uppercase tracking-wide mt-1">Pendientes</div>
+            </div>
+          </div>
+
+          {/* Botones de acción */}
+          {processingStats.currentIndex === -1 && (
+            <div className="flex flex-col sm:flex-row gap-3 pt-4">
+              <Button
+                className="flex-1 h-12 px-6 rounded-lg bg-primary text-primary-foreground font-bold"
+                onClick={() => {
+                  setView('active');
+                  setProcessingQueue([]);
+                  setQueueFiles([]);
+                }}
+              >
+                <RefreshCw className="w-4 h-4 mr-2" /> PROCESAR MÁS ARCHIVOS
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1 h-12 px-6 rounded-lg"
+                onClick={() => {
+                  setView('selector');
+                  setProcessingQueue([]);
+                  setQueueFiles([]);
+                  resetToolState(null);
+                }}
+              >
+                VOLVER AL INICIO
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // VISTA D: Resultado
   if (view === 'result' && activeTool && result) {
     return (
       <div className="max-w-3xl mx-auto space-y-10 animate-in zoom-in-95 duration-500 pb-20 px-4">

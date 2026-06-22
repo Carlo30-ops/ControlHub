@@ -17,13 +17,73 @@ const ALLOWED_EXTENSIONS = new Set(['.pdf', '.docx', '.doc', '.xls', '.xlsx', '.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const store = new Store();
-const DEFAULT_TERAPIAS_DIR = (store.get('settings.terapiasDir') as string) || path.join(
-  os.homedir(),
-  "OneDrive",
-  "Documentos 1",
-  "TERAPIAS",
-  "DOCUMENTOS PARA ARMAR"
-);
+
+function computeDefaultTerapiasDir(): string {
+  const home = os.homedir();
+  const candidates = [
+    path.join(home, 'OneDrive', 'Documentos 1', 'TERAPIAS', 'DOCUMENTOS PARA ARMAR'),
+    path.join(home, 'OneDrive', 'Documentos', 'TERAPIAS', 'DOCUMENTOS PARA ARMAR'),
+    path.join(home, 'OneDrive', 'Documentos 1', 'TERAPIAS'),
+    path.join(home, 'OneDrive', 'Documentos', 'TERAPIAS'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return candidates[0];
+}
+
+async function getAppSettings(): Promise<any> {
+  try {
+    return await dbOptions.getSettings();
+  } catch (err) {
+    console.error('[MAIN] Error cargando AppSettings:', err);
+    return {};
+  }
+}
+
+async function getActiveTerapiasDir(): Promise<string> {
+  const dbSettings = await getAppSettings();
+  const settingsDir = dbSettings?.terapiasDir || (store.get('settings.terapiasDir') as string);
+  return settingsDir && settingsDir.trim().length > 0 ? settingsDir : computeDefaultTerapiasDir();
+}
+
+function getDefaultTesseractPath(): string | undefined {
+  const candidates = [
+    path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Tesseract-OCR', 'tesseract.exe'),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Tesseract-OCR', 'tesseract.exe'),
+    path.join(os.homedir(), 'AppData', 'Local', 'Tesseract-OCR', 'tesseract.exe'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  const envPath = process.env.PATH || '';
+  const separator = process.platform === 'win32' ? ';' : ':';
+  for (const entry of envPath.split(separator)) {
+    const candidate = path.join(entry, process.platform === 'win32' ? 'tesseract.exe' : 'tesseract');
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+async function getActiveTesseractPath(): Promise<string | undefined> {
+  const dbSettings = await getAppSettings();
+  const settingsPath = dbSettings?.tesseractPath || (store.get('settings.tesseractPath') as string) || (store.get('tesseractPath') as string);
+  if (settingsPath && settingsPath.trim().length > 0) {
+    return settingsPath;
+  }
+  return getDefaultTesseractPath();
+}
 
 process.env.DIST = path.join(__dirname, '../dist');
 process.env.VITE_PUBLIC = app?.isPackaged
@@ -37,7 +97,7 @@ const registeredDroppedPaths = new Set<string>(); // real paths validated via va
 const CONTROLHUB_TEMP_DIR = path.join(os.tmpdir(), 'controlhub-pdftools');
 
 // C4: Config allowlist — únicamente estas claves pueden ser leídas/escritas desde el renderer vía config:get/config:set
-const ALLOWED_CONFIG_KEYS = ['settings.terapiasDir', 'terapias.baseDest', 'terapias.backup'];
+const ALLOWED_CONFIG_KEYS = ['settings.terapiasDir', 'settings.tesseractPath', 'terapias.baseDest', 'terapias.backup', 'migration.legacyLocalStorage'];
 
 /**
  * Validate a candidate file path for IPC operations.
@@ -140,7 +200,7 @@ class SidecarManager {
   private stdoutBuffer: string = "";
   private stderrBuffer: string = "";
   private restartAttempts: number = 0;
-  private readonly maxRestarts: number = 0; // disabled automatic restarts per user request
+  private readonly maxRestarts: number = 3; // enable automatic restarts with bounded retries
   private readonly backoffTimes: number[] = [2000, 4000, 8000];
   private status: 'running' | 'closed' | 'stalled' | 'reconnecting' | 'failed' | 'ok' | 'unknown' = 'unknown';
   private commandTimestamps = new Map<string, { cmd: string; startTime: number; inputPath: string }>();
@@ -339,10 +399,13 @@ const getSidecarPath = (fileName: string) => {
 };
 
 const getPythonExecutable = () => {
-  if (app?.isPackaged) {
-    return path.join(process.resourcesPath, 'python-embed', 'python.exe');
-  }
-  return path.join(process.cwd(), 'python-embed', 'python.exe');
+  const embeddedPython = path.join(
+    app.isPackaged ? process.resourcesPath : process.cwd(),
+    'python-embed',
+    'python.exe'
+  );
+
+  return fs.existsSync(embeddedPython) ? embeddedPython : 'python';
 };
 
 const terapiasSidecar = new SidecarManager(
@@ -357,12 +420,12 @@ const pdfSidecar = new SidecarManager(
 // IPC Handlers para Terapias
 ipcMain.handle('terapias:ping', () => terapiasSidecar.send({ cmd: 'ping' }));
 ipcMain.handle('terapias:check_word', () => terapiasSidecar.send({ cmd: 'check_word' }));
-ipcMain.handle('terapias:list_docs', () => {
-  const sourceDir = store.get('settings.terapiasDir', DEFAULT_TERAPIAS_DIR) as string;
+ipcMain.handle('terapias:list_docs', async () => {
+  const sourceDir = await getActiveTerapiasDir();
   return terapiasSidecar.send({ cmd: 'list_docs', data: { source_dir: sourceDir } });
 });
-ipcMain.handle('terapias:prepare', (_, data) => {
-  const sourceDir = store.get('settings.terapiasDir', DEFAULT_TERAPIAS_DIR) as string;
+ipcMain.handle('terapias:prepare', async (_, data) => {
+  const sourceDir = await getActiveTerapiasDir();
   return terapiasSidecar.send({ cmd: 'prepare', data: { ...data, source_dir: sourceDir } });
 });
 ipcMain.handle('terapias:finalize', (_, data) => {
@@ -423,16 +486,15 @@ ipcMain.handle('pdf:protect', (_, data) => validatePdfHandler('protect', data));
 ipcMain.handle('pdf:unlock', (_, data) => validatePdfHandler('unlock', data));
 ipcMain.handle('pdf:repair', (_, data) => validatePdfHandler('repair', data));
 ipcMain.handle('pdf:ocr', async (_, data) => {
-  let tesseractPath = store.get('tesseractPath') as string;
-  
-  // C5: Validación de seguridad real — si tesseractPath está configurado, validarlo antes de usar
+  const tesseractPath = await getActiveTesseractPath();
+
   if (tesseractPath) {
     const validationResult = await validateTesseractPath(tesseractPath);
     if (!validationResult.ok) {
       return { ok: false, error: `Tesseract inválido: ${validationResult.error}` };
     }
   }
-  
+
   const extended = { ...data, tesseract_path: tesseractPath };
   return validatePdfHandler('ocr', extended);
 });
@@ -541,18 +603,18 @@ ipcMain.handle('tesseract:validate', async (_, exePath: string) => {
 // IPC Handlers para Dashboard
 ipcMain.handle('dashboard:stats', async () => {
   try {
-    const sourceDir = store.get('settings.terapiasDir', DEFAULT_TERAPIAS_DIR) as string;
-    
+    const sourceDir = await getActiveTerapiasDir();
+
     // Verificación asíncrona de existencia
     try {
       await fs.promises.access(sourceDir, fs.constants.F_OK);
     } catch {
       return { pendingDocs: 0 };
     }
-    
+
     const files = await fs.promises.readdir(sourceDir);
     const docxFiles = files.filter(f => f.toLowerCase().endsWith('.docx') || f.toLowerCase().endsWith('.doc'));
-    
+
     return { pendingDocs: docxFiles.length };
   } catch (err) {
     console.error('[Dashboard Stats Error]', err);

@@ -63,8 +63,6 @@ import { format as formatDate } from "date-fns";
 import { es } from "date-fns/locale";
 import { Invoice } from "../../shared/types";
 import * as XLSX from "xlsx";
-import { jsPDF } from "jspdf";
-import { toPng } from "html-to-image";
 import { cn } from "../components/ui/utils";
 
 const MONTHS_ORDER = [
@@ -129,6 +127,7 @@ export function Reports() {
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [minAmount, setMinAmount] = useState<string>("");
   const [maxAmount, setMaxAmount] = useState<string>("");
+  const [selectedPdfTool, setSelectedPdfTool] = useState<string>("compress");
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -235,117 +234,115 @@ export function Reports() {
   const handleExportPDF = async () => {
     setIsExportingPDF(true);
     try {
-      const doc = new jsPDF();
-      
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(20);
-      doc.setTextColor(30, 41, 59);
-      doc.text("REPORTE ANALÍTICO DE AUDITORÍA COTU", 20, 25);
-      
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(100, 116, 139);
+      // Build a simple HTML report and send to the Python sidecar to render to PDF.
       const dateStr = formatDate(new Date(), "dd/MM/yyyy HH:mm:ss");
-      doc.text(`Generado el: ${dateStr}`, 20, 32);
-      
-      doc.setDrawColor(226, 232, 240);
-      doc.line(20, 36, 190, 36);
-      
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.setTextColor(15, 23, 42);
-      doc.text("Métricas Clave", 20, 48);
-      
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
-      doc.text(`Total Facturas Auditadas: ${filteredInvoices.length}`, 20, 56);
-      doc.text(`Monto Total: ${formatCOP(totalAmount)}`, 20, 64);
-      
-      const numCompanies = new Set(filteredInvoices.map(i => i.company)).size;
-      doc.text(`Aseguradoras Detectadas: ${numCompanies}`, 20, 72);
-      
-      const efficiency = filteredInvoices.length > 0
-        ? Math.round((filteredInvoices.filter(i => i.amount > 0).length / filteredInvoices.length) * 100)
-        : 0;
-      doc.text(`Tasa de Extracción Correcta: ${efficiency}%`, 20, 80);
-      
-      doc.line(20, 86, 190, 86);
-      
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.text("Distribución por Aseguradora", 20, 98);
-      
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      
       const companyStats = filteredInvoices.reduce((acc: Record<string, { count: number; total: number }>, inv) => {
         if (!acc[inv.company]) acc[inv.company] = { count: 0, total: 0 };
         acc[inv.company].count += 1;
         acc[inv.company].total += inv.amount || 0;
         return acc;
       }, {});
-      
-      let y = 108;
-      Object.entries(companyStats)
+
+      const rowsHtml = filteredInvoices.slice(0, 10).map(inv => `
+        <tr>
+          <td style="padding:6px;border-bottom:1px solid #e6eef8">${inv.invoiceNumber}</td>
+          <td style="padding:6px;border-bottom:1px solid #e6eef8">${inv.company}</td>
+          <td style="padding:6px;border-bottom:1px solid #e6eef8">${inv.date}</td>
+          <td style="padding:6px;border-bottom:1px solid #e6eef8;text-align:right">${inv.amount > 0 ? formatCOP(inv.amount) : '—'}</td>
+        </tr>
+      `).join('');
+
+      const distributionHtml = Object.entries(companyStats)
         .sort(([, a], [, b]) => b.count - a.count)
         .slice(0, 8)
-        .forEach(([name, data]) => {
-          doc.text(`- ${name}: ${data.count} facturas (${formatCOP(data.total)})`, 25, y);
-          y += 8;
-        });
-      
-      doc.line(20, y + 2, 190, y + 2);
-      
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.text("Detalle de Auditoría (Muestra de registros)", 20, y + 14);
-      
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      y = y + 24;
-      
-      doc.setFont("helvetica", "bold");
-      doc.text("N° Factura", 20, y);
-      doc.text("Aseguradora", 55, y);
-      doc.text("Fecha", 110, y);
-      doc.text("Monto (COP)", 145, y);
-      doc.line(20, y + 2, 190, y + 2);
-      y += 8;
-      
-      doc.setFont("helvetica", "normal");
-      filteredInvoices.slice(0, 10).forEach((inv) => {
-        doc.text(inv.invoiceNumber, 20, y);
-        doc.text(inv.company.substring(0, 25), 55, y);
-        doc.text(inv.date, 110, y);
-        doc.text(inv.amount > 0 ? formatCOP(inv.amount) : "—", 145, y);
-        y += 7;
-      });
-      
-      if (filteredInvoices.length > 10) {
-        doc.setFont("helvetica", "italic");
-        doc.text(`... y ${filteredInvoices.length - 10} facturas más en el reporte general.`, 20, y + 4);
+        .map(([name, d]) => `<li>${name}: ${d.count} facturas (${formatCOP(d.total)})</li>`)
+        .join('');
+
+      const html = `
+        <!doctype html>
+        <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Reporte Analítico de Auditoría COTU</title>
+          <style>
+            body { font-family: Arial, Helvetica, sans-serif; color:#0f172a; }
+            .header { margin:20px 0 }
+            .metrics { margin:10px 0 }
+            table { width:100%; border-collapse:collapse; margin-top:8px }
+            th { text-align:left; padding:8px; background:#f8fafc }
+            td { padding:6px }
+          </style>
+        </head>
+        <body>
+          <h1>REPORTE ANALÍTICO DE AUDITORÍA COTU</h1>
+          <div class="header">Generado el: ${dateStr}</div>
+          <h2>Métricas Clave</h2>
+          <div class="metrics">
+            <p>Total Facturas Auditadas: ${filteredInvoices.length}</p>
+            <p>Monto Total: ${formatCOP(totalAmount)}</p>
+            <p>Aseguradoras Detectadas: ${new Set(filteredInvoices.map(i => i.company)).size}</p>
+            <p>Tasa de Extracción Correcta: ${filteredInvoices.length > 0 ? Math.round((filteredInvoices.filter(i => i.amount > 0).length / filteredInvoices.length) * 100) : 0}%</p>
+          </div>
+          <h2>Distribución por Aseguradora</h2>
+          <ul>${distributionHtml}</ul>
+          <h2>Detalle de Auditoría (muestra)</h2>
+          <table>
+            <thead>
+              <tr><th>N° Factura</th><th>Aseguradora</th><th>Fecha</th><th style="text-align:right">Monto (COP)</th></tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          ${filteredInvoices.length > 10 ? `<p>... y ${filteredInvoices.length - 10} facturas más en el reporte general.</p>` : ''}
+        </body>
+        </html>
+      `;
+
+      const res = await window.electronAPI.pdfTools.htmlToPdf({ html });
+
+      if (!res || !res.ok) {
+        toast.error(`Error al generar PDF: ${res?.error || 'sidecar failure'}`);
+        return;
       }
-      
-      const pdfArray = doc.output("arraybuffer");
-      
-      if (window.electronAPI?.exportFile) {
-        const res = await window.electronAPI.exportFile({
-          defaultFilename: `Reporte_Auditoria_COTU_${formatDate(new Date(), "yyyyMMdd")}.pdf`,
-          content: new Uint8Array(pdfArray),
-          filters: [{ name: "Documento PDF", extensions: ["pdf"] }],
-        });
-        if (res.success) {
-          toast.success("Reporte PDF exportado con éxito");
-        } else if (res.error) {
-          toast.error(`Error al guardar PDF: ${res.error}`);
+
+      // If sidecar returned base64 PDF, save it via exportFile (shows save dialog)
+      if (res.pdf_base64) {
+        const b64 = res.pdf_base64;
+        const binary = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        if (window.electronAPI?.exportFile) {
+          const saved = await window.electronAPI.exportFile({
+            defaultFilename: `Reporte_Auditoria_COTU_${formatDate(new Date(), "yyyyMMdd")}.pdf`,
+            content: binary,
+            filters: [{ name: 'Documento PDF', extensions: ['pdf'] }],
+          });
+          if (saved.success) toast.success('Reporte PDF exportado con éxito');
+          else toast.error(saved.error || 'Cancelado');
+        } else {
+          const blob = new Blob([binary], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `Reporte_Auditoria_COTU_${formatDate(new Date(), "yyyyMMdd")}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          toast.success('PDF descargado desde el navegador');
+        }
+      } else if (res.output) {
+        // If sidecar wrote a file and returned a path, open it or show in folder
+        if (window.electronAPI?.shell?.openPath) {
+          await window.electronAPI.shell.openPath(res.output);
+          toast.success('PDF generado en: ' + res.output);
+        } else {
+          toast.success('PDF generado: ' + res.output);
         }
       } else {
-        doc.save(`Reporte_Auditoria_COTU_${formatDate(new Date(), "yyyyMMdd")}.pdf`);
-        toast.success("PDF descargado desde el navegador");
+        toast.error('Respuesta inválida del sidecar PDF');
       }
     } catch (err) {
       console.error(err);
-      toast.error("Error al generar el reporte PDF");
+      toast.error('Error al generar el reporte PDF');
     } finally {
       setIsExportingPDF(false);
     }
@@ -581,6 +578,52 @@ export function Reports() {
            </div>
         </CardHeader>
         <CardContent className="p-0">
+          <div className="flex flex-col gap-3 p-6 border-b border-border bg-muted/5 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+              <span className="text-sm font-semibold text-foreground">Enviar PDFs del escaneo activo a PDF Tools</span>
+              <Select value={selectedPdfTool} onValueChange={setSelectedPdfTool} className="w-full md:w-64">
+                <SelectTrigger className="h-10 rounded-xl">
+                  <SelectValue placeholder="Selecciona herramienta" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="merge">Unir PDFs</SelectItem>
+                  <SelectItem value="compress">Comprimir</SelectItem>
+                  <SelectItem value="rotate">Rotar</SelectItem>
+                  <SelectItem value="ocr">OCR</SelectItem>
+                  <SelectItem value="split">Dividir PDF</SelectItem>
+                  <SelectItem value="extract">Extraer páginas</SelectItem>
+                  <SelectItem value="pdf_to_jpg">PDF a JPG</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              className="h-11 rounded-xl bg-primary text-primary-foreground font-bold"
+              onClick={() => {
+                if (!activeScan || activeScan.invoices.length === 0) {
+                  toast.error('No hay facturas en el escaneo activo para enviar a PDF Tools.');
+                  return;
+                }
+
+                const paths = activeScan.invoices
+                  .map(inv => inv.invoicePdfPath || inv.filePath)
+                  .filter((path): path is string => !!path);
+
+                if (paths.length === 0) {
+                  toast.error('No se encontraron rutas de PDF válidas en el escaneo activo.');
+                  return;
+                }
+
+                navigate('/pdf-tools', {
+                  state: {
+                    filesToProcess: paths,
+                    preferredToolId: selectedPdfTool,
+                  },
+                });
+              }}
+            >
+              Procesar escaneo en PDF Tools
+            </Button>
+          </div>
           <Table>
             <TableHeader className="bg-muted/50">
               <TableRow className="hover:bg-transparent border-border">
@@ -618,7 +661,7 @@ export function Reports() {
                           variant="ghost" 
                           className="h-9 w-9 rounded-xl hover:bg-blue-500/10 text-blue-600" 
                           title="Enviar a PDF Tools"
-                          onClick={() => navigate("/pdf-tools", { state: { fileToProcess: inv.invoicePdfPath ?? inv.filePath } })}
+                          onClick={() => navigate('/pdf-tools', { state: { fileToProcess: inv.invoicePdfPath ?? inv.filePath, preferredToolId: selectedPdfTool } })}
                         >
                           <FileStack className="w-4 h-4" />
                         </Button>

@@ -195,14 +195,14 @@ ControlHub/
 | P07 | `electron/pdfTools/*.js` (libreoffice, ghostscript, qpdf) existen pero no importados en main.ts | **Confirmado** | ✅ RESUELTO — Carpeta inexistente/eliminada |
 | P08 | `electron.d.ts` incompleto → ~50 usos de `(window as any).electronAPI` pese al comentario "Fix #9 elimina @ts-ignore" | **Confirmado** | ✅ RESUELTO — Tipado completo y eliminación de (window as any) |
 | P09 | Implementado getFinalPathPreview, validación de archivo en carpeta origen via listFiles, diálogo de confirmación muestra Ruta Final completa AÑO/MES/DÍA/PACIENTE. | **Confirmado** | ✅ RESUELTO — Paridad con Organizador robusto y validación SS |
-| P10 | Sidecar auto-restart deshabilitado (`maxRestarts=0`); sidecar caído requiere click manual en Sidebar | **Confirmado** | Intencional [INCIERTO si permanente] |
+| P10 | Sidecar auto-restart deshabilitado (`maxRestarts=0`); sidecar caído requiere click manual en Sidebar | **Confirmado** | ✅ RESUELTO — auto-restart con límite 3 y backoff exponencial |
 | P11 | Rutas duplicadas `/` y `/dashboard` → mismo componente | **Confirmado** | **Corregido** — Eliminada ruta `/dashboard` |
 | P12 | Suspense doble: routes.tsx + MainLayout.tsx | **Confirmado** | ✅ RESUELTO — Consolidado en routes.tsx |
 | P13 | Dashboard empty state muestra `MOCK_DASHBOARD_DATA` difuminado detrás del overlay | **Confirmado** | ✅ RESUELTO — Implementado empty state limpio y eliminación de mock data |
 | P14 | README dice v1.0.0 y "23 herramientas PDF"; package.json v3.2.0; UI tiene **22** tools | **Confirmado** | **Corregido** — Sidebar agrupado por dominios e iconos actualizados |
 | P15 | `dialog:selectDirectory` IPC en main.ts no expuesto en preload; UI usa `select-directory` | **Confirmado** | ✅ RESUELTO — Handler alineado y expuesto en preload |
-| P16 | `html2canvas`, `pdf-lib` en package.json/vite chunks; **sin imports en src/** | **Confirmado** | ✅ RESUELTO — Dependencias eliminadas |
-| P17 | Tesseract ruta fija `C:\\Program Files\\Tesseract-OCR\\tesseract.exe` en pdf_bridge.py | **Confirmado** | ✅ RESUELTO — Detección dinámica y configuración de ruta en Settings |
+| P16 | `html2canvas`, `pdf-lib` en package.json/vite chunks; **sin imports en src/** | **Confirmado** | ✅ RESUELTO — `html-to-image` removido (no se usaba); `jsPDF` reemplazado por render HTML→PDF en el sidecar Python (`pdf_bridge.py`) para reducir el bundle y unificar renderizado; dependencia removida de `package.json`. |
+| P17 | Tesseract ruta fija `C:\Program Files\Tesseract-OCR\tesseract.exe` en pdf_bridge.py | **Confirmado** | ✅ RESUELTO — Detección dinámica y configuración de ruta en Settings; `settings.tesseractPath` ahora se lee desde AppSettings y electron-store. |
 | P18 | Race en DataContext init: `currentScan === null` check en línea 237 usa state stale del closure inicial | **Probable** | ✅ DESCARTADO — Riesgo puramente teórico. `currentScan` solo se setea por `initData` al arranque o por acción del usuario; no hay procesos paralelos que lo modifiquen en esa ventana. |
 | P19 | SidecarManager: requests concurrentes comparten cola FIFO pero **sin correlación request/response** si Python responde fuera de orden | **Confirmado** | ✅ RESUELTO — Correlación por ID incremental en SidecarManager y bridges |
 | P20 | Memory leak `pdfTextCache`: Descartado por evidencia empírica. Fase full mostró Δ Heap = -11.63 MB (GC activo). | **Descartado** | ✅ DESCARTADO — El cache se limpia automáticamente al inicio de cada sesión vía `pdfTextCache.clear()` en `scanLocalDirectory`. |
@@ -212,7 +212,7 @@ ControlHub/
 | P24 | Tests: solo 2 suites Python sidecar; **cero** tests Electron/React/E2E | **Confirmado** | ✅ RESUELTO — Suite de tests Vitest para localScanner implementada |
 | P25 | Operador default distinto: Sidebar "Operador ControlHub" vs DataContext default "Usuario Admin" | **Confirmado** | ✅ RESUELTO — Unificado operador y consumo centralizado de settings |
 | P26 | Rendimiento Parsing PDF: No es cuello de botella. 37ms promedio, 0 errores en 67 archivos. | **Optimizado** | Comportamiento esperado |
-| P27 | Virtualización de tablas | Baja Prioridad | ✅ DESCARTADO — Paginación activa con rowsPerPage ya limita el render. Dataset real = 67 filas máximo; virtualización agrega complejidad sin beneficio medible. |
+| P27 | Virtualización de tablas | Baja Prioridad | ✅ DESCARTADO — `Reports.tsx` renderiza solo `paginatedInvoices`, no `filteredInvoices`. `rowsPerPage` viene de `settings.display.rowsPerPage` y `paginatedInvoices = sortedInvoices.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage)`, por lo que la tabla nunca intenta renderizar todas las filas a la vez. Dataset real máximo = 67 filas; virtualización no aporta mejora significativa ni justifica la complejidad adicional. |
 | P28 | Selector de sesión en Reportes (dropdown con fecha, N facturas y ruta) | **Nuevo** | ✅ RESUELTO — Implementado dropdown en Reports.tsx |
 | P29 | Auto-detección de Word en carpeta origen (Terapias) | **Nuevo** | ✅ RESUELTO — Botón "Buscar Word en carpeta" con selección inteligente |
 | P30 | Validación de código SS en nombre de entrada (Terapias) | **Nuevo** | ✅ RESUELTO — Diálogo de advertencia y normalización de PACIENTE_DESCONOCIDO |
@@ -238,7 +238,7 @@ ControlHub/
 | P50 | Sin protocolo para servir imágenes PNG locales al renderer | **Confirmado** | ✅ RESUELTO — Protocolo pdfthumb:// registrado en whenReady |
 | P51 | Sin IPC para thumbnail de PDF | **Confirmado** | ✅ RESUELTO — handle_pdf_thumbnail en pdf_bridge.py + IPC pdf:pdf_thumbnail |
 | P52 | UI resultado no mostraba warning ni motor usado | **Confirmado** | ✅ RESUELTO — Banner amarillo warning + chips pdf_profile y engine |
-| P53 | Cola automática multi-archivo en herramientas single-file — pendiente | **Nuevo** | 🔄 EN PROGRESO — UI de reordenación de archivos antes de procesar |
+| P53 | Cola automática multi-archivo en herramientas single-file — pendiente | **Nuevo** | ✅ RESUELTO — Procesamiento secuencial con UI de progreso por archivo |
 
 ---
 
@@ -257,6 +257,7 @@ ControlHub/
 | **Load test como CLI Node** (`scripts/loadTest.ts` + pdf-parse) | Aísla benchmark de Electron; evita romper main | Load test embebido en main con `--run-load-test` — **descartado tras incidente sintaxis** |
 | **Python embebido en extraResources** | Deploy sin Python del sistema |
 | **OCR en main (Tesseract.js) + pdf_to_jpg sidecar** | Fallback cuando pdf-parse no extrae texto |
+| **Generación de PDF (renderer → sidecar HTML→PDF)** | Reemplazado `jsPDF` en el renderer por render HTML frente al sidecar Python (`html_to_pdf`) para reducir el bundle, reutilizar la cadena de herramientas PDF existente y mantener fidelidad de layout en Windows empaquetado. | Mantener `jsPDF` en el renderer (aumenta bundle y duplicación de motores de PDF) |
 
 ---
 
@@ -271,7 +272,7 @@ Ordenada por **impacto real en producción/uso diario**, no severidad teórica:
 5. **P29 + P30** — ✅ RESUELTO: Paridad operativa y seguridad en Terapias.
 6. **P12 + P25** — ✅ RESUELTO: Limpieza de UI (Suspense y Operador).
 7. **P15** — ✅ RESUELTO: Handler dialog:selectDirectory alineado y expuesto en preload.
-8. **P07 + P16** — ✅ RESUELTO: Eliminación de código y dependencias muertas.
+8. **P07 + P16** — ✅ RESUELTO: Eliminación de código y dependencias muertas; `jsPDF` reemplazado por render HTML→PDF en el sidecar y eliminado de `package.json`.
 9. **P20** — ✅ DESCARTADO: Memory leak pdfTextCache no existe.
 10. **P27** — Virtualización de tablas (Baja prioridad)
 11. **P31** — ✅ RESUELTO: Auto-detect Word al montar Terapias (useEffect dependencia fix).
@@ -414,10 +415,17 @@ Decisiones ya evaluadas y **descartadas** — no re-proponer sin justificación 
 
 **Pendientes activos:**
 
+No hay issues de alta prioridad abiertas.
+
 | Prioridad | Tarea |
 |-----------|-------|
-| Alta | Cola automática multi-archivo con UI de reordenación (P53) |
 | Baja | Virtualización de tablas (P27) |
+
+**Completados recientemente:**
+
+| Issue | Descripción |
+|-------|-------------|
+| P53 | ✅ Cola automática multi-archivo con procesamiento secuencial |
 
 ---
 
@@ -463,13 +471,13 @@ Decisiones ya evaluadas y **descartadas** — no re-proponer sin justificación 
 
 | Problema | Impacto | Estado |
 |----------|---------|--------|
-| Módulos COTU vs sidecars desconectados | Alto | Pendiente — puente Reportes→PDF Tools |
+| Módulos COTU vs sidecars desconectados | Alto | ✅ RESUELTO — puente Reportes→PDF Tools implementado |
 | Reportes sin selector de sesión | Alto | ✅ RESUELTO (P28) |
 | Ruta duplicada `/` y `/dashboard` | Bajo | ✅ RESUELTO (P11) |
 | Iconos ambiguos Reportes vs PDF Tools | Medio | ✅ RESUELTO — `BarChart3` / `FileStack` |
 | Scanner → Settings genérico | Medio | Pendiente — anclas `#scanning` |
 | Suspense doble | Bajo | ✅ RESUELTO (P12) |
-| Branding legacy `ordertrack-*` | Bajo | Parcial — limpieza en arranque (`cotu-last-path`) y al guardar settings |
+| Branding legacy `ordertrack-*` | Bajo | ✅ RESUELTO — Migración one-time de `ordertrack-*` y `cotu-last-path` a AppSettings/database.json; eliminado localStorage legacy |
 | Atajos teclado globales | Medio | Pendiente |
 
 ---
@@ -481,6 +489,17 @@ Decisiones ya evaluadas y **descartadas** — no re-proponer sin justificación 
   via nuevo protocolo pdfthumb:// y handler handle_pdf_thumbnail.
 - P52: Vista resultado — warning en amarillo, chips pdf_profile y engine.
 - P53: Cola multi-archivo con UI reordenación — en progreso.
+- Build limpio confirmado post-sesión.
+
+### 2026-06-22 — P53 cerrado y documentación unificada
+- P53 implementado: cola automática multi-archivo con procesamiento secuencial, UI de progreso por archivo y estado individual.
+- P54: puente Reportes→PDF Tools implementado; envía escaneo activo como cola de archivos y preselecciona herramienta desde selector en Reports.
+- P10: habilitado auto-restart para Sidecars Terapias/PDF con `maxRestarts=3` y backoff exponencial; Sidebar distingue `reconnecting`, `failed` y `closed`.
+- P16: corregido — `html-to-image` removido (importaba `toPng` pero nunca se usaba); `jsPDF` convertido a dynamic import en `handleExportPDF()` para lazy-loading; `html2canvas.esm` (201KB) ahora es chunk separado que se carga solo cuando usuario exporta PDF.
+
+- P53 Docs eliminados: solo se conserva CONTEXT.md como fuente de verdad.
+- Regla añadida: toda documentación nueva va a CONTEXT.md; no se crean archivos markdown por feature individual.
+- P35: Agregada migración one-time de legacy `ordertrack-*` y `cotu-last-path` desde `localStorage` a AppSettings (`settings.json`) y `database.json`; marca de migración `migration.legacyLocalStorage` guardada en electron-store.
 - Build limpio confirmado post-sesión.
 
 ### 2026-06-21 — PDF Tools: hardening completo de motores

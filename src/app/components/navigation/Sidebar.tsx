@@ -126,35 +126,47 @@ import { useData } from "../../contexts/DataContext";
           </div>
           
           <div className="grid grid-cols-2 gap-2">
-            {Object.entries(sidecarStatus).map(([name, status]) => (
-              <div 
-                key={name}
-                onClick={() => (status === 'closed' || status === 'stalled') && reconnectSidecar(name)}
-                className={cn(
-                  "flex items-center gap-2 px-2.5 py-1.5 rounded-md border transition-all duration-200",
-                  status === 'closed' && "cursor-pointer hover:bg-destructive/10 border-destructive/20 text-destructive",
-                  status === 'stalled' && "cursor-pointer hover:bg-amber-500/10 border-amber-500/30 text-amber-500 bg-amber-500/5",
-                  status === 'running' 
-                    ? "bg-muted/50 border-border text-foreground" 
-                    : status !== 'stalled' ? "border-border text-muted-foreground" : ""
-                )}
-                title={
-                  status === 'closed' 
-                    ? `Servicio cerrado. Click para intentar re-conectar ${name}` 
-                    : status === 'stalled' 
-                      ? `Servicio atascado por timeout. Click para reiniciar ${name}` 
-                      : `${name} en ejecución`
-                }
-              >
-                <div className={cn(
-                  "w-1.5 h-1.5 rounded-full",
-                  status === 'running' && "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]",
-                  status === 'stalled' && "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]",
-                  status !== 'running' && status !== 'stalled' && "bg-muted-foreground"
-                )} />
-                <span className="text-[9px] font-bold uppercase tracking-tight">{name}</span>
-              </div>
-            ))}
+            {Object.entries(sidecarStatus).map(([name, status]) => {
+              const isRetryable = status === 'closed' || status === 'stalled' || status === 'failed' || status === 'reconnecting';
+              return (
+                <div 
+                  key={name}
+                  onClick={() => isRetryable && reconnectSidecar(name)}
+                  className={cn(
+                    "flex items-center gap-2 px-2.5 py-1.5 rounded-md border transition-all duration-200",
+                    status === 'running' && "bg-muted/50 border-border text-foreground",
+                    status === 'reconnecting' && "cursor-pointer hover:bg-sky-500/10 border-sky-500/30 text-sky-500 bg-sky-500/5",
+                    status === 'failed' && "cursor-pointer hover:bg-destructive/10 border-destructive/20 text-destructive bg-destructive/5",
+                    status === 'stalled' && "cursor-pointer hover:bg-amber-500/10 border-amber-500/30 text-amber-500 bg-amber-500/5",
+                    status === 'closed' && "cursor-pointer hover:bg-destructive/10 border-destructive/20 text-destructive",
+                    status !== 'running' && status !== 'reconnecting' && status !== 'failed' && status !== 'stalled' && "border-border text-muted-foreground"
+                  )}
+                  title={
+                    status === 'closed'
+                      ? `Servicio cerrado. Click para intentar re-conectar ${name}`
+                      : status === 'stalled'
+                        ? `Servicio atascado por timeout. Click para reiniciar ${name}`
+                        : status === 'failed'
+                          ? `Servicio falló. Click para intentar reconectar ${name}`
+                          : status === 'reconnecting'
+                            ? `Servicio reconectando. Click para forzar reconexión ${name}`
+                            : status === 'unknown'
+                              ? `Estado desconocido de ${name}. Click para reconectar.`
+                              : `${name} en ejecución`
+                  }
+                >
+                  <div className={cn(
+                    "w-1.5 h-1.5 rounded-full",
+                    status === 'running' && "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]",
+                    status === 'stalled' && "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]",
+                    status === 'reconnecting' && "bg-sky-500 shadow-[0_0_8px_rgba(56,189,248,0.4)]",
+                    status === 'failed' && "bg-destructive shadow-[0_0_8px_rgba(239,68,68,0.4)]",
+                    status !== 'running' && status !== 'stalled' && status !== 'reconnecting' && status !== 'failed' && "bg-muted-foreground"
+                  )} />
+                  <span className="text-[9px] font-bold uppercase tracking-tight">{name}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
 

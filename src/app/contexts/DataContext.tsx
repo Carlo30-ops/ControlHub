@@ -12,7 +12,7 @@ interface DataContextType {
   trimHistory: (keepCount: number) => Promise<void>;
   currentScan: ScanResult | null;
   setCurrentScan: (scan: ScanResult | null) => void;
-  sidecarStatus: Record<string, 'running' | 'closed' | 'stalled' | 'unknown'>;
+  sidecarStatus: Record<string, 'running' | 'closed' | 'failed' | 'reconnecting' | 'stalled' | 'unknown'>;
   checkSidecars: () => Promise<void>;
   reconnectSidecar: (name: string) => Promise<void>;
 }
@@ -40,6 +40,7 @@ const defaultSettings: Settings = {
   operatorName: "Usuario Admin",
   operatorEmail: "admin@cotu.com",
   terapiasDir: "",
+  tesseractPath: "",
 };
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -49,7 +50,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const [history, setHistory] = useState<ScanResult[]>([]);
   const [currentScan, setCurrentScan] = useState<ScanResult | null>(null);
-  const [sidecarStatus, setSidecarStatus] = useState<Record<string, 'running' | 'closed' | 'stalled' | 'unknown'>>({
+  const [sidecarStatus, setSidecarStatus] = useState<Record<string, 'running' | 'closed' | 'failed' | 'reconnecting' | 'stalled' | 'unknown'>>({
     Terapias: 'unknown',
     PDF: 'unknown',
   });
@@ -85,22 +86,138 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // Cargar historial y settings asincronamente desde DB (o localStorage en fallback)
   useEffect(() => {
     const initData = async () => {
-      // Limpieza idempotente de claves legacy (migradas); ya no usamos localStorage
+      const migrationKey = 'migration.legacyLocalStorage';
+      let migratedSettings: Partial<Settings> = {};
+      let shouldPersistSettings = false;
+      let legacyTerapiasDir: string | undefined;
+      let legacyTesseractPath: string | undefined;
+
+      if (window.electronAPI?.config?.get) {
+        try {
+          const migrated = await window.electronAPI.config.get(migrationKey);
+          if (!migrated) {
+            const legacySettingsRaw = localStorage.getItem('ordertrack-settings');
+            const legacyThemeRaw = localStorage.getItem('ordertrack-theme');
+            const legacyLastPath = localStorage.getItem('cotu-last-path');
+            const legacyHistoryRaw = localStorage.getItem('ordertrack-history');
+
+            if (legacySettingsRaw) {
+              try {
+                const parsed = JSON.parse(legacySettingsRaw) as any;
+                if (parsed && typeof parsed === 'object') {
+                  if (typeof parsed.theme === 'string') {
+                    migratedSettings.theme = parsed.theme as 'light' | 'dark';
+                  }
+                  if (typeof parsed.lastScanPath === 'string') {
+                    migratedSettings.lastScanPath = parsed.lastScanPath;
+                  }
+                  if (parsed.columns && typeof parsed.columns === 'object') {
+                    migratedSettings.columns = { ...migratedSettings.columns, ...parsed.columns } as any;
+                  }
+                  if (parsed.scanning && typeof parsed.scanning === 'object') {
+                    migratedSettings.scanning = { ...migratedSettings.scanning, ...parsed.scanning } as any;
+                  }
+                  if (parsed.display && typeof parsed.display === 'object') {
+                    migratedSettings.display = { ...migratedSettings.display, ...parsed.display } as any;
+                  }
+                  if (Array.isArray(parsed.customInsurers)) {
+                    migratedSettings.customInsurers = parsed.customInsurers;
+                  }
+                  if (typeof parsed.operatorName === 'string') {
+                    migratedSettings.operatorName = parsed.operatorName;
+                  }
+                  if (typeof parsed.operatorEmail === 'string') {
+                    migratedSettings.operatorEmail = parsed.operatorEmail;
+                  }
+                }
+              } catch (err) {
+                console.warn('[DataContext] Error parsing legacy ordertrack-settings:', err);
+              }
+            }
+
+            if (legacyThemeRaw && (legacyThemeRaw === 'light' || legacyThemeRaw === 'dark')) {
+              migratedSettings.theme = legacyThemeRaw;
+            }
+            if (legacyLastPath) {
+              migratedSettings.lastScanPath = legacyLastPath;
+            }
+
+            if (legacyHistoryRaw) {
+              try {
+                const parsedHistory = JSON.parse(legacyHistoryRaw);
+                if (Array.isArray(parsedHistory) && window.electronAPI?.saveScan) {
+                  for (const candidate of parsedHistory) {
+                    if (candidate && typeof candidate === 'object' && typeof candidate.id === 'string') {
+                      // Save each legacy scan into database.json via IPC.
+                      // If the scan object is invalid, skip it silently.
+                      await window.electronAPI.saveScan(candidate as any);
+                    }
+                  }
+                }
+              } catch (err) {
+                console.warn('[DataContext] Error parsing legacy ordertrack-history:', err);
+              }
+            }
+
+            if (Object.keys(migratedSettings).length > 0 || legacyLastPath || legacyHistoryRaw || legacySettingsRaw || legacyThemeRaw) {
+              shouldPersistSettings = true;
+            }
+
+            try {
+              localStorage.removeItem('ordertrack-settings');
+              localStorage.removeItem('ordertrack-theme');
+              localStorage.removeItem('ordertrack-history');
+              localStorage.removeItem('cotu-last-path');
+            } catch {
+              // localStorage removal is best-effort; do not fail startup.
+            }
+
+            try {
+              await window.electronAPI.config.set(migrationKey, true);
+            } catch (err) {
+              console.warn('[DataContext] Error setting legacy migration flag:', err);
+            }
+          }
+        } catch (err) {
+          console.warn('[DataContext] Error checking legacy migration flag:', err);
+        }
+      }
 
       if (window.electronAPI?.getSettings) {
         try {
           const savedSettings = await window.electronAPI.getSettings();
-          
-          if (savedSettings) {
-            setSettings(prev => ({
-              ...prev,
-              ...savedSettings,
-              columns: { ...prev.columns, ...(savedSettings.columns || {}) },
-              scanning: { ...prev.scanning, ...(savedSettings.scanning || {}) },
-              display: { ...prev.display, ...(savedSettings.display || {}) },
-              customInsurers: savedSettings.customInsurers ?? prev.customInsurers,
-              terapiasDir: savedSettings.terapiasDir || prev.terapiasDir,
-            }));
+          legacyTerapiasDir = await window.electronAPI.config.get('settings.terapiasDir');
+          legacyTesseractPath = await window.electronAPI.config.get('settings.tesseractPath');
+
+          const mergedSettings = {
+            ...defaultSettings,
+            ...(savedSettings || {}),
+            ...migratedSettings,
+            terapiasDir: (savedSettings?.terapiasDir || legacyTerapiasDir) ?? migratedSettings.terapiasDir ?? defaultSettings.terapiasDir,
+            tesseractPath: (savedSettings?.tesseractPath || legacyTesseractPath) ?? migratedSettings.tesseractPath ?? defaultSettings.tesseractPath,
+          } as Settings;
+
+          mergedSettings.columns = {
+            ...defaultSettings.columns,
+            ...(savedSettings?.columns || {}),
+            ...(migratedSettings.columns || {}),
+          };
+          mergedSettings.scanning = {
+            ...defaultSettings.scanning,
+            ...(savedSettings?.scanning || {}),
+            ...(migratedSettings.scanning || {}),
+          };
+          mergedSettings.display = {
+            ...defaultSettings.display,
+            ...(savedSettings?.display || {}),
+            ...(migratedSettings.display || {}),
+          };
+          mergedSettings.customInsurers = migratedSettings.customInsurers ?? savedSettings?.customInsurers ?? defaultSettings.customInsurers;
+
+          setSettings(mergedSettings);
+
+          if (shouldPersistSettings && window.electronAPI.saveSettings) {
+            await window.electronAPI.saveSettings(mergedSettings);
           }
         } catch (err) {
           console.error('[DataContext] Error cargando settings desde IPC:', err);
@@ -128,12 +245,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (window.electronAPI?.onSidecarStatus) {
       window.electronAPI.onSidecarStatus((data: { name: string; status: string }) => {
-        let uiStatus: 'running' | 'closed' | 'stalled' | 'unknown' = 'unknown';
+        let uiStatus: 'running' | 'closed' | 'failed' | 'reconnecting' | 'stalled' | 'unknown' = 'unknown';
         if (data.status === 'running' || data.status === 'ok') {
           uiStatus = 'running';
         } else if (data.status === 'stalled') {
           uiStatus = 'stalled';
-        } else if (data.status === 'closed' || data.status === 'failed') {
+        } else if (data.status === 'reconnecting') {
+          uiStatus = 'reconnecting';
+        } else if (data.status === 'failed') {
+          uiStatus = 'failed';
+        } else if (data.status === 'closed') {
           uiStatus = 'closed';
         }
         setSidecarStatus(prev => ({ ...prev, [data.name]: uiStatus }));

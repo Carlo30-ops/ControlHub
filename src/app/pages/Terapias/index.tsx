@@ -165,6 +165,70 @@ export default function Terapias() {
   const engineReady = !status.loading && status.ping === true;
   const interactionsLocked = !hasSourceDir || !engineReady || isProcessing;
 
+  const handleAutoDetectWord = async () => {
+    if (!sourceDir.trim()) {
+      toast.error("Configura primero la carpeta origen");
+      return;
+    }
+
+    setIsListing(true);
+    try {
+      const res = await window.electronAPI.terapias.listDocs();
+      if (res.ok) {
+        const files = (res as any).files;
+        setAvailableDocs(files);
+        if (files.length === 0) {
+          toast.error("No se encontró ningún documento Word en la carpeta origen");
+        } else if (files.length === 1) {
+          setForm(prev => ({ ...prev, filename: files[0].name }));
+          toast.success(`Archivo detectado: ${files[0].name}`);
+        } else {
+          setPickerMode('select');
+          setIsPickerOpen(true);
+        }
+      } else {
+        toast.error("Error al buscar archivos: " + res.error);
+      }
+    } catch (err) {
+      toast.error("Error crítico al buscar archivos");
+    } finally {
+      setIsListing(false);
+    }
+  };
+
+  const fetchDocs = async (dir: string = sourceDir) => {
+    if (!dir.trim()) {
+      setAvailableDocs([]);
+      return;
+    }
+
+    setIsListing(true);
+    try {
+      const res = await window.electronAPI.terapias.listDocs();
+      if (res.ok) {
+        setAvailableDocs(res.files);
+        if (res.files.length > 0 && !form.filename) {
+          setForm(prev => ({ ...prev, filename: res.files[0].name }));
+        }
+      }
+    } catch (err) {
+      console.error("Error listing docs:", err);
+    } finally {
+      setIsListing(false);
+    }
+  };
+
+  const fetchHistory = async () => {
+    try {
+      const res = await window.electronAPI.terapias.getHistory();
+      if (res.ok) {
+        setHistory(res.history);
+      }
+    } catch (err) {
+      console.error("Error fetching history:", err);
+    }
+  };
+
   useEffect(() => {
     if (location.pathname !== "/terapias") return;
 
@@ -228,37 +292,6 @@ export default function Terapias() {
     return /\d*SS\s+\S+/.test(input);
   };
 
-  const handleAutoDetectWord = async () => {
-    if (!sourceDir.trim()) {
-      toast.error("Configura primero la carpeta origen");
-      return;
-    }
-
-    setIsListing(true);
-    try {
-      const res = await window.electronAPI.terapias.listDocs();
-      if (res.ok) {
-        const files = (res as any).files;
-        setAvailableDocs(files);
-        if (files.length === 0) {
-          toast.error("No se encontró ningún documento Word en la carpeta origen");
-        } else if (files.length === 1) {
-          setForm(prev => ({ ...prev, filename: files[0].name }));
-          toast.success(`Archivo detectado: ${files[0].name}`);
-        } else {
-          setPickerMode('select');
-          setIsPickerOpen(true);
-        }
-      } else {
-        toast.error("Error al buscar archivos: " + res.error);
-      }
-    } catch (err) {
-      toast.error("Error crítico al buscar archivos");
-    } finally {
-      setIsListing(false);
-    }
-  };
-
   const getPatientFromInput = (input: string) => {
     const parts = input.trim().split(/\s+/);
     for (let i = 0; i < parts.length; i++) {
@@ -299,39 +332,6 @@ export default function Terapias() {
         ping: false,
         error: "No se pudo conectar con el motor Python." 
       }));
-    }
-  };
-
-  const fetchDocs = async (dir: string = sourceDir) => {
-    if (!dir.trim()) {
-      setAvailableDocs([]);
-      return;
-    }
-
-    setIsListing(true);
-    try {
-      const res = await window.electronAPI.terapias.listDocs();
-      if (res.ok) {
-        setAvailableDocs(res.files);
-        if (res.files.length > 0 && !form.filename) {
-          setForm(prev => ({ ...prev, filename: res.files[0].name }));
-        }
-      }
-    } catch (err) {
-      console.error("Error listing docs:", err);
-    } finally {
-      setIsListing(false);
-    }
-  };
-
-  const fetchHistory = async () => {
-    try {
-      const res = await window.electronAPI.terapias.getHistory();
-      if (res.ok) {
-        setHistory(res.history);
-      }
-    } catch (err) {
-      console.error("Error fetching history:", err);
     }
   };
 
@@ -1141,7 +1141,9 @@ function DropZoneSimple({ file, onFiles, accept, disabled, onClear, defaultPath 
     e.preventDefault();
     if (disabled) return;
     setIsOver(false);
-    const paths = Array.from(e.dataTransfer.files).map(f => (f as any).path);
+    const paths = Array.from(e.dataTransfer.files).map(f =>
+      window.electronAPI.getPathForFile(f)
+    );
     if (paths.length > 0) onFiles(paths);
   }, [onFiles, disabled]);
 
