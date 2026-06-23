@@ -474,9 +474,18 @@ def handle_pdf_to_jpg(data):
         if not os.path.exists(output_dir): os.makedirs(output_dir)
         doc = fitz.open(input_file)
         outputs = []
-        for i, page in enumerate(doc):
+        # Soporta parámetro opcional 'pages' (1-based list) para convertir solo páginas específicas
+        pages_param = data.get('pages')
+        if pages_param and isinstance(pages_param, (list, tuple)) and len(pages_param) > 0:
+            pages_to_render = [p for p in pages_param if isinstance(p, int) and p >= 1 and p <= doc.page_count]
+        else:
+            pages_to_render = list(range(1, doc.page_count + 1))
+
+        for pnum in pages_to_render:
+            i = pnum - 1
+            page = doc[i]
             pix = page.get_pixmap(dpi=dpi)
-            out_path = os.path.join(output_dir, f"page_{i+1}.jpg")
+            out_path = os.path.join(output_dir, f"page_{pnum}.jpg")
             pix.save(out_path)
             outputs.append(out_path)
         doc.close()

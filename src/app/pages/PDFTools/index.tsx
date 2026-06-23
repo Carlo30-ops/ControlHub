@@ -66,7 +66,10 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { toast } from "sonner";
-import { cn } from "../../components/ui/utils";
+import { useFileQueue } from "./hooks/useFileQueue";
+import { usePdfTool } from "./hooks/usePdfTool";
+
+// TODO: Refactor component logic to use these hooks (Phase 2 modularization).
 
 // --- Types & Constants ---
 interface FileInfo {
@@ -496,12 +499,14 @@ export default function PDFTools() {
 
   // Detect file coming from Reports via navigation
   useEffect(() => {
+    console.log('PDFTools useEffect location.state initial:', location.state);
     const navState = location.state as { fileToProcess?: string; filesToProcess?: string[]; preferredToolId?: ToolId } | null;
     const paths = navState?.filesToProcess?.length
       ? navState.filesToProcess
       : navState?.fileToProcess
       ? [navState.fileToProcess]
       : [];
+    console.log('PDFTools useEffect computed paths:', paths);
 
     if (paths.length === 0) return;
 

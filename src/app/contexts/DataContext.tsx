@@ -41,6 +41,8 @@ const defaultSettings: Settings = {
   operatorEmail: "admin@cotu.com",
   terapiasDir: "",
   tesseractPath: "",
+  terapiasBaseDest: "",
+  terapiasBackup: "",
 };
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -89,8 +91,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const migrationKey = 'migration.legacyLocalStorage';
       let migratedSettings: Partial<Settings> = {};
       let shouldPersistSettings = false;
-      let legacyTerapiasDir: string | undefined;
-      let legacyTesseractPath: string | undefined;
 
       if (window.electronAPI?.config?.get) {
         try {
@@ -186,15 +186,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (window.electronAPI?.getSettings) {
         try {
           const savedSettings = await window.electronAPI.getSettings();
-          legacyTerapiasDir = await window.electronAPI.config.get('settings.terapiasDir');
-          legacyTesseractPath = await window.electronAPI.config.get('settings.tesseractPath');
 
           const mergedSettings = {
             ...defaultSettings,
             ...(savedSettings || {}),
             ...migratedSettings,
-            terapiasDir: (savedSettings?.terapiasDir || legacyTerapiasDir) ?? migratedSettings.terapiasDir ?? defaultSettings.terapiasDir,
-            tesseractPath: (savedSettings?.tesseractPath || legacyTesseractPath) ?? migratedSettings.tesseractPath ?? defaultSettings.tesseractPath,
           } as Settings;
 
           mergedSettings.columns = {

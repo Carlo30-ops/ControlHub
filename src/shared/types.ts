@@ -91,6 +91,10 @@ export interface AppSettings {
   operatorEmail?: string;
   terapiasDir?: string;
   tesseractPath?: string;
+  /** Carpeta destino base del flujo Terapias (Año/Mes/Día/Paciente) */
+  terapiasBaseDest?: string;
+  /** Carpeta de respaldo PDF en Terapias */
+  terapiasBackup?: string;
   // Theme and recent folder (migrated from legacy localStorage)
   theme?: 'light' | 'dark';
   lastScanPath?: string;
@@ -105,4 +109,15 @@ export interface ScanOptions {
   signal?: AbortSignal;
   scanId?: string;
   applyDateFilter?: boolean;
+  targetDate?: Date;
+  targetDateRange?: { start: Date; end: Date };
+}
+
+/** Resultado de scanLocalDirectory */
+export interface ScanLocalResult {
+  invoices: Invoice[];
+  duration: number;
+  stats: ScanStats;
+  /** true si no se resolvió subcarpeta por fecha y se escaneó la raíz completa */
+  preProbeFallback?: boolean;
 }

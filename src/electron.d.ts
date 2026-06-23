@@ -38,6 +38,7 @@ export interface ScanProgressData {
   currentFile: string;
   scannedCount: number;
   foundCount: number;
+  stage?: 'exploring' | 'processing' | 'finalizing';
 }
 
 export interface FolderUpdatedData {
@@ -54,6 +55,7 @@ interface ElectronAPI {
   security: {
     validateAndRegisterDroppedFile(path: string): Promise<{ ok: boolean; error?: string }>;
     syncActiveFiles(paths: string[]): Promise<{ ok: boolean; accepted?: number }>;
+    registerApprovedDirectory(path: string): Promise<{ ok: boolean; error?: string }>;
   };
 
   // â”€â”€ Sistema de archivos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -61,6 +63,8 @@ interface ElectronAPI {
     dirPath: string,
     options?: { ignoredFolders?: string[]; maxDepth?: number; scanId?: string }
   ): Promise<{ files: { filePath: string; mtimeMs: number }[]; totalScanned: number }>;
+
+  checkPathExists(path: string): Promise<{ exists: boolean }>;
 
   cancelScan(scanId: string): Promise<boolean>;
 

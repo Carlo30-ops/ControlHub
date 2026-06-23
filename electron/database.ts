@@ -61,6 +61,8 @@ const DEFAULT_SETTINGS = {
     operatorEmail: 'admin@cotu.com',
     terapiasDir: '',
     tesseractPath: '',
+    terapiasBaseDest: '',
+    terapiasBackup: '',
     // Campos añadidos en la migración: tema y carpeta reciente
     theme: 'dark',
     lastScanPath: '',

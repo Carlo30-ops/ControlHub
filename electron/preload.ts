@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     syncActiveFiles: (paths: string[]) =>
       ipcRenderer.invoke('security:syncActiveFiles', paths),
+
+    registerApprovedDirectory: (path: string) =>
+      ipcRenderer.invoke('security:registerApprovedDirectory', path),
   },
 
   // â”€â”€ Sistema de archivos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -35,6 +38,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     dirPath: string,
     options?: { ignoredFolders?: string[]; maxDepth?: number; scanId?: string }
   ) => ipcRenderer.invoke('fs:readDirectory', dirPath, options),
+
+  checkPathExists: (path: string) => ipcRenderer.invoke('fs:checkPath', path),
 
   /** Fix #3: Cancela la traversal activa con el scanId dado */
   cancelScan: (scanId: string) =>
@@ -105,9 +110,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   config: {
     get: (key: string) => ipcRenderer.invoke('config:get', key),
     set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),
-    getAll: () => ipcRenderer.invoke('config:getAll'),
-    setAll: (obj: Record<string, any>) => ipcRenderer.invoke('config:setAll', obj),
-    delete: (key: string) => ipcRenderer.invoke('config:delete', key),
   },
 
   // ── Tesseract validation (C5) ───────────────────────────────────────────

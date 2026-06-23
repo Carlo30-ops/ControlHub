@@ -150,20 +150,40 @@ export function Reports() {
 
   // Cuando se abre el visor, cargar el PDF como base64
   useEffect(() => {
-    if (previewPath) {
+    let cancelled = false;
+
+    const loadPreview = async () => {
+      if (!previewPath) {
+        setPdfBase64(null);
+        setPdfLoading(false);
+        return;
+      }
+
       setPdfLoading(true);
       setPdfBase64(null);
-      window.electronAPI.readPdfAsBase64(previewPath).then((result: any) => {
-        if (result.success) {
+
+      try {
+        const result: any = await window.electronAPI.readPdfAsBase64(previewPath);
+        if (cancelled) return;
+
+        if (result?.success && result.data) {
           setPdfBase64(result.data);
         } else {
-          toast.error("Error al cargar el PDF: " + result.error);
+          toast.error("Error al cargar el PDF: " + (result?.error || "Ruta inválida o archivo no encontrado"));
         }
-        setPdfLoading(false);
-      });
-    } else {
-      setPdfBase64(null);
-    }
+      } catch (error: any) {
+        if (cancelled) return;
+        toast.error("Error al cargar el PDF: " + (error?.message || "Fallo de IPC"));
+      } finally {
+        if (!cancelled) setPdfLoading(false);
+      }
+    };
+
+    loadPreview();
+
+    return () => {
+      cancelled = true;
+    };
   }, [previewPath]);
 
   const rowsPerPage = settings.display.rowsPerPage;
@@ -581,20 +601,22 @@ export function Reports() {
           <div className="flex flex-col gap-3 p-6 border-b border-border bg-muted/5 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-col gap-2 md:flex-row md:items-center">
               <span className="text-sm font-semibold text-foreground">Enviar PDFs del escaneo activo a PDF Tools</span>
-              <Select value={selectedPdfTool} onValueChange={setSelectedPdfTool} className="w-full md:w-64">
-                <SelectTrigger className="h-10 rounded-xl">
-                  <SelectValue placeholder="Selecciona herramienta" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="merge">Unir PDFs</SelectItem>
-                  <SelectItem value="compress">Comprimir</SelectItem>
-                  <SelectItem value="rotate">Rotar</SelectItem>
-                  <SelectItem value="ocr">OCR</SelectItem>
-                  <SelectItem value="split">Dividir PDF</SelectItem>
-                  <SelectItem value="extract">Extraer páginas</SelectItem>
-                  <SelectItem value="pdf_to_jpg">PDF a JPG</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="w-full md:w-64">
+                <Select value={selectedPdfTool} onValueChange={setSelectedPdfTool}>
+                  <SelectTrigger className="h-10 rounded-xl">
+                    <SelectValue placeholder="Selecciona herramienta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="merge">Unir PDFs</SelectItem>
+                    <SelectItem value="compress">Comprimir</SelectItem>
+                    <SelectItem value="rotate">Rotar</SelectItem>
+                    <SelectItem value="ocr">OCR</SelectItem>
+                    <SelectItem value="split">Dividir PDF</SelectItem>
+                    <SelectItem value="extract">Extraer páginas</SelectItem>
+                    <SelectItem value="pdf_to_jpg">PDF a JPG</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <Button
               className="h-11 rounded-xl bg-primary text-primary-foreground font-bold"
@@ -612,6 +634,8 @@ export function Reports() {
                   toast.error('No se encontraron rutas de PDF válidas en el escaneo activo.');
                   return;
                 }
+
+                console.log('Reports -> PDFTools navigate filesToProcess:', paths, 'preferredToolId:', selectedPdfTool);
 
                 navigate('/pdf-tools', {
                   state: {

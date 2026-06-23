@@ -234,7 +234,7 @@ export default function Terapias() {
 
     const handler = (e: KeyboardEvent) => {
       const activeTag = document.activeElement?.tagName;
-      const isInputFocused = activeTag === "INPUT" || activeTag === "TEXTAREA" || document.activeElement?.isContentEditable;
+      const isInputFocused = activeTag === "INPUT" || activeTag === "TEXTAREA" || (document.activeElement as HTMLElement)?.isContentEditable;
 
       if (e.ctrlKey && e.key.toLowerCase() === "o") {
         if (!isInputFocused) {
@@ -359,29 +359,18 @@ export default function Terapias() {
   };
 
   useEffect(() => {
-    const loadConfig = async () => {
-      const source = await window.electronAPI.config.get("settings.terapiasDir");
-      const dest = await window.electronAPI.config.get("terapias.baseDest");
-      const backup = await window.electronAPI.config.get("terapias.backup");
-
-      const activeSource = source || settings.terapiasDir || "";
-      setSourceDir(activeSource);
-      if (activeSource) {
-        await window.electronAPI.config.set("settings.terapiasDir", activeSource);
-      }
-
-      if (dest) setForm(prev => ({ ...prev, baseDest: dest }));
-      if (backup) setForm(prev => ({ ...prev, backup: backup }));
-      return activeSource;
-    };
-
-    loadConfig().then((activeSource) => {
-      if (activeSource) {
-        checkStatus(activeSource);
-      }
-    });
+    const activeSource = settings.terapiasDir || "";
+    setSourceDir(activeSource);
+    setForm(prev => ({
+      ...prev,
+      baseDest: settings.terapiasBaseDest || prev.baseDest,
+      backup: settings.terapiasBackup || prev.backup,
+    }));
+    if (activeSource) {
+      checkStatus(activeSource);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.terapiasDir]);
+  }, [settings.terapiasDir, settings.terapiasBaseDest, settings.terapiasBackup]);
 
   useEffect(() => {
     if (sidecarStatus.Terapias === 'running' && sourceDir.trim()) {
@@ -396,12 +385,13 @@ export default function Terapias() {
       if (field === "sourceDir") {
         setSourceDir(path);
         updateSettings({ terapiasDir: path });
-        window.electronAPI.config.set("settings.terapiasDir", path);
         fetchDocs(path);
+      } else if (field === "baseDest") {
+        setForm(prev => ({ ...prev, baseDest: path }));
+        updateSettings({ terapiasBaseDest: path });
       } else {
-        setForm(prev => ({ ...prev, [field]: path }));
-        const configKey = field === "baseDest" ? "terapias.baseDest" : "terapias.backup";
-        window.electronAPI.config.set(configKey, path);
+        setForm(prev => ({ ...prev, backup: path }));
+        updateSettings({ terapiasBackup: path });
       }
     }
   };

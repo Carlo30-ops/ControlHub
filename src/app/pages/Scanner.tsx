@@ -48,6 +48,7 @@ import {
 } from "../utils/localScanner";
 import { ScanStats } from "../../shared/types";
 import { useData } from "../contexts/DataContext";
+import { validateStringSetting } from "../config/validation";
 import { useNavigate, useLocation } from "react-router";
 import { toast } from "sonner";
 import { cn } from "../components/ui/utils";
@@ -78,10 +79,14 @@ export function Scanner() {
       setSelectedFiles(saved);
       const folderName = saved.split(/[\\\/]/).pop() || saved;
       setBasePath(folderName);
+      if (window.electronAPI?.security?.registerApprovedDirectory) {
+        window.electronAPI.security.registerApprovedDirectory(saved).catch(() => {
+          console.warn('[Scanner] No se pudo registrar carpeta guardada como aprobada para previsualización.');
+        });
+      }
     }
     if (window.electronAPI?.onFolderUpdated) {
-      // @ts-ignore
-      window.electronAPI.onFolderUpdated((data: any) => {
+      window.electronAPI.onFolderUpdated(() => {
         setNewFilesCount(prev => prev + 1);
         toast.info("Nuevos PDFs detectados", {
           description: "Se recomienda re-escanear para actualizar datos.",
@@ -175,9 +180,22 @@ export function Scanner() {
           selectedFiles,
           dateRange,
           (p) => {
-            const pct = (p.current / Math.max(p.total, 1)) * 100;
-            setProgress(Math.min(pct, 95));
-            setScanStatus(`${p.currentFile} (${p.current}/${p.total})`);
+            const calculateStageProgress = () => {
+              if (p.stage === 'exploring') {
+                if (!p.total || p.total <= 1) return 5;
+                return Math.min(20, (p.current / p.total) * 20);
+              }
+              if (p.stage === 'processing') {
+                return 20 + Math.min(70, (p.current / Math.max(p.total, 1)) * 70);
+              }
+              if (p.stage === 'finalizing') {
+                return 95 + Math.min(5, (p.current / Math.max(p.total, 1)) * 5);
+              }
+              return Math.min(95, (p.current / Math.max(p.total, 1)) * 100);
+            };
+            const pct = calculateStageProgress();
+            setProgress(pct);
+            setScanStatus(`${p.currentFile}`);
           },
           {
             maxDepth: settings.scanning.maxDepth,
@@ -185,11 +203,19 @@ export function Scanner() {
             ignoreSystemFolders: settings.scanning.ignoreSystemFolders,
             customInsurers: settings.customInsurers,
             signal: abortController.signal,
-            applyDateFilter: false, // <--- CAMBIADO: Mostrar todo por defecto
+            applyDateFilter: true,
+            targetDate: scanType === 'day' ? (startDate ?? dateRange.start) : undefined,
+            targetDateRange: scanType === 'custom' && startDate && endDate ? { start: startDate, end: endDate } : undefined,
           }
         );
-        console.log('[SCAN] Resultado crudo de scanLocalDirectory:', 
-          JSON.stringify({ invoiceCount: result?.invoices?.length, stats: result?.stats }));
+
+        if (result.preProbeFallback) {
+          toast.warning('Subcarpeta de fecha no encontrada', {
+            description: 'Se escaneó la carpeta completa. El proceso puede tardar más de lo habitual.',
+            duration: 8000,
+          });
+        }
+
         invoices = result.invoices;
         duration = result.duration;
         stats = result.stats;
@@ -197,11 +223,6 @@ export function Scanner() {
         const result = await scanInvoices(scanType, dateRange, basePath || "Demo");
         invoices = result.invoices;
         duration = result.duration;
-      }
-
-      console.log('[SCAN] Total invoices guardados:', invoices.length);
-      if (invoices.length > 0) {
-        console.log('[SCAN] Primer invoice:', JSON.stringify(invoices[0]));
       }
 
       setProgress(100);

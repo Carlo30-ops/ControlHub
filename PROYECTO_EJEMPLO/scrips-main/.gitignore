@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+venv_build/
+.env
+.venv/
+*.egg-info/
+.eggs/
+dist-html/
+
+# Build / instalador
+build/
+dist/
+dist_installer/
+*.spec.bak
+*.exe
+
+# Config local (carpeta, tema, etc.)
+config.json
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs (si se generan en proyecto)
+*.log

@@ -10,6 +10,15 @@ import Tesseract from 'tesseract.js';
 import { dbOptions } from './database';
 import { WorkerPool } from './workerPool';
 
+// Suppress known Node deprecation warnings from legacy punycode usage in transitive dependencies.
+// The warning is noisy and does not affect app behavior.
+process.on('warning', (warning) => {
+  if (warning.code === 'DEP0040' || /punycode/i.test(warning.message)) {
+    return;
+  }
+  console.warn(warning.name + ':', warning.message);
+});
+
 // Allowed file extensions for dropped files
 const ALLOWED_EXTENSIONS = new Set(['.pdf', '.docx', '.doc', '.xls', '.xlsx', '.ppt', '.pptx', '.jpg', '.jpeg', '.png', '.html']);
 // ─────────────────────────────────────────────────────────────────────────────
@@ -47,7 +56,7 @@ async function getAppSettings(): Promise<any> {
 
 async function getActiveTerapiasDir(): Promise<string> {
   const dbSettings = await getAppSettings();
-  const settingsDir = dbSettings?.terapiasDir || (store.get('settings.terapiasDir') as string);
+  const settingsDir = dbSettings?.terapiasDir as string | undefined;
   return settingsDir && settingsDir.trim().length > 0 ? settingsDir : computeDefaultTerapiasDir();
 }
 
@@ -78,11 +87,56 @@ function getDefaultTesseractPath(): string | undefined {
 
 async function getActiveTesseractPath(): Promise<string | undefined> {
   const dbSettings = await getAppSettings();
-  const settingsPath = dbSettings?.tesseractPath || (store.get('settings.tesseractPath') as string) || (store.get('tesseractPath') as string);
+  const settingsPath = dbSettings?.tesseractPath as string | undefined;
   if (settingsPath && settingsPath.trim().length > 0) {
     return settingsPath;
   }
   return getDefaultTesseractPath();
+}
+
+/** Migra claves legacy de electron-store → settings.json (one-time). */
+async function migrateElectronStoreToSettings(): Promise<void> {
+  const migrationKey = 'migration.electronStoreSettings';
+  if (store.get(migrationKey)) return;
+
+  const settings = await dbOptions.getSettings();
+  const updated = { ...settings };
+  let changed = false;
+
+  const storeTerapiasDir = store.get('settings.terapiasDir') as string | undefined;
+  const storeTesseract = store.get('settings.tesseractPath') as string | undefined;
+  const legacyTesseract = store.get('tesseractPath') as string | undefined;
+  const baseDest = store.get('terapias.baseDest') as string | undefined;
+  const backup = store.get('terapias.backup') as string | undefined;
+
+  if (!updated.terapiasDir && storeTerapiasDir?.trim()) {
+    updated.terapiasDir = storeTerapiasDir;
+    changed = true;
+  }
+  if (!updated.tesseractPath && (storeTesseract?.trim() || legacyTesseract?.trim())) {
+    updated.tesseractPath = storeTesseract?.trim() ? storeTesseract : legacyTesseract;
+    changed = true;
+  }
+  if (!updated.terapiasBaseDest && baseDest?.trim()) {
+    updated.terapiasBaseDest = baseDest;
+    changed = true;
+  }
+  if (!updated.terapiasBackup && backup?.trim()) {
+    updated.terapiasBackup = backup;
+    changed = true;
+  }
+
+  if (changed) {
+    await dbOptions.saveSettings(updated);
+    console.log('[MAIN] Configuración migrada de electron-store a settings.json');
+  }
+
+  store.delete('settings.terapiasDir');
+  store.delete('settings.tesseractPath');
+  store.delete('tesseractPath');
+  store.delete('terapias.baseDest');
+  store.delete('terapias.backup');
+  store.set(migrationKey, true);
 }
 
 process.env.DIST = path.join(__dirname, '../dist');
@@ -96,8 +150,8 @@ let globalWatcher: FSWatcher | null = null;
 const registeredDroppedPaths = new Set<string>(); // real paths validated via validateAndRegisterDroppedFile
 const CONTROLHUB_TEMP_DIR = path.join(os.tmpdir(), 'controlhub-pdftools');
 
-// C4: Config allowlist — únicamente estas claves pueden ser leídas/escritas desde el renderer vía config:get/config:set
-const ALLOWED_CONFIG_KEYS = ['settings.terapiasDir', 'settings.tesseractPath', 'terapias.baseDest', 'terapias.backup', 'migration.legacyLocalStorage'];
+// C4: Config allowlist — solo flags de migración one-time (settings viven en settings.json vía db:*)
+const ALLOWED_CONFIG_KEYS = ['migration.legacyLocalStorage'];
 
 /**
  * Validate a candidate file path for IPC operations.
@@ -150,6 +204,11 @@ const activeScanIds = new Set<string>();
 const watcherDebounceMap = new Map<string, ReturnType<typeof setTimeout>>();
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
+
+// Evitar que promesas no manejadas terminen el proceso sin traza
+process.on('unhandledRejection', (reason) => {
+  console.warn('[MAIN] Unhandled Promise Rejection:', reason);
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sidecar Manager: Gestión unificada de procesos Python
@@ -212,8 +271,15 @@ class SidecarManager {
 
   private setStatus(newStatus: 'running' | 'closed' | 'stalled' | 'reconnecting' | 'failed' | 'ok' | 'unknown') {
     this.status = newStatus;
-    if (win) {
-      win.webContents.send('sidecar:status', { name: this.name, status: newStatus });
+    // Envío defensivo: comprobar que la ventana y webContents no estén destruidos
+    try {
+      if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
+        win.webContents.send('sidecar:status', { name: this.name, status: newStatus });
+      } else {
+        console.warn(`[Sidecar] ${this.name}: ventana no disponible, omitido envío de status:`, newStatus);
+      }
+    } catch (err) {
+      console.warn(`[Sidecar] ${this.name}: fallo al enviar status (ventana puede estar destruida):`, err);
     }
   }
 
@@ -508,9 +574,10 @@ ipcMain.handle('ocr:extractText', async (_, pdfPath: string) => {
 
   try {
     // 1. Convertir página 1 del PDF a JPG usando el sidecar
+    // Solicitar al sidecar solo la primera página para OCR (reduce I/O y tiempo)
     const res = await pdfSidecar.send({ 
       cmd: 'pdf_to_jpg', 
-      data: { input: pdfPath, output_dir: tempDir, dpi: 300 } 
+      data: { input: pdfPath, output_dir: tempDir, dpi: 300, pages: [1] } 
     });
 
     if (!res.ok || !res.outputs || res.outputs.length === 0) {
@@ -520,7 +587,18 @@ ipcMain.handle('ocr:extractText', async (_, pdfPath: string) => {
     const imgPath = res.outputs[0];
     
     // 2. Extraer texto con Tesseract en el Main Process
-    const { data: { text } } = await Tesseract.recognize(imgPath, 'spa');
+    // Pasar explícitamente `workerPath` para evitar que tesseract.js construya
+    // una ruta relativa errónea durante el bundle (ver issue con worker-script).
+    const workerOptions = (() => {
+      try {
+        // Preferir resolución de módulo (más fiable en dev y paquetes)
+        return { workerPath: require.resolve('tesseract.js/src/worker/node/index.js') };
+      } catch {
+        // Fallback conservador relativo a __dirname
+        return { workerPath: path.join(__dirname, '..', 'node_modules', 'tesseract.js', 'src', 'worker', 'node', 'index.js') };
+      }
+    })();
+    const { data: { text } } = await Tesseract.recognize(imgPath, 'spa', workerOptions);
     
     // 3. Limpiar archivo temporal
     fs.unlinkSync(imgPath);
@@ -729,6 +807,8 @@ app?.whenReady()?.then(async () => {
     }
   });
   
+  await migrateElectronStoreToSettings();
+
   terapiasSidecar.start();
   pdfSidecar.start();
   // Ensure exclusive temp directory exists for output operations
@@ -746,7 +826,6 @@ ipcMain.handle('dialog:selectDirectory', async () => {
   });
   if (canceled || filePaths.length === 0) return null;
   const dirPath = filePaths[0];
-  store.set('settings.terapiasDir', dirPath);
   // Register approved directory path
   dialogApprovedPaths.add(path.resolve(dirPath));
   return dirPath;
@@ -876,7 +955,8 @@ ipcMain.handle('fs:readDirectory', async (
             event.sender.send('scan-progress', {
               currentFile: entry.name,
               scannedCount: totalFilesScanned,
-              foundCount: arrayOfFiles.length
+              foundCount: arrayOfFiles.length,
+              stage: 'exploring',
             });
           }
 
@@ -901,6 +981,15 @@ ipcMain.handle('fs:readDirectory', async (
   } catch (err) {
     console.error('Error reading directory:', err);
     return { files: [], totalScanned: 0 };
+  }
+});
+
+ipcMain.handle('fs:checkPath', async (_, targetPath: string) => {
+  try {
+    await fs.promises.access(targetPath, fs.constants.F_OK);
+    return { exists: true };
+  } catch {
+    return { exists: false };
   }
 });
 
@@ -1079,6 +1168,21 @@ ipcMain.handle('security:syncActiveFiles', async (_, paths: string[]) => {
   sessionAllowedFiles.clear();
   accepted.forEach(r => sessionAllowedFiles.add(r));
   return { ok: true, accepted: accepted.length };
+});
+
+ipcMain.handle('security:registerApprovedDirectory', async (_, dirPath: string) => {
+  if (!dirPath) return { ok: false, error: 'No path provided' };
+  try {
+    const resolved = path.resolve(dirPath);
+    const stats = await fs.promises.stat(resolved);
+    if (!stats.isDirectory()) {
+      return { ok: false, error: 'El path no es una carpeta válida' };
+    }
+    dialogApprovedPaths.add(resolved);
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
+  }
 });
 
 ipcMain.handle('fs:openExternal', async (_: any, filePath: string) => {

@@ -37,6 +37,8 @@ Suite de escritorio para Windows que unifica **análisis de facturas COTU**, **o
 - **Tesseract OCR** (opcional, configurable en Settings)
 - **Microsoft Word** (requerido para Terapias y conversión PDF→Word)
 
+> Nota: al usar el Escáner, selecciona la carpeta raíz de facturas antes de generar reportes o previsualizaciones de PDF. El sistema registra la carpeta como aprobada para el allowlist de IPC y evita errores de lectura/preview en la vista de Reportes.
+
 ---
 
 ## Instalación y desarrollo
@@ -85,7 +87,6 @@ ControlHub/
 ├── public/             # Iconos y assets estáticos
 ├── python-embed/       # Runtime Python embebido (no incluido en git)
 ├── CONTEXT.md          # Documentación técnica para desarrolladores/IAs
-├── BUSINESS_LOGIC_SPEC.md  # Contrato lógica COTU
 └── requirements.txt    # Dependencias Python del sidecar
 ```
 

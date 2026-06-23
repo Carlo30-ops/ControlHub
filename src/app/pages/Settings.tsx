@@ -234,7 +234,6 @@ export function Settings() {
                       try {
                         const newPath = await window.electronAPI.selectDirectory();
                         if (newPath) {
-                          await window.electronAPI.config.set('settings.terapiasDir', newPath);
                           updateSettings({ terapiasDir: newPath });
                           toast.success(`Carpeta de terapias cambiada con éxito`, {
                             description: newPath,
@@ -290,10 +289,9 @@ export function Settings() {
                               return;
                             }
                           } catch (err) {
-                            toast.error(err?.message || 'Error al validar Tesseract');
+                            toast.error((err as unknown as Error)?.message || 'Error al validar Tesseract');
                             return;
                           }
-                          await window.electronAPI.config.set('settings.tesseractPath', newPath);
                           updateSettings({ tesseractPath: newPath });
                           toast.success('Ruta de Tesseract actualizada', {
                             description: newPath,

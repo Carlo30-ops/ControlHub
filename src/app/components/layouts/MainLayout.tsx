@@ -11,9 +11,7 @@ export function MainLayout() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const activeTag = document.activeElement?.tagName;
-      const isInputFocused = activeTag === "INPUT" || activeTag === "TEXTAREA" || document.activeElement?.isContentEditable;
-      if (isInputFocused) return;
-
+        const isInputFocused = activeTag === "INPUT" || activeTag === "TEXTAREA" || (document.activeElement as HTMLElement)?.isContentEditable;
       if (e.ctrlKey && e.key.toLowerCase() === "1") {
         e.preventDefault();
         navigate("/scanner");

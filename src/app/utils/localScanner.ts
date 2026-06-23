@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import Fuse from "fuse.js";
 import pLimit from "p-limit";
-import { Invoice, ScanStats, ScanOptions } from "../../shared/types";
+import { Invoice, ScanStats, ScanOptions, ScanLocalResult } from "../../shared/types";
 
 function simpleHash(str: string): string {
   let hash = 0;
@@ -52,6 +52,9 @@ interface ScanProgress {
   current: number;
   total: number;
   currentFile: string;
+  stage?: 'exploring' | 'processing' | 'finalizing';
+  scannedCount?: number;
+  foundCount?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,6 +97,207 @@ const MONTH_NAMES = [
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
 ];
 
+async function resolveTargetDayFolder(basePath: string, targetDate: Date): Promise<string | null> {
+  if (!window.electronAPI?.checkPathExists) {
+    console.warn('[PRE-PROBE] checkPathExists no disponible, fallback a full scan');
+    return null;
+  }
+
+  try {
+    const year = targetDate.getFullYear().toString();
+    const monthIndex = targetDate.getMonth();
+    const monthNum = String(monthIndex + 1).padStart(2, '0');
+    const monthNameUpper = MONTH_NAMES[monthIndex].toUpperCase();
+    const dayNum = String(targetDate.getDate()).padStart(2, '0');
+
+    console.log('[PRE-PROBE] buscando:', { year, monthNum, monthNameUpper, dayNum, basePath });
+
+    const monthFolderCandidates = [
+      `${monthNum}-${monthNameUpper}`,
+      `${monthNum}-DE ${monthNameUpper}`,
+      `${monthNum}. ${monthNameUpper}`,
+      `${monthNum} ${monthNameUpper}`,
+    ];
+
+    const dayFolderCandidates = [
+      `${dayNum} DE ${monthNameUpper}`,
+      `${dayNum} ${monthNameUpper}`,
+      `${dayNum}`,
+    ];
+
+    // 1) Intentar estructura clásica: basePath\\YEAR\\MONTH_FOLDER\\DAY_FOLDER
+    for (const monthFolder of monthFolderCandidates) {
+      for (const dayFolder of dayFolderCandidates) {
+        const candidate = `${basePath}\\${year}\\${monthFolder}\\${dayFolder}`;
+        console.log('[PRE-PROBE] probando (con año):', candidate);
+        const result = await window.electronAPI.checkPathExists(candidate);
+        console.log('[PRE-PROBE] resultado:', { candidate, exists: result?.exists });
+        if (result?.exists) {
+          console.log('[PRE-PROBE] ✅ ENCONTRADO (con año):', candidate);
+          return candidate;
+        }
+      }
+    }
+
+    // 2) Intentar variantes con el mes como carpeta raíz (sin año)
+    const monthSimpleCandidates = [monthNameUpper, monthNum, ...monthFolderCandidates];
+    for (const monthFolder of monthSimpleCandidates) {
+      for (const dayFolder of dayFolderCandidates) {
+        const candidate = `${basePath}\\${monthFolder}\\${dayFolder}`;
+        console.log('[PRE-PROBE] probando (sin año):', candidate);
+        const result = await window.electronAPI.checkPathExists(candidate);
+        console.log('[PRE-PROBE] resultado:', { candidate, exists: result?.exists });
+        if (result?.exists) {
+          console.log('[PRE-PROBE] ✅ ENCONTRADO (sin año):', candidate);
+          return candidate;
+        }
+      }
+    }
+
+    // 3) Si no encontramos por nombre exacto, buscar carpetas inmediatas que contengan el mes
+    try {
+      if (window.electronAPI?.readDirectory) {
+        const listRes = await window.electronAPI.readDirectory(basePath, { maxDepth: 1 });
+        const uniqueDirs = new Set<string>();
+        for (const f of listRes.files || []) {
+          const rel = f.filePath.replace(basePath, '').replace(/^\\|\//, '');
+          const parts = rel.split(/[\\\/]/).filter(Boolean);
+          if (parts.length > 0) uniqueDirs.add(parts[0]);
+        }
+
+        for (const dirName of Array.from(uniqueDirs)) {
+          const dnUpper = dirName.toUpperCase();
+          if (dnUpper.includes(monthNameUpper) || dnUpper === monthNum || dnUpper.startsWith(monthNum)) {
+            for (const dayFolder of dayFolderCandidates) {
+              const candidate = `${basePath}\\${dirName}\\${dayFolder}`;
+              console.log('[PRE-PROBE] probando (child probe):', candidate);
+              const result = await window.electronAPI.checkPathExists(candidate);
+              console.log('[PRE-PROBE] resultado:', { candidate, exists: result?.exists });
+              if (result?.exists) {
+                console.log('[PRE-PROBE] ✅ ENCONTRADO (child probe):', candidate);
+                return candidate;
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[PRE-PROBE] child probe failed:', err);
+    }
+
+    console.log('[PRE-PROBE] ❌ no match found, usando full scan');
+  } catch (err) {
+    console.warn('[PRE-PROBE] resolveTargetDayFolder error:', err);
+  }
+
+  return null;
+}
+
+async function resolveTargetMonthFolder(basePath: string, targetDate: Date): Promise<string | null> {
+  if (!window.electronAPI?.checkPathExists) {
+    return null;
+  }
+
+  const year = targetDate.getFullYear().toString();
+  const monthIndex = targetDate.getMonth();
+  const monthNum = String(monthIndex + 1).padStart(2, '0');
+  const monthNameUpper = MONTH_NAMES[monthIndex].toUpperCase();
+
+  const monthFolderCandidates = [
+    `${monthNum}-${monthNameUpper}`,
+    `${monthNum}-DE ${monthNameUpper}`,
+    `${monthNum}. ${monthNameUpper}`,
+    `${monthNum} ${monthNameUpper}`,
+    monthNameUpper,
+    monthNum,
+  ];
+
+  for (const monthFolder of monthFolderCandidates) {
+    const candidate = `${basePath}\\${year}\\${monthFolder}`;
+    const result = await window.electronAPI.checkPathExists(candidate);
+    if (result?.exists) {
+      console.log('[PRE-PROBE] ✅ ENCONTRADO mes (con año):', candidate);
+      return candidate;
+    }
+  }
+
+  for (const monthFolder of monthFolderCandidates) {
+    const candidate = `${basePath}\\${monthFolder}`;
+    const result = await window.electronAPI.checkPathExists(candidate);
+    if (result?.exists) {
+      console.log('[PRE-PROBE] ✅ ENCONTRADO mes (sin año):', candidate);
+      return candidate;
+    }
+  }
+
+  try {
+    const yearPath = `${basePath}\\${year}`;
+    const yearExists = await window.electronAPI.checkPathExists(yearPath);
+    if (yearExists?.exists && window.electronAPI?.readDirectory) {
+      const listRes = await window.electronAPI.readDirectory(yearPath, { maxDepth: 1 });
+      const uniqueDirs = new Set<string>();
+      for (const f of listRes.files || []) {
+        const rel = f.filePath.replace(yearPath, '').replace(/^\\|\//, '');
+        const parts = rel.split(/[\\\/]/).filter(Boolean);
+        if (parts.length > 0) uniqueDirs.add(parts[0]);
+      }
+
+      for (const dirName of Array.from(uniqueDirs)) {
+        const dnUpper = dirName.toUpperCase();
+        if (dnUpper.includes(monthNameUpper) || dnUpper === monthNum || dnUpper.startsWith(monthNum)) {
+          const candidate = `${yearPath}\\${dirName}`;
+          console.log('[PRE-PROBE] ✅ ENCONTRADO mes por child probe en año:', candidate);
+          return candidate;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[PRE-PROBE] child probe month failed:', err);
+  }
+
+  return null;
+}
+
+async function resolveTargetRangeFolder(basePath: string, startDate: Date, endDate: Date): Promise<string | null> {
+  if (!window.electronAPI?.checkPathExists) {
+    return null;
+  }
+
+  const basename = basePath.replace(/[\\\/]+$/, '').split(/[\\\/]/).pop()?.toUpperCase() || '';
+  const startYear = startDate.getFullYear();
+  const endYear = endDate.getFullYear();
+  const startMonth = startDate.getMonth();
+
+  if (startDate.getTime() === endDate.getTime()) {
+    return resolveTargetDayFolder(basePath, startDate);
+  }
+
+  if (basename === String(startYear) || basename === String(endYear)) {
+    const baseExists = await window.electronAPI.checkPathExists(basePath);
+    if (baseExists?.exists) {
+      return basePath;
+    }
+  }
+
+  if (startDate.getFullYear() === endDate.getFullYear()) {
+    if (startDate.getMonth() === endDate.getMonth()) {
+      const monthPath = await resolveTargetMonthFolder(basePath, startDate);
+      if (monthPath) {
+        return monthPath;
+      }
+    }
+
+    const yearPath = `${basePath}\\${startYear}`;
+    const yearExists = await window.electronAPI.checkPathExists(yearPath);
+    if (yearExists?.exists) {
+      console.log('[PRE-PROBE] ✅ ENCONTRADO año para rango:', yearPath);
+      return yearPath;
+    }
+  }
+
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // IDENTIFICACIÓN DE FACTURA — Capa 1: Scoring por nombre de archivo
 // ─────────────────────────────────────────────────────────────────────────────
@@ -134,6 +338,38 @@ export function scoreByFilename(filename: string): number {
     if (rule.pattern.test(filename)) score += rule.score;
   }
   return score;
+}
+
+// Patrones permitidos para considerar un PDF como factura COTU relevante
+function isTargetInvoiceFilename(filename: string): boolean {
+  const name = filename.replace(/\.pdf$/i, '').trim();
+
+  // Excluir claramente documentos no facturas antes de aceptar patrones amplios.
+  const rejectPatterns: RegExp[] = [
+    /^EPI_/i,
+    /^DOC_/i,
+    /^#COTU_DOC/i,
+    /^#COTU_HC/i,
+    /HISTORIA\s*CL[IÍ]NICA/i,
+    /EPICRISIS/i,
+    /F[OÓ]RMULA\s+M[EÉ]DICA/i,
+  ];
+  if (rejectPatterns.some(p => p.test(name))) {
+    return false;
+  }
+
+  const patterns: RegExp[] = [
+    /^FAC_900175697_COTU/i,
+    /^FAC_900175697_/i,
+    /^FACT_COTU/i,
+    /^FAC_COTU/i,
+    /^900175697_COTU_/i,
+    /^#COTU(?!_DOC|_HC)/i,
+    /^COTU\d+/i,
+    /FAC_900175697/i,
+    /900175697_COTU/i,
+  ];
+  return patterns.some(p => p.test(name));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -201,6 +437,8 @@ export async function identifyInvoicePdf(folderPath: string, ocrCache?: Map<stri
   try {
     const { files } = await window.electronAPI.readDirectory(folderPath, { maxDepth: 1 });
     pdfFiles = files.filter(f => f.filePath.toLowerCase().endsWith('.pdf'));
+    // Filtrar por nombres que realmente correspondan a facturas COTU según la lista del usuario
+    pdfFiles = pdfFiles.filter(f => isTargetInvoiceFilename((f.filePath.split(/[\\\/]/).pop() || '')));
   } catch (e) {
     console.error('[identifyInvoicePdf] Error listando PDFs en', folderPath, e);
     return null;
@@ -209,6 +447,11 @@ export async function identifyInvoicePdf(folderPath: string, ocrCache?: Map<stri
   if (pdfFiles.length === 0) return null;
 
   if (pdfFiles.length === 1) {
+    const singleFilename = pdfFiles[0].filePath.split(/[\\\/]/).pop() || '';
+    if (!isTargetInvoiceFilename(singleFilename)) {
+      console.log('[identifyInvoicePdf] archivo único no es factura COTU explicita:', singleFilename);
+      return null;
+    }
     return { invoicePath: pdfFiles[0].filePath, confidence: 'high', layer: 1, mtimeMs: pdfFiles[0].mtimeMs };
   }
 
@@ -567,7 +810,7 @@ export async function scanLocalDirectory(
   dateRange: { start: Date; end: Date },
   onProgress?: (progress: ScanProgress) => void,
   options?: ScanOptions
-): Promise<{ invoices: Invoice[]; duration: number; stats: ScanStats }> {
+): Promise<ScanLocalResult> {
   const startTime = performance.now();
   
   // Limpiar caché de PDF al inicio de cada escaneo
@@ -592,6 +835,28 @@ export async function scanLocalDirectory(
   const ignoredFolders = ignoreSystemFolders ? DEFAULT_IGNORED_FOLDERS : [];
   const scanId = options?.scanId ?? `scan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+  let scanPath = dirPath;
+  let scanMaxDepth = maxDepth;
+  let preProbeFallback = false;
+
+  if (options?.targetDate) {
+    const resolvedPath = await resolveTargetDayFolder(dirPath, options.targetDate);
+    if (resolvedPath) {
+      scanPath = resolvedPath;
+      scanMaxDepth = 3;
+    } else {
+      preProbeFallback = true;
+    }
+  } else if (options?.targetDateRange) {
+    const resolvedPath = await resolveTargetRangeFolder(dirPath, options.targetDateRange.start, options.targetDateRange.end);
+    if (resolvedPath) {
+      scanPath = resolvedPath;
+      scanMaxDepth = 4;
+    } else {
+      preProbeFallback = true;
+    }
+  }
+
   let abortHandler: (() => void) | null = null;
   if (options?.signal) {
     abortHandler = () => {
@@ -604,15 +869,19 @@ export async function scanLocalDirectory(
   if (onProgress) {
     window.electronAPI.onScanProgress(data => {
       onProgress({
-        current: data.foundCount, total: 0,
-        currentFile: `Explorando: ${data.currentFile} (${data.scannedCount} analizados)`,
+        current: data.scannedCount,
+        total: Math.max(data.scannedCount, 1),
+        currentFile: `Explorando: ${data.currentFile} (${data.scannedCount} analizados, ${data.foundCount} PDF${data.foundCount === 1 ? '' : 's'})`,
+        stage: 'exploring',
+        scannedCount: data.scannedCount,
+        foundCount: data.foundCount,
       });
     });
   }
 
   try {
     const { files, totalScanned } = await window.electronAPI.readDirectory(
-      dirPath, { ignoredFolders, maxDepth, scanId }
+      scanPath, { ignoredFolders, maxDepth: scanMaxDepth, scanId }
     );
 
     window.electronAPI.offScanProgress();
@@ -626,7 +895,46 @@ export async function scanLocalDirectory(
 
     const fuseEngine = createFuzzyEngine(options?.customInsurers);
 
-    const totalFiles = files.length;
+    const pdfFiles = files.filter(f => f.filePath.toLowerCase().endsWith('.pdf'));
+    const folderMap = new Map<string, { folderPath: string; sampleFile: string; mtimeMs: number }>();
+
+    for (const fileData of pdfFiles) {
+      const parentFolder = fileData.filePath.split(/[\\\/]/).slice(0, -1).join('\\');
+      if (folderMap.has(parentFolder)) continue;
+      const folderParts = parentFolder.split(/[\\\/]/);
+      if (folderParts.some(p => DEFAULT_IGNORED_FOLDERS.includes(p))) continue;
+      if (onlyCotuFolders && !pathContainsCotuFolder(parentFolder) && !pathContainsCotuFolder(fileData.filePath)) continue;
+      folderMap.set(parentFolder, { folderPath: parentFolder, sampleFile: fileData.filePath, mtimeMs: fileData.mtimeMs });
+    }
+
+    const totalFiles = folderMap.size;
+    const stats: ScanStats = {
+      totalFilesProcessed: totalScanned || files.length,
+      skippedByExtension: (totalScanned || files.length) - pdfFiles.length,
+      skippedByDateRange: 0, skippedDuplicates: 0, duplicatesLog: [],
+      amountExtractionFailed: 0, amountExtractionSuccess: 0,
+      invoicesIdentifiedByLayer1: 0, invoicesIdentifiedByLayer2: 0,
+    };
+
+    if (onProgress) {
+      onProgress({
+        current: 0,
+        total: Math.max(totalFiles, 1),
+        currentFile: `Procesando ${totalFiles} carpeta${totalFiles === 1 ? '' : 's'} de factura...`,
+        stage: 'processing',
+      });
+    }
+
+    if (totalFiles === 0) {
+      onProgress?.({
+        current: 0,
+        total: 1,
+        currentFile: 'No se encontraron facturas',
+        stage: 'finalizing',
+      });
+      return { invoices: [], duration: performance.now() - startTime, stats };
+    }
+
     let processedFiles = 0;
     const invoiceNumbersMap = new Map<string, string>();
     let lastUpdateTime = performance.now();
@@ -635,74 +943,63 @@ export async function scanLocalDirectory(
     const limit = pLimit(10);
     const invoices: Invoice[] = [];
 
-    const stats: ScanStats = {
-      totalFilesProcessed: totalScanned || totalFiles,
-      skippedByExtension: (totalScanned || totalFiles) - files.length,
-      skippedByDateRange: 0, skippedDuplicates: 0, duplicatesLog: [],
-      amountExtractionFailed: 0, amountExtractionSuccess: 0,
-      invoicesIdentifiedByLayer1: 0, invoicesIdentifiedByLayer2: 0,
-    };
-
     const results = await Promise.all(
-      files.map(fileData => limit(async () => {
+      Array.from(folderMap.values()).map(folderData => limit(async () => {
         if (options?.signal?.aborted) return null;
-        const { filePath } = fileData;
-        const fileName = filePath.split(/[\\\/]/).pop() || '';
 
-        const pathParts = filePath.split(/[\\\/]/);
-        if (pathParts.some(p => DEFAULT_IGNORED_FOLDERS.includes(p))) {
+        const { folderPath, sampleFile, mtimeMs } = folderData;
+        const fileName = folderPath.split(/[\\\/]/).pop() || folderPath;
+
+        const invoicePreview = extractMetadataFromPath({ filePath: sampleFile, mtimeMs }, fuseEngine);
+        if (!invoicePreview) {
           return { isSkipped: true, fileName };
         }
-        if (onlyCotuFolders && !pathContainsCotuFolder(filePath)) {
-          return { isSkipped: true, fileName };
-        }
-
-        const invoice = extractMetadataFromPath(fileData, fuseEngine);
-        if (!invoice) return { isSkipped: true, fileName };
 
         let amountExtractionSuccess = false;
         let amountExtractionFailed = false;
+        let invoice: Invoice | null = null;
+        let pdfPath = sampleFile;
 
         try {
-          const folderPath = filePath.split(/[\\\/]/).slice(0, -1).join('\\');
           const identified = await identifyInvoicePdf(folderPath, ocrCache);
+          if (!identified) {
+            return { isSkipped: true, fileName };
+          }
 
-          if (identified) {
-            if (identified.layer === 1) stats.invoicesIdentifiedByLayer1++;
-            else stats.invoicesIdentifiedByLayer2++;
+          if (identified.layer === 1) stats.invoicesIdentifiedByLayer1++;
+          else stats.invoicesIdentifiedByLayer2++;
 
-            console.log('[SCAN] Leyendo PDF:', identified.invoicePath);
-            let text = await parsePdfCached(identified.invoicePath, undefined, identified.mtimeMs);
-            
-            // Fallback OCR si el texto es insuficiente
-            if (!text || text.trim().length < 100) {
-              text = await performOCR(identified.invoicePath, ocrCache);
-            }
+          const identifiedInvoice = extractMetadataFromPath({ filePath: identified.invoicePath, mtimeMs: identified.mtimeMs }, fuseEngine);
+          invoice = identifiedInvoice || invoicePreview;
+          invoice.invoicePdfPath = identified.invoicePath;
+          pdfPath = identified.invoicePath;
 
-            console.log('[SCAN] Texto extraído:', text ? text.substring(0, 200) : 'VACÍO');
-            invoice.invoicePdfPath = identified.invoicePath;
+          console.log('[SCAN] Leyendo PDF (página 1):', identified.invoicePath);
+          let text = await parsePdfCached(identified.invoicePath, 1, identified.mtimeMs);
+          if (!text || text.trim().length < 100) {
+            text = await performOCR(identified.invoicePath, ocrCache);
+          }
 
-            if (text) {
-              // 1. Extraer monto
-              const extracted = extractAmountFromText(text);
-              if (extracted > 0) {
-                invoice.amount = extracted; // <--- ASIGNACIÓN EXPLÍCITA
-                amountExtractionSuccess = true;
-              } else {
-                amountExtractionFailed = true;
-              }
-              // 2. Extraer metadatos extendidos (siempre, aunque el monto falle)
-              extractExtendedMetadata(text, invoice);
+          console.log('[SCAN] Texto extraído:', text ? text.substring(0, 200) : 'VACÍO');
+
+          if (text) {
+            const extracted = extractAmountFromText(text);
+            if (extracted > 0) {
+              invoice.amount = extracted;
+              amountExtractionSuccess = true;
             } else {
               amountExtractionFailed = true;
             }
+            extractExtendedMetadata(text, invoice);
+          } else {
+            amountExtractionFailed = true;
           }
         } catch (err) {
-          console.error('[SCAN] Error procesando PDF de', filePath, ':', err);
+          console.error('[SCAN] Error procesando carpeta', folderPath, ':', err);
           amountExtractionFailed = true;
         }
 
-        return { isSkipped: false, invoice, filePath, fileName, amountExtractionSuccess, amountExtractionFailed };
+        return { isSkipped: false, invoice, filePath: pdfPath, fileName, amountExtractionSuccess, amountExtractionFailed };
       }))
     );
 
@@ -711,7 +1008,12 @@ export async function scanLocalDirectory(
         processedFiles++;
         const now = performance.now();
         if (now - lastUpdateTime > 100) {
-          onProgress?.({ current: processedFiles, total: totalFiles, currentFile: result.fileName });
+          onProgress?.({
+            current: processedFiles,
+            total: totalFiles,
+            currentFile: result.fileName,
+            stage: 'processing',
+          });
           lastUpdateTime = now;
         }
 
@@ -719,36 +1021,25 @@ export async function scanLocalDirectory(
 
         const { invoice, filePath, amountExtractionSuccess, amountExtractionFailed } = result;
 
-        // REGLA 1: Duplicado solo si el COTU ya existe en OTRA CARPETA
         const currentFolder = filePath!.split(/[\\\/]/).slice(0, -1).join('\\');
-        
         if (invoiceNumbersMap.has(invoice.invoiceNumber)) {
           const firstOccurrencePath = invoiceNumbersMap.get(invoice.invoiceNumber)!;
           const firstOccurrenceFolder = firstOccurrencePath.split(/[\\\/]/).slice(0, -1).join('\\');
 
           if (currentFolder !== firstOccurrenceFolder) {
-            // Es un duplicado REAL (misma factura en distinta ubicación)
             stats.skippedDuplicates++;
             stats.duplicatesLog.push({
               invoiceNumber: invoice.invoiceNumber,
               keptPath: firstOccurrencePath,
               discardedPath: filePath!,
             });
-            
             invoice.isDuplicate = true;
             invoice.invoiceNumber = `${invoice.invoiceNumber} (D${stats.skippedDuplicates})`;
-            // Los duplicados NO se suman a las estadísticas de éxito/error de extracción
-            // para no inflar los totales del reporte.
           } else {
-            // Misma carpeta: Probablemente otro archivo (EPI, DOC) del mismo COTU.
-            // El sistema ya eligió el "ganador" (PDF de factura) mediante identifyInvoicePdf,
-            // así que simplemente ignoramos este registro para no tener duplicados internos.
-            continue; 
+            continue;
           }
         } else {
-          // Primer avistamiento de este COTU: lo registramos y actualizamos estadísticas
           invoiceNumbersMap.set(invoice.invoiceNumber, filePath!);
-          
           if (amountExtractionSuccess) stats.amountExtractionSuccess++;
           if (amountExtractionFailed) stats.amountExtractionFailed++;
         }
@@ -764,7 +1055,12 @@ export async function scanLocalDirectory(
         invoices.push(invoice);
       }
 
-    onProgress?.({ current: totalFiles, total: totalFiles, currentFile: 'Finalizando...' });
+    onProgress?.({
+      current: totalFiles,
+      total: totalFiles,
+      currentFile: 'Finalizando...',
+      stage: 'finalizing',
+    });
 
     // Filtrar por rango de fechas (Solo si applyDateFilter es true)
     const filteredInvoices = invoices.filter(invoice => {
@@ -796,7 +1092,7 @@ export async function scanLocalDirectory(
       }
     });
 
-    return { invoices: filteredInvoices, duration: performance.now() - startTime, stats };
+    return { invoices: filteredInvoices, duration: performance.now() - startTime, stats, preProbeFallback: preProbeFallback || undefined };
 
   } finally {
     // Cleanup scanId in main process after completion (success, error or abort)
