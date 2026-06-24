@@ -37,7 +37,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { ScanResult } from "../../shared/types";
-import * as XLSX from "xlsx";
+import { exportDataAsExcel } from "../utils/excelWrapper";
 import { format as formatDate } from "date-fns";
 import { cn } from "../components/ui/utils";
 
@@ -78,28 +78,23 @@ export function History() {
 
     setIsExporting(true);
     try {
-      const workbook = XLSX.utils.book_new();
       const summaryData = history.map((scan, index) => ({
-        "#": history.length - index,
-        "Tipo": scanTypeLabels[scan.type],
-        "Fecha Escaneo": format(new Date(scan.timestamp), "dd/MM/yyyy HH:mm", { locale: es }),
-        "Total Facturas": scan.totalInvoices,
-        "Ruta Base": scan.basePath,
-        "Duración (s)": (scan.scanDuration / 1000).toFixed(2),
-        "Archivos": scan.stats?.totalFilesProcessed ?? "—",
-        "Duplicados": scan.stats?.skippedDuplicates ?? 0,
-      }));
-      const summarySheet = XLSX.utils.json_to_sheet(summaryData);
-      XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen Escaneos");
-
-      const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-      const timestamp = formatDate(new Date(), "dd-MM-yyyy_HH-mm");
-
-      const result = await window.electronAPI.exportFile({
-        defaultFilename: `historial_cotu_${timestamp}.xlsx`,
-        content: new Uint8Array(excelBuffer),
-        filters: [{ name: "Excel", extensions: ["xlsx"] }],
-      });
+      "#": history.length - index,
+      "Tipo": scanTypeLabels[scan.type],
+      "Fecha Escaneo": format(new Date(scan.timestamp), "dd/MM/yyyy HH:mm", { locale: es }),
+      "Total Facturas": scan.totalInvoices,
+      "Ruta Base": scan.basePath,
+      "Duración (s)": (scan.scanDuration / 1000).toFixed(2),
+      "Archivos": scan.stats?.totalFilesProcessed ?? "—",
+      "Duplicados": scan.stats?.skippedDuplicates ?? 0,
+    }));
+    const timestamp = formatDate(new Date(), "dd-MM-yyyy_HH-mm");
+    const { content, filename } = await exportDataAsExcel(summaryData, `historial_cotu_${timestamp}`);
+    const result = await window.electronAPI.exportFile({
+      defaultFilename: filename,
+      content,
+      filters: [{ name: "Excel", extensions: ["xlsx"] }],
+    });
 
       if (result.success) toast.success("Historial exportado");
     } catch (err: any) {

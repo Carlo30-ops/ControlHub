@@ -62,7 +62,7 @@ import { toast } from "sonner";
 import { format as formatDate } from "date-fns";
 import { es } from "date-fns/locale";
 import { Invoice } from "../../shared/types";
-import * as XLSX from "xlsx";
+import { exportDataAsExcel } from "../utils/excelWrapper";
 import { cn } from "../components/ui/utils";
 
 const MONTHS_ORDER = [
@@ -216,41 +216,41 @@ export function Reports() {
   };
 
   const handleExportExcel = async () => {
-    try {
-      const data = filteredInvoices.map((inv) => ({
-        "N° Factura": inv.invoiceNumber,
-        "Compañía": inv.company,
-        "Día": getDayFromDate(inv.date),
-        "Mes": inv.month,
-        "Año": inv.year,
-        "Fecha": inv.date,
-        "Detalle": inv.detail,
-        "Monto (COP)": inv.amount,
-        "Ruta": inv.filePath,
-      }));
-
-      const worksheet = XLSX.utils.json_to_sheet(data);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Resultados");
-      
-      const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-      
-      if (window.electronAPI?.exportFile) {
-        const res = await window.electronAPI.exportFile({
-          defaultFilename: `Reporte_Auditoria_COTU_${formatDate(new Date(), "yyyyMMdd")}.xlsx`,
-          content: new Uint8Array(excelBuffer),
-          filters: [{ name: "Libro de Excel", extensions: ["xlsx"] }],
-        });
-        if (res.success) toast.success("Reporte Excel exportado con éxito");
-      } else {
-        XLSX.writeFile(workbook, `Reporte_Auditoria_COTU_${formatDate(new Date(), "yyyyMMdd")}.xlsx`);
-        toast.success("Excel descargado");
-      }
-    } catch (err) {
-      toast.error("Error al exportar Excel");
+  try {
+    const data = filteredInvoices.map((inv) => ({
+      "N° Factura": inv.invoiceNumber,
+      "Compañía": inv.company,
+      "Día": getDayFromDate(inv.date),
+      "Mes": inv.month,
+      "Año": inv.year,
+      "Fecha": inv.date,
+      "Detalle": inv.detail,
+      "Monto (COP)": inv.amount,
+      "Ruta": inv.filePath,
+    }));
+    const { content, filename } = await exportDataAsExcel(data, `Reporte_Auditoria_COTU_${formatDate(new Date(), "yyyyMMdd")}`);
+    if (window.electronAPI?.exportFile) {
+      const res = await window.electronAPI.exportFile({
+        defaultFilename: filename,
+        content,
+        filters: [{ name: "Libro de Excel", extensions: ["xlsx"] }],
+      });
+      if (res.success) toast.success("Reporte Excel exportado con éxito");
+    } else {
+      const blob = new Blob([content], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("Excel descargado");
     }
-  };
-
+  } catch (err) {
+    toast.error("Error al exportar Excel");
+  }
+};
   const handleExportPDF = async () => {
     setIsExportingPDF(true);
     try {
