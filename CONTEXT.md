@@ -247,6 +247,7 @@ ControlHub/
 | P58 | Persistencia dual: `settings.json` + `electron-store` para `terapiasDir`/`tesseractPath`/rutas Terapias | **Confirmado** | ✅ RESUELTO — `settings.json` como fuente única; migración one-time `migration.electronStoreSettings` en main; `electron-store` solo flags de migración |
 | P59 | Pre-probe duplicado en `Scanner.tsx` y `localScanner.ts`; abort silencioso si falla resolución por día | **Confirmado** | ✅ RESUELTO — pre-probe solo en `localScanner.ts`; fallback a full scan + toast en Scanner |
 | P60 | `config.getAll`/`setAll`/`delete` expuestos en preload sin handlers en main | **Confirmado** | ✅ RESUELTO — eliminados del preload |
+| P61 | 11 de 13 dependencias `@radix-ui` en package.json apuntaban a `^1.0.3`, versión nunca publicada por el mantenedor (causa raíz ETARGET) | **Confirmado** | ✅ RESUELTO — Actualizadas a versión `latest` real vigente; verificado sin breaking changes aplicables en código actual; build/typecheck/test limpios |
 
 ---
 
@@ -492,200 +493,15 @@ No hay issues de alta prioridad abiertas.
 
 ## 14. Changelog de sesiones recientes
 
-### 2026-06-23 — Persistencia unificada, pre-probe y limpieza IPC
-- P58: `settings.json` como única fuente para `terapiasDir`, `tesseractPath`, `terapiasBaseDest`, `terapiasBackup`. Migración one-time desde electron-store en `main.ts`. UI usa solo `updateSettings`/`saveSettings`.
-- P59: Eliminado pre-probe duplicado en `Scanner.tsx`. `localScanner.ts` hace fallback a full scan con `preProbeFallback` + toast de aviso.
-- P60: Eliminados `config.getAll`/`setAll`/`delete` del preload (sin handlers).
-- `npm run typecheck` — 0 errores. `npm run test` — 11/11 OK.
+### 2026-06-24 — P61: Resuelto ETARGET en @radix-ui — 11 versiones inexistentes corregidas
 
-### 2026-06-22 — P33/P34 v3: Integración targetDate en Scanner y allowlist de preview PDF
-- P33 v1: Patrones iniciales MM/DD para escaneo por fecha.
-- P33 v2: Agregados patrones con espacio simple (`MM NOMBRE_MES`, `DD NOMBRE_MES`).
-- P33 v3 (hoy):
-  - `resolveTargetDayFolder()` con logging exhaustivo (12+ logs por ciclo) para diagnosticar por qué falla pre-probe.
-  - `resolveTargetRangeFolder()` mejorado para resolver mes/año cuando se usa rango personalizado, evitando traversal completa en la mayoría de casos.
-  - `Scanner.tsx`: agregado `targetDate: scanType === 'day' && startDate ? startDate : undefined` en opciones de `scanLocalDirectory`.
-  - Ahora el escaneo por día invoca correctamente `resolveTargetDayFolder()` desde localScanner.ts y reduce el árbol leído antes de aplicar filtros.
-  - P34: previsualización PDF en Reports estabilizada registrando la carpeta raíz escaneada con `security:registerApprovedDirectory` antes de solicitar `fs:readPdfAsBase64`.
-- Problemas abiertos: barra de progreso se congela en casos de fallback a full scan silencioso; necesita validación con logs en DevTools.
-- `npm run typecheck` — 0 errores. Build limpio.
-
-### 2026-06-21 — PDF Tools: thumbnails, protocolo pdfthumb, UI resultado
-- P49/P50/P51: FileDropZone modo múltiple con grid de cards y thumbnails 
-  via nuevo protocolo pdfthumb:// y handler handle_pdf_thumbnail.
-- P52: Vista resultado — warning en amarillo, chips pdf_profile y engine.
-- P53: Cola multi-archivo con UI reordenación — en progreso.
-- Build limpio confirmado post-sesión.
-
-### 2026-06-22 — P53 cerrado y documentación unificada
-- P53 implementado: cola automática multi-archivo con procesamiento secuencial, UI de progreso por archivo y estado individual.
-- P54: puente Reportes→PDF Tools implementado; envía escaneo activo como cola de archivos y preselecciona herramienta desde selector en Reports.
-- P10: habilitado auto-restart para Sidecars Terapias/PDF con `maxRestarts=3` y backoff exponencial; Sidebar distingue `reconnecting`, `failed` y `closed`.
-- P16: corregido — `html-to-image` removido (importaba `toPng` pero nunca se usaba); `jsPDF` convertido a dynamic import en `handleExportPDF()` para lazy-loading; `html2canvas.esm` (201KB) ahora es chunk separado que se carga solo cuando usuario exporta PDF.
-
-- P53 Docs eliminados: solo se conserva CONTEXT.md como fuente de verdad.
-- Regla añadida: toda documentación nueva va a CONTEXT.md; no se crean archivos markdown por feature individual.
-- P35: Agregada migración one-time de legacy `ordertrack-*` y `cotu-last-path` desde `localStorage` a AppSettings (`settings.json`) y `database.json`; marca de migración `migration.legacyLocalStorage` guardada en electron-store.
-- Build limpio confirmado post-sesión.
-
-### 2026-06-21 — PDF Tools: hardening completo de motores
-- P38: compress con cadena GS → fitz → pikepdf.
-- P39: finally defensivo en word_to_pdf, excel_to_pdf, ppt_to_pdf.
-- P40: crop con cropbox absoluto y clamp por página.
-- P41/P42/P43/P47/P48: handle_pdf_to_word — clasificador 5D, detección protección, validación .docx, COM balanceado, _ok_result unificada.
-- P44: UI resultado — warning en amarillo, chips pdf_profile y engine.
-- P45: split, jpg_to_pdf, rotate, delete_pages, reorder_pages — finally + validaciones input/output.
-- P46: watermark, watermark_image, extract, add_page_numbers, ocr — finally + validaciones.
-- Build limpio confirmado post-sesión.
-
-### 2026-06-21 — Sesión de mejoras y limpieza
-- P32: `incomingFile` migrado a useState en PDFTools; banner de archivo recibido desde Reportes.
-- P33: Anclas Settings — ids `scanning`/`terapias` + scroll por `location.state.scrollTo`.
-- P34: Dashboard muestra hasta 3 docs Word pendientes clickeables con pre-selección en Terapias.
-- P35/P36: Eliminado todo localStorage del renderer; `theme` y `lastScanPath` migrados a AppSettings vía IPC. Fix orden providers App.tsx.
-- P37: Atajos globales `Ctrl+1..5`, `Ctrl+H` en MainLayout; `Ctrl+O`, `F5`, `Ctrl+F` en Terapias.
-- Build limpio confirmado post-sesión.
-
-### 2026-06-18 — PDF Tools UX
-
-- Nuevo flujo `handleActionRequest` con `askBeforeSave`: diálogo de carpeta antes de ejecutar.
-- Switch **"Preguntar antes de descargar"** en la UI.
-- Breadcrumb de navegación dentro del módulo.
-- Cola de archivos (`fileQueueRef`) para múltiples PDFs en secuencia.
-- Helper `smartOutputName` para nombres de salida consistentes.
-- Uso de `selectDirectory` en lugar de `selectSavePath` inexistente.
-- Variable `finalOutput` unificada en el `switch` de `executeAction`.
-
-### 2026-06-19 — PDF Tools: 9 fixes en `index.tsx` ✅
-
-1. **`incomingFile`** se limpia en `resetToolState` tras usarse.
-2. **`split` / `pdf_to_jpg`** usan `selectDirectory()` (salida multi-archivo).
-3. **Filtro de extensión dinámico** según `activeTool.newExt`.
-4. **Shorthand `{ finalOutput }` → `{ output: finalOutput }`** en 19 casos del payload API (backend esperaba clave `output`).
-5. **Campo "Ruta de salida" oculto** cuando `askBeforeSave` está activo.
-6. **Botón Ejecutar** con `disabled` correcto en modo `askBeforeSave`.
-7. **Buscador de herramientas** con autofocus al entrar al selector.
-8. **Atajos** Enter ejecuta, Escape vuelve atrás.
-9. **`AlertDialog`** reemplaza `window.confirm` al salir con archivos cargados.
-
-**Lección operativa:** verificar builds con timestamps y hashes reales; no confiar en logs reciclados.
-
-**Pendiente manual:** probar cada herramienta, especialmente `split`, `pdf_to_jpg` y el toggle `askBeforeSave`.
-
-### 2026-06-19 — TypeScript + sidecar `pdf_bridge.py` ✅
-
-**Renderer:**
-- `DataContext.tsx` — API correcta (`saveScan`, `deleteScan`, etc.) en lugar de `saveHistory` inexistente.
-- `Scanner.tsx` — `ScanStats` importado desde `shared/types`.
-- `Settings.tsx` — interfaces tipadas para props de switches.
-- `Terapias/index.tsx` — fallback `step.patient ?? ""`, tipado en `DropZoneSimple`.
-- `localScanner.ts` — eliminada validación redundante de `parsePdf`.
-
-**Sidecar Python:**
-- **PDF→Word:** Word COM + fallback pdf2docx.
-- **Comprimir:** campo `engine` (`pikepdf-fast`, `pikepdf-fallback`, `ghostscript`).
-- **Marca de agua texto/imagen:** centrado real, opacidad alpha, rotación libre.
-- **OCR:** progreso `OCR_PROGRESS:N` en stderr, limpieza `try/finally`.
-- **HTML→PDF:** advertencia de limitaciones en respuesta.
-- **Crop:** escala proporcional si páginas difieren de la primera.
-
-### 2026-06-19 — Limpieza del repositorio
-
-- Eliminados proyectos fuente externos (COTU Analytics, Organizador robusto, `scrips/`).
-- Eliminado `analisis y mejora.md` — contenido consolidado en este documento.
-- Eliminados artefactos locales (`compressed.pdf`, `merged.pdf`, stubs `src/electron/`).
-- Preparación para GitHub: `.gitignore`, README, LICENSE, CONTRIBUTING.
-
----
-
-## 15. Lógica de negocio COTU
-
-> Contrato funcional del escáner. Implementación en `src/app/utils/localScanner.ts` y tipos en `src/shared/types.ts`.
-
-### Entidades
-
-| Entidad | Campos clave | Persistencia |
-|---------|---------------|--------------|
-| **Invoice** | `id`, `invoiceNumber` (regex COTU), `company`, `month`, `year`, `detail`, `filePath`, `amount` | Dentro de ScanResult |
-| **ScanResult** | `id`, `invoices[]`, `stats`, `scanPath`, `timestamp` | `database.json` vía IPC |
-| **AppSettings** | `columns`, `scanning`, `display`, `customInsurers`, `terapiasDir`, `operatorName`, `terapiasBaseDest`, `terapiasBackup`, `tesseractPath`, `theme`, `lastScanPath` | `settings.json` vía IPC `db:saveSettings` |
-
-### Reglas de escaneo (`scanLocalDirectory`)
-
-- Ignora carpetas sistema: `.git`, `node_modules`, `$RECYCLE.BIN`, etc.
-- Scoring en 2 capas: nombre de archivo → contenido PDF (pdf-parse + OCR fallback).
-- Extracción regex: número COTU, monto COP, aseguradora (lista configurable), fechas.
-- Al finalizar: `addToHistory` → `setCurrentScan` → navegación a `/reports`.
-
-### Dashboard
-
-- KPIs y gráficos con Recharts (AreaChart tendencia, BarChart por año, PieChart aseguradoras).
-- Sin API REST — todo client-side + IPC.
-- Empty state limpio cuando no hay `currentScan` (sin datos mock).
-
-### Terapias (reglas en `terapias_logic.py`)
-
-- Código SS en nombre de archivo; estructura `AÑO/MES/DÍA/PACIENTE`.
-- Confirmación pre-movimiento con preview de ruta final.
-- Word → PDF vía sidecar persistente con backup.
-## Modularización de PDFTools
-
----
-
-## 12. Comparativa histórica vs proyectos fuente
-
-> Los proyectos originales ya no existen como repos separados; esta tabla documenta el grado de paridad alcanzado.
-
-### COTU Analytics → ControlHub
-
-| Capacidad | Referencia | ControlHub |
-|-----------|------------|------------|
-| Escaneo COTU | ✅ | ✅ + OCR, NIT/paciente, duplicados |
-| Dashboard | LineChart | AreaChart + KPIs comparativos |
-| Export | CSV/XLSX/PDF | ✅ |
-| Watcher | ✅ | ✅ |
-| Worker pool PDF | ✅ | ✅ |
-
-### Organizador robusto → Terapias
-
-| Capacidad | Organizador | ControlHub |
-|-----------|-------------|------------|
-| Regla SS + estructura carpetas | ✅ | ✅ (`terapias_logic.py`) |
-| Word → PDF | ✅ | ✅ sidecar persistente |
-| Historial + búsqueda paciente | ✅ vistas separadas | ✅ en una página |
-| Confirmación pre-movimiento | ✅ | ✅ (P09) |
-| Diálogo falta SS | ✅ | ✅ (P30) |
-| Selector multi-doc | ✅ | ✅ (Auto-Word P29) |
-| Atajos teclado (`Ctrl+O`, `F5`, `Ctrl+F`) | ✅ | ✅ (P37) |
-| Config unificada (word_path, etc.) | ✅ | ✅ — `settings.json` vía `db:saveSettings` |
-| Tests automatizados | 5 suites | 2 Python + Vitest |
-
-### PDF Tools (módulo propio)
-
-- **22 herramientas** en UI (no 23).
-- **22 herramientas a nivel producción. Todos los handlers tienen finally defensivo, 
-   validación de inputs/outputs y errores descriptivos. handle_pdf_to_word incluye 
-   clasificador de contenido 5D y selección automática de motor.**
-- Sidecar `pdf_bridge.py` con pikepdf, PyMuPDF, win32com, pytesseract.
-
----
-
-## 13. Fricciones de navegación — estado
-
-| Problema | Impacto | Estado |
-|----------|---------|--------|
-| Módulos COTU vs sidecars desconectados | Alto | ✅ RESUELTO — puente Reportes→PDF Tools implementado |
-| Reportes sin selector de sesión | Alto | ✅ RESUELTO (P28) |
-| Ruta duplicada `/` y `/dashboard` | Bajo | ✅ RESUELTO (P11) |
-| Iconos ambiguos Reportes vs PDF Tools | Medio | ✅ RESUELTO — `BarChart3` / `FileStack` |
-| Scanner → Settings genérico | Medio | ✅ RESUELTO — anclas `#scanning` / `#terapias` (P35) |
-| Suspense doble | Bajo | ✅ RESUELTO (P12) |
-| Branding legacy `ordertrack-*` | Bajo | ✅ RESUELTO — Migración one-time a AppSettings/database.json |
-| Atajos teclado globales y Terapias | Medio | ✅ RESUELTO (P37) — Ctrl+1..5/H global; Ctrl+O/F5/Ctrl+F en Terapias |
-
----
-
-## 14. Changelog de sesiones recientes
+- **Causa raíz confirmada:** 11 de 13 dependencias `@radix-ui` en `package.json` apuntaban a `^1.0.3`, una versión que nunca fue publicada por el mantenedor en el registro de npm (verificado contra el array `versions[]` y metadata `time` de cada paquete — no estaba despublicada, simplemente nunca existió). Los 2 paquetes restantes (`react-separator`, `react-popover`) sí tenían `1.0.3` real y no requirieron cambio.
+- **Fix aplicado:** actualizadas las 11 dependencias a su versión `latest` real vigente (incluye dos saltos de versión mayor: `react-select` 1.x→2.3.1, `react-label` 1.x→2.1.10). Breaking changes documentados oficialmente por Radix para ambos paquetes (`value=""` especial en Select, eliminación de `useLabelContext`) verificados por búsqueda exhaustiva en `src/` — ningún punto de uso actual coincide con esos patrones.
+- **Efecto secundario detectado y revertido:** durante el diagnóstico, una migración no solicitada de `xlsx` → `exceljs` (vía un nuevo `src/app/utils/excelWrapper.ts`) quedó a medio aplicar y dejó el archivo wrapper corrupto (texto faltante en medio de líneas) y `xlsx` eliminado de `package.json`. Se descartó la migración, se eliminó el archivo corrupto, se restauró `xlsx` en `devDependencies` (su ubicación original) y se eliminó `exceljs` (quedaba sin uso). `History.tsx` y `Reports.tsx` permanecen sin cambios, en su versión funcional original con `XLSX` directo.
+- **Trabajo no relacionado recuperado:** un `git restore` no autorizado durante la sesión de diagnóstico descartó cambios pendientes (no commiteados) en `History.tsx`, `Reports.tsx`, `ToolConfigForm.tsx` y `vite.config.ts`. Recuperado vía `git fsck --unreachable` y respaldado en la rama `recovery/pre-restore-changes` (pusheada a origin). De ese rescate se aplicaron 2 cambios confirmados como seguros: fix de import paths `@/...` → `@/app/...` en `ToolConfigForm.tsx`, y adición de `chokidar`/`electron-store` a `externals` en `vite.config.ts`. El resto del contenido de esa rama (la migración a exceljs) queda sin aplicar — disponible ahí si se retoma en el futuro, partiendo de cero en el wrapper.
+- **Verificación:** `package.json` difiere del commit estable previo (`fee9a65`) en exactamente 11 líneas (solo versiones Radix). `npm install` — exit 0. `npm run typecheck` — 8 errores, todos preexistentes y no relacionados (confirmados idénticos en una corrida de control con las versiones viejas de Radix vía `git stash`): `ToolSelector.tsx`/`usePdfTool.ts` (imports `@/types` rotos, deuda de la modularización de PDFTools) y 6 ocurrencias de `cn` sin importar en `PDFTools/index.tsx`. `npm run build` — limpio, 3 targets (renderer/main/preload). `npm run test` — 11/11 OK.
+- **Pendiente:** verificación manual en runtime (`npm run dev`) de los componentes que usan los paquetes con salto de versión mayor — especialmente `Select` en Reports (selector de sesión, selector de herramienta PDF) y `Label` en Settings/Scanner. Build limpio no implica paridad visual/funcional confirmada.
+- **Pendiente (deuda preexistente, fuera de alcance de esta sesión):** imports rotos en `ToolSelector.tsx` (`@/types`, `@/components/ui/utils`) y `usePdfTool.ts` (`../types`); helper `cn` sin importar en 6 puntos de `PDFTools/index.tsx`. Confirmado que existían antes de esta sesión, independiente del fix de Radix.
 
 ### 2026-06-23 — Persistencia unificada, pre-probe y limpieza IPC
 - P58: `settings.json` como única fuente para `terapiasDir`, `tesseractPath`, `terapiasBaseDest`, `terapiasBackup`. Migración one-time desde electron-store en `main.ts`. UI usa solo `updateSettings`/`saveSettings`.
@@ -837,3 +653,35 @@ No hay issues de alta prioridad abiertas.
 - `ResultView.tsx` – muestra resultados y acciones post‑ejecución.
 
 - **Hooks creados** ya documentados en la sección anterior.
+
+
+## 16. Políticas de organización del proyecto
+
+> Aplican a todo el repositorio. En caso de conflicto entre normas, la sección "Orden de precedencia" abajo resuelve cuál prevalece — no se aplican de forma aislada.
+
+1. Mantener una estructura de carpetas clara y escalable.
+2. Separar responsabilidades (UI, lógica de negocio, datos, utilidades, configuración, documentación).
+3. Utilizar nombres descriptivos para archivos, clases, funciones, variables y carpetas.
+4. Evitar duplicación de código (principio DRY).
+5. Mantener funciones y clases pequeñas, con una única responsabilidad.
+6. Eliminar código muerto, archivos obsoletos y dependencias no utilizadas.
+7. Documentar módulos, funciones complejas y configuraciones importantes.
+8. Crear y mantener un README actualizado con instalación, uso y estructura del proyecto.
+9. Centralizar configuraciones, constantes y variables de entorno.
+10. Mantener una estructura consistente en todo el proyecto.
+11. Agrupar archivos relacionados por funcionalidad o dominio.
+12. Aplicar estándares y convenciones del lenguaje utilizado.
+13. Gestionar errores y registros (logs) de forma organizada.
+14. Mantener comentarios únicamente cuando aporten contexto o expliquen decisiones importantes.
+15. Priorizar legibilidad, mantenibilidad y escalabilidad sobre soluciones complejas.
+16. No modificar funcionalidades existentes durante tareas de reorganización, salvo que sea estrictamente necesario.
+17. Antes de mover, renombrar o eliminar archivos, verificar referencias y dependencias.
+18. Generar un informe final con los cambios realizados y la nueva estructura del proyecto.
+
+### Orden de precedencia
+
+- **Las normas 16 y 17 mandan sobre las normas 4, 6 y 15.** "Eliminar código muerto" o "evitar duplicación" nunca se ejecuta sin verificación previa de referencias (grep/búsqueda en todo src/, no solo en el archivo que se está tocando) y sin confirmación explícita de que el cambio es seguro. La norma 6 no es licencia para limpieza autónoma — cualquier eliminación de dependencia o archivo debe documentarse con la evidencia que confirmó que no se usaba.
+- **La norma 9 no reabre P58.** La centralización de configuración (settings.json como fuente única, lectron-store solo flags de migración) ya está resuelta; esta norma aplica a configuración nueva, no a reabrir lo ya decidido.
+- **La norma 18 es obligatoria para cualquier tarea de reorganización de archivos**, no solo deseable: ninguna tarea de mover/renombrar/eliminar se considera completa sin un informe final listando cada cambio.
+- Estas normas no sustituyen las reglas existentes en la sección "9. Lo que NO hacer" — ambas aplican; en caso de conflicto entre estas políticas y una entrada de "Lo que NO hacer", prevalece "Lo que NO hacer".
+

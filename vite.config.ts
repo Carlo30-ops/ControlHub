@@ -18,7 +18,7 @@ export default defineConfig({
           build: {
             minify: 'esbuild',
             rollupOptions: {
-              external: ['pdf-parse', 'pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js'],
+              external: ['pdf-parse', 'pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js', 'chokidar', 'electron-store'],
               input: {
                 main: 'electron/main.ts',
                 pdfWorker: 'electron/pdfWorker.ts',

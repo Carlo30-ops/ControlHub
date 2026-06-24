@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { ToolConfig } from '@/types';
-import { Input } from '@/components/ui/input';
-import { Slider } from '@/components/ui/slider';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ToolConfig } from '@/app/types';
+import { Input } from '@/app/components/ui/input';
+import { Slider } from '@/app/components/ui/slider';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
 
 /**
  * Renderiza los campos de configuración específicos para la herramienta activa.
