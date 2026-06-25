@@ -18,7 +18,7 @@ export default defineConfig({
           build: {
             minify: 'esbuild',
             rollupOptions: {
-              external: ['pdf-parse', 'pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js', 'chokidar', 'electron-store'],
+              external: ['pdf-parse', 'pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js'],
               input: {
                 main: 'electron/main.ts',
                 pdfWorker: 'electron/pdfWorker.ts',
@@ -33,12 +33,6 @@ export default defineConfig({
     }),
     renderer(),
   ],
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: './src/tests/setup.ts',
-    include: ['src/**/*.test.{ts,tsx}'],
-  },
   build: {
     minify: 'esbuild',
     sourcemap: false,

@@ -43,6 +43,7 @@ export function FileDropZone({
 }: FileDropZoneProps) {
   const [isOver, setIsOver] = useState(false);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
 
   // ====== HANDLE DROP - SEGURIDAD OBLIGATORIA ======
   const handleDrop = useCallback(
@@ -134,6 +135,40 @@ export function FileDropZone({
       }
     });
   }, [files, multiple, thumbs]);
+
+  // ====== KEYBOARD NAVIGATION ======
+  useEffect(() => {
+    if (!multiple || files.length === 0) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (disabled) return;
+
+      // Flecha arriba: seleccionar archivo anterior
+      if (e.key === 'ArrowUp' && selectedIndex > 0) {
+        e.preventDefault();
+        setSelectedIndex(selectedIndex - 1);
+      }
+      // Flecha abajo: seleccionar siguiente archivo
+      else if (e.key === 'ArrowDown' && selectedIndex < files.length - 1) {
+        e.preventDefault();
+        setSelectedIndex(selectedIndex + 1);
+      }
+      // Delete/Backspace: eliminar archivo seleccionado
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIndex >= 0) {
+        e.preventDefault();
+        onRemove?.(selectedIndex);
+        setSelectedIndex(Math.max(0, selectedIndex - 1));
+      }
+      // Escape: deseleccionar
+      else if (e.key === 'Escape') {
+        e.preventDefault();
+        setSelectedIndex(-1);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [multiple, files, selectedIndex, disabled, onRemove]);
 
   // ====== RENDER: COMPACT MODE (SINGLE-FILE) ======
   if (compact && !multiple) {
@@ -254,7 +289,14 @@ export function FileDropZone({
             ) : (
               <div className="space-y-1 p-1">
                 {files.map((file: { name: string; path: string }, idx: number) => (
-                  <div key={idx} className="group flex items-center gap-3 p-2 bg-card rounded border border-border shadow-sm">
+                  <div 
+                    key={idx} 
+                    className={cn(
+                      "group flex items-center gap-3 p-2 bg-card rounded border border-border shadow-sm cursor-pointer transition-colors",
+                      selectedIndex === idx && "ring-2 ring-primary bg-primary/5"
+                    )}
+                    onClick={() => setSelectedIndex(idx)}
+                  >
                     <div className="w-6 h-6 rounded bg-muted flex items-center justify-center text-muted-foreground font-bold text-[10px]">
                       {idx + 1}
                     </div>

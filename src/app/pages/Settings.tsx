@@ -26,6 +26,7 @@ import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
+import { Textarea } from "@/app/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -223,13 +224,13 @@ export function Settings() {
               <div className="space-y-2">
                 <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Ruta de Terapias</Label>
                 <div className="flex flex-col md:flex-row gap-3">
-                  <Input 
-                    value={settings.terapiasDir || "Sin configurar (usando home)"} 
-                    disabled 
+                  <Input
+                    value={settings.terapiasDir || "Sin configurar (usando detección automática)"}
+                    disabled
                     className="flex-1 h-12 rounded-xl bg-muted/50 border-border text-muted-foreground font-bold"
                   />
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={async () => {
                       try {
                         const newPath = await window.electronAPI.selectDirectory();
@@ -246,6 +247,48 @@ export function Settings() {
                     className="h-12 px-6 rounded-xl font-bold border-border bg-card shrink-0"
                   >
                     Cambiar carpeta...
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground ml-1">
+                  Si no se configura, se buscará automáticamente en las rutas candidatas configuradas abajo.
+                </p>
+              </div>
+
+              <Separator className="opacity-50" />
+
+              <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Rutas Candidatas para Detección Automática</Label>
+                <p className="text-xs text-muted-foreground ml-1">
+                  Lista de rutas donde buscar automáticamente la carpeta de Terapias (una por línea).
+                </p>
+                <div className="flex flex-col gap-3">
+                  <Textarea
+                    value={(settings.terapiasCandidatePaths || []).join('\n')}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+                      const paths = e.target.value.split('\n').filter((p: string) => p.trim());
+                      updateSettings({ terapiasCandidatePaths: paths });
+                    }}
+                    placeholder={`C:\\Users\\TuUsuario\\OneDrive\\Documentos\\TERAPIAS\\DOCUMENTOS PARA ARMAR
+C:\\Users\\TuUsuario\\OneDrive\\Documentos 1\\TERAPIAS
+C:\\Users\\TuUsuario\\Documents\\TERAPIAS`}
+                    className="min-h-[120px] font-mono text-sm"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const home = require('os').homedir();
+                      const defaultPaths = [
+                        `${home}\\OneDrive\\Documentos 1\\TERAPIAS\\DOCUMENTOS PARA ARMAR`,
+                        `${home}\\OneDrive\\Documentos\\TERAPIAS\\DOCUMENTOS PARA ARMAR`,
+                        `${home}\\OneDrive\\Documentos 1\\TERAPIAS`,
+                        `${home}\\OneDrive\\Documentos\\TERAPIAS`,
+                      ];
+                      updateSettings({ terapiasCandidatePaths: defaultPaths });
+                      toast.success('Rutas por defecto restauradas');
+                    }}
+                    className="h-10 px-4 rounded-xl font-bold border-border bg-card shrink-0"
+                  >
+                    Restaurar rutas por defecto
                   </Button>
                 </div>
               </div>

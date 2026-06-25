@@ -9,6 +9,7 @@ import Store from 'electron-store';
 import Tesseract from 'tesseract.js';
 import { dbOptions } from './database';
 import { WorkerPool } from './workerPool';
+import { logger } from './logger';
 
 // Suppress known Node deprecation warnings from legacy punycode usage in transitive dependencies.
 // The warning is noisy and does not affect app behavior.
@@ -16,40 +17,50 @@ process.on('warning', (warning) => {
   if (warning.code === 'DEP0040' || /punycode/i.test(warning.message)) {
     return;
   }
-  console.warn(warning.name + ':', warning.message);
+  logger.warn(warning.name + ':', warning.message);
 });
 
 // Allowed file extensions for dropped files
 const ALLOWED_EXTENSIONS = new Set(['.pdf', '.docx', '.doc', '.xls', '.xlsx', '.ppt', '.pptx', '.jpg', '.jpeg', '.png', '.html']);
 // ─────────────────────────────────────────────────────────────────────────────
-// main.ts — Proceso principal de Electron — ControlHub v1.0.0
+// main.ts — Proceso principal de Electron — ControlHub v3.2.0
 // ─────────────────────────────────────────────────────────────────────────────
 
 const store = new Store();
 
 function computeDefaultTerapiasDir(): string {
   const home = os.homedir();
-  const candidates = [
+  const defaultCandidates = [
     path.join(home, 'OneDrive', 'Documentos 1', 'TERAPIAS', 'DOCUMENTOS PARA ARMAR'),
     path.join(home, 'OneDrive', 'Documentos', 'TERAPIAS', 'DOCUMENTOS PARA ARMAR'),
     path.join(home, 'OneDrive', 'Documentos 1', 'TERAPIAS'),
     path.join(home, 'OneDrive', 'Documentos', 'TERAPIAS'),
   ];
 
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
+  return defaultCandidates[0];
+}
+
+async function getTerapiasCandidates(): Promise<string[]> {
+  const dbSettings = await getAppSettings();
+  const customCandidates = dbSettings?.terapiasCandidatePaths as string[] | undefined;
+  if (customCandidates && customCandidates.length > 0) {
+    return customCandidates;
   }
 
-  return candidates[0];
+  const home = os.homedir();
+  return [
+    path.join(home, 'OneDrive', 'Documentos 1', 'TERAPIAS', 'DOCUMENTOS PARA ARMAR'),
+    path.join(home, 'OneDrive', 'Documentos', 'TERAPIAS', 'DOCUMENTOS PARA ARMAR'),
+    path.join(home, 'OneDrive', 'Documentos 1', 'TERAPIAS'),
+    path.join(home, 'OneDrive', 'Documentos', 'TERAPIAS'),
+  ];
 }
 
 async function getAppSettings(): Promise<any> {
   try {
     return await dbOptions.getSettings();
   } catch (err) {
-    console.error('[MAIN] Error cargando AppSettings:', err);
+    logger.error('[MAIN] Error cargando AppSettings:', err);
     return {};
   }
 }
@@ -57,13 +68,25 @@ async function getAppSettings(): Promise<any> {
 async function getActiveTerapiasDir(): Promise<string> {
   const dbSettings = await getAppSettings();
   const settingsDir = dbSettings?.terapiasDir as string | undefined;
-  return settingsDir && settingsDir.trim().length > 0 ? settingsDir : computeDefaultTerapiasDir();
+  if (settingsDir && settingsDir.trim().length > 0) {
+    return settingsDir;
+  }
+
+  const candidates = await getTerapiasCandidates();
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return computeDefaultTerapiasDir();
 }
 
 function getDefaultTesseractPath(): string | undefined {
   const candidates = [
     path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Tesseract-OCR', 'tesseract.exe'),
     path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Tesseract-OCR', 'tesseract.exe'),
+    path.join(process.env['ProgramW6432'] || 'C:\\Program Files', 'Tesseract-OCR', 'tesseract.exe'),
     path.join(os.homedir(), 'AppData', 'Local', 'Tesseract-OCR', 'tesseract.exe'),
   ];
 
@@ -128,7 +151,7 @@ async function migrateElectronStoreToSettings(): Promise<void> {
 
   if (changed) {
     await dbOptions.saveSettings(updated);
-    console.log('[MAIN] Configuración migrada de electron-store a settings.json');
+    logger.info('[MAIN] Configuración migrada de electron-store a settings.json');
   }
 
   store.delete('settings.terapiasDir');
@@ -207,7 +230,7 @@ const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
 // Evitar que promesas no manejadas terminen el proceso sin traza
 process.on('unhandledRejection', (reason) => {
-  console.warn('[MAIN] Unhandled Promise Rejection:', reason);
+  logger.warn('[MAIN] Unhandled Promise Rejection:', reason);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -276,15 +299,15 @@ class SidecarManager {
       if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
         win.webContents.send('sidecar:status', { name: this.name, status: newStatus });
       } else {
-        console.warn(`[Sidecar] ${this.name}: ventana no disponible, omitido envío de status:`, newStatus);
+        logger.warn(`[Sidecar] ${this.name}: ventana no disponible, omitido envío de status:`, newStatus);
       }
     } catch (err) {
-      console.warn(`[Sidecar] ${this.name}: fallo al enviar status (ventana puede estar destruida):`, err);
+      logger.warn(`[Sidecar] ${this.name}: fallo al enviar status (ventana puede estar destruida):`, err);
     }
   }
 
   start() {
-    console.log(`[Sidecar] proceso ${this.name} activo`);
+    logger.debug(`[Sidecar] proceso ${this.name} activo`);
     const pythonExe = getPythonExecutable();
     this.process = spawn(pythonExe, [this.scriptPath], {
       stdio: ["pipe", "pipe", "pipe"]
@@ -296,7 +319,7 @@ class SidecarManager {
     this.process.stdout?.on("data", (data) => {
       const out = data.toString();
       // Log raw stdout for debugging
-      console.log(`[Sidecar] ${this.name} STDOUT:`, out);
+      logger.debug(`[Sidecar] ${this.name} STDOUT:`, out);
       this.stdoutBuffer += out;
       let lineEndIndex;
       while ((lineEndIndex = this.stdoutBuffer.indexOf("\n")) !== -1) {
@@ -314,7 +337,7 @@ class SidecarManager {
               if (resolver) resolver(parsed);
             } else {
               // Fallback: Si no hay ID, tomamos el primer resolver (retrocompatibilidad o error)
-              console.warn(`[Sidecar] ${this.name}: Respuesta recibida sin ID o ID no encontrado: ${id}`);
+              logger.warn(`[Sidecar] ${this.name}: Respuesta recibida sin ID o ID no encontrado: ${id}`);
               const firstId = this.pendingResolvers.keys().next().value;
               if (firstId) {
                 const resolver = this.pendingResolvers.get(firstId);
@@ -323,7 +346,7 @@ class SidecarManager {
               }
             }
           } catch {
-            console.error(`[Sidecar] ${this.name}: error de parseo en comunicación`);
+            logger.error(`[Sidecar] ${this.name}: error de parseo en comunicación`);
           }
         }
       }
@@ -332,19 +355,19 @@ class SidecarManager {
     this.process.stderr?.on("data", (data) => {
       const errMsg = data.toString();
       this.stderrBuffer += errMsg;
-      console.error(`[Sidecar] ${this.name} STDERR:`, errMsg);
+      logger.error(`[Sidecar] ${this.name} STDERR:`, errMsg);
     });
 
     this.process.on("error", (err) => {
-      console.error(`[${this.name}] Error al iniciar el proceso:`, err);
+      logger.error(`[${this.name}] Error al iniciar el proceso:`, err);
     });
 
     this.process.on("close", (code) => {
-      console.log(`[${this.name}] Proceso finalizado con código ${code}`);
+      logger.debug(`[${this.name}] Proceso finalizado con código ${code}`);
       // If process exited with error, output captured buffers
       if (code !== 0) {
-        console.error(`[${this.name}] STDERR BUFFER:\n${this.stderrBuffer}`);
-        console.error(`[${this.name}] STDOUT BUFFER:\n${this.stdoutBuffer}`);
+        logger.error(`[${this.name}] STDERR BUFFER:\n${this.stderrBuffer}`);
+        logger.error(`[${this.name}] STDOUT BUFFER:\n${this.stdoutBuffer}`);
       }
       // Reject any pending resolvers to avoid hanging promises
       if (this.pendingResolvers.size > 0) {
@@ -398,7 +421,7 @@ class SidecarManager {
           const timing = this.commandTimestamps.get(id);
           if (timing) {
             const duration = Date.now() - timing.startTime;
-            console.log(`[PDF-PERF] ${this.name} cmd="${cmd}" duration=${duration}ms ok=false input="${timing.inputPath}" error="timeout"`);
+            logger.debug(`[PDF-PERF] ${this.name} cmd="${cmd}" duration=${duration}ms ok=false input="${timing.inputPath}" error="timeout"`);
             this.commandTimestamps.delete(id);
           }
           this.setStatus('stalled');
@@ -422,7 +445,7 @@ class SidecarManager {
             okStatus = 'unknown';
           }
           const errorMsg = okStatus !== 'true' && value?.error ? ` error="${value.error.substring(0, 50)}"` : '';
-          console.log(`[PDF-PERF] ${this.name} cmd="${cmd}" duration=${duration}ms ok=${okStatus} input="${timing.inputPath}"${errorMsg}`);
+          logger.debug(`[PDF-PERF] ${this.name} cmd="${cmd}" duration=${duration}ms ok=${okStatus} input="${timing.inputPath}"${errorMsg}`);
           this.commandTimestamps.delete(id);
         }
         
@@ -568,7 +591,7 @@ ipcMain.handle('pdf:get_page_info', (_, data) => validatePdfHandler('get_page_in
 
 // IPC Handler para OCR Fallback (Main Process)
 ipcMain.handle('ocr:extractText', async (_, pdfPath: string) => {
-  console.log('[MAIN] Iniciando OCR Fallback para:', pdfPath);
+  logger.debug('[MAIN] Iniciando OCR Fallback para:', pdfPath);
   const tempDir = path.join(os.tmpdir(), 'controlhub-ocr');
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 
@@ -605,7 +628,7 @@ ipcMain.handle('ocr:extractText', async (_, pdfPath: string) => {
     
     return text;
   } catch (err: any) {
-    console.error('[MAIN-OCR] Error:', err);
+    logger.error('[MAIN-OCR] Error:', err);
     return "";
   }
 });
@@ -658,7 +681,7 @@ async function validateTesseractPath(exePath: string): Promise<{ ok: boolean; er
 // ─────────────────────────────────────────────────────────────────────────────
 ipcMain.handle('config:get', (_, key) => {
   if (!ALLOWED_CONFIG_KEYS.includes(key)) {
-    console.warn(`[CONFIG] Intento de lectura de clave no permitida: "${key}"`);
+    logger.warn(`[CONFIG] Intento de lectura de clave no permitida: "${key}"`);
     return undefined;
   }
   return store.get(key);
@@ -695,7 +718,7 @@ ipcMain.handle('dashboard:stats', async () => {
 
     return { pendingDocs: docxFiles.length };
   } catch (err) {
-    console.error('[Dashboard Stats Error]', err);
+    logger.error('[Dashboard Stats Error]', err);
     return { pendingDocs: 0 };
   }
 });
@@ -775,6 +798,9 @@ app?.on('before-quit', async () => {
 });
 
 app?.whenReady()?.then(async () => {
+  // Inicializar logger con estado de empaquetado
+  logger.init(app.isPackaged);
+  
   // Registrar protocolo pdfthumb:// para servir thumbnails
   protocol.handle('pdfthumb', async (request) => {
     const { net } = require('electron');
@@ -864,7 +890,7 @@ ipcMain.handle('fs:listFiles', async (_, dirPath, extensions) => {
       extensions.some((ext: string) => f.toLowerCase().endsWith(ext.toLowerCase()))
     );
   } catch (err) {
-    console.error('[fs:listFiles] Error:', err);
+    logger.error('[fs:listFiles] Error:', err);
     return [];
   }
 });
@@ -979,7 +1005,7 @@ ipcMain.handle('fs:readDirectory', async (
     await getAllFiles(dirPath, 0);
     return { files: arrayOfFiles, totalScanned: totalFilesScanned };
   } catch (err) {
-    console.error('Error reading directory:', err);
+    logger.error('Error reading directory:', err);
     return { files: [], totalScanned: 0 };
   }
 });
@@ -1007,19 +1033,19 @@ ipcMain.handle('fs:cancelScan', async (_: any, scanId: string) => {
 // Fix #10: Usa el WorkerPool en vez de crear un Worker nuevo por cada PDF
 // ─────────────────────────────────────────────────────────────────────────────
 ipcMain.handle('fs:parsePdf', async (_: any, pdfPath: string, maxPages?: number) => {
-  console.log('[MAIN] Entrando a fs:parsePdf para:', pdfPath);
+  logger.debug('[MAIN] Entrando a fs:parsePdf para:', pdfPath);
   if (!pdfWorkerPool) {
     const workerPath = path.join(__dirname, 'pdfWorker.js');
     const cpuCount = os.cpus().length;
     const poolSize = Math.min(5, cpuCount);
     pdfWorkerPool = new WorkerPool(poolSize, workerPath);
-    console.log(`[main] PDF WorkerPool inicializado con ${poolSize} workers (CPUs: ${cpuCount}).`);
+    logger.info(`[main] PDF WorkerPool inicializado con ${poolSize} workers (CPUs: ${cpuCount}).`);
   }
   const result = await pdfWorkerPool.parsePdf(pdfPath, maxPages);
-  console.log('[MAIN] parsePdf resultado para:', pdfPath, 
+  logger.debug('[MAIN] parsePdf resultado para:', pdfPath, 
     '| texto length:', result?.text?.length ?? 0);
   if (result && result.text) {
-    console.log('[DEBUG-MAIN] Texto extraído del PDF:', result.text.substring(0, 800));
+    logger.debug('[DEBUG-MAIN] Texto extraído del PDF:', result.text.substring(0, 800));
   }
   return result;
 });
@@ -1051,7 +1077,7 @@ ipcMain?.handle('fs:exportFile', async (
     shell.showItemInFolder(filePath);
     return { success: true, filePath };
   } catch (err: any) {
-    console.error('Error exportando archivo:', err);
+    logger.error('Error exportando archivo:', err);
     return { success: false, error: err.message };
   }
 });

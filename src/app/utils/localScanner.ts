@@ -4,6 +4,8 @@
 import Fuse from "fuse.js";
 import pLimit from "p-limit";
 import { Invoice, ScanStats, ScanOptions, ScanLocalResult } from "../../shared/types";
+import { logger } from "./logger";
+import { handleError, ErrorType, createError } from "./errorHandler";
 
 function simpleHash(str: string): string {
   let hash = 0;
@@ -39,7 +41,7 @@ async function parsePdfCached(filePath: string, maxPages?: number, mtimeMs?: num
       const result = await window.electronAPI.parsePdf(filePath, maxPages);
       return result?.text ?? '';
     } catch (e) {
-      console.warn('[parsePdfCached] Error parsing PDF for', filePath, e);
+      handleError(e, 'parsePdfCached');
       return '';
     }
   })();
@@ -99,7 +101,7 @@ const MONTH_NAMES = [
 
 async function resolveTargetDayFolder(basePath: string, targetDate: Date): Promise<string | null> {
   if (!window.electronAPI?.checkPathExists) {
-    console.warn('[PRE-PROBE] checkPathExists no disponible, fallback a full scan');
+    handleError('checkPathExists no disponible, fallback a full scan', 'PRE-PROBE');
     return null;
   }
 
@@ -110,7 +112,7 @@ async function resolveTargetDayFolder(basePath: string, targetDate: Date): Promi
     const monthNameUpper = MONTH_NAMES[monthIndex].toUpperCase();
     const dayNum = String(targetDate.getDate()).padStart(2, '0');
 
-    console.log('[PRE-PROBE] buscando:', { year, monthNum, monthNameUpper, dayNum, basePath });
+    logger.debug('[PRE-PROBE] buscando:', { year, monthNum, monthNameUpper, dayNum, basePath });
 
     const monthFolderCandidates = [
       `${monthNum}-${monthNameUpper}`,
@@ -129,11 +131,11 @@ async function resolveTargetDayFolder(basePath: string, targetDate: Date): Promi
     for (const monthFolder of monthFolderCandidates) {
       for (const dayFolder of dayFolderCandidates) {
         const candidate = `${basePath}\\${year}\\${monthFolder}\\${dayFolder}`;
-        console.log('[PRE-PROBE] probando (con año):', candidate);
+        logger.debug('[PRE-PROBE] probando (con año):', candidate);
         const result = await window.electronAPI.checkPathExists(candidate);
-        console.log('[PRE-PROBE] resultado:', { candidate, exists: result?.exists });
+        logger.debug('[PRE-PROBE] resultado:', { candidate, exists: result?.exists });
         if (result?.exists) {
-          console.log('[PRE-PROBE] ✅ ENCONTRADO (con año):', candidate);
+          logger.debug('[PRE-PROBE] ✅ ENCONTRADO (con año):', candidate);
           return candidate;
         }
       }
@@ -144,11 +146,11 @@ async function resolveTargetDayFolder(basePath: string, targetDate: Date): Promi
     for (const monthFolder of monthSimpleCandidates) {
       for (const dayFolder of dayFolderCandidates) {
         const candidate = `${basePath}\\${monthFolder}\\${dayFolder}`;
-        console.log('[PRE-PROBE] probando (sin año):', candidate);
+        logger.debug('[PRE-PROBE] probando (sin año):', candidate);
         const result = await window.electronAPI.checkPathExists(candidate);
-        console.log('[PRE-PROBE] resultado:', { candidate, exists: result?.exists });
+        logger.debug('[PRE-PROBE] resultado:', { candidate, exists: result?.exists });
         if (result?.exists) {
-          console.log('[PRE-PROBE] ✅ ENCONTRADO (sin año):', candidate);
+          logger.debug('[PRE-PROBE] ✅ ENCONTRADO (sin año):', candidate);
           return candidate;
         }
       }
@@ -170,11 +172,11 @@ async function resolveTargetDayFolder(basePath: string, targetDate: Date): Promi
           if (dnUpper.includes(monthNameUpper) || dnUpper === monthNum || dnUpper.startsWith(monthNum)) {
             for (const dayFolder of dayFolderCandidates) {
               const candidate = `${basePath}\\${dirName}\\${dayFolder}`;
-              console.log('[PRE-PROBE] probando (child probe):', candidate);
+              logger.debug('[PRE-PROBE] probando (child probe):', candidate);
               const result = await window.electronAPI.checkPathExists(candidate);
-              console.log('[PRE-PROBE] resultado:', { candidate, exists: result?.exists });
+              logger.debug('[PRE-PROBE] resultado:', { candidate, exists: result?.exists });
               if (result?.exists) {
-                console.log('[PRE-PROBE] ✅ ENCONTRADO (child probe):', candidate);
+                logger.debug('[PRE-PROBE] ✅ ENCONTRADO (child probe):', candidate);
                 return candidate;
               }
             }
@@ -182,12 +184,12 @@ async function resolveTargetDayFolder(basePath: string, targetDate: Date): Promi
         }
       }
     } catch (err) {
-      console.warn('[PRE-PROBE] child probe failed:', err);
+      handleError(err, 'PRE-PROBE child probe');
     }
 
-    console.log('[PRE-PROBE] ❌ no match found, usando full scan');
+    logger.debug('[PRE-PROBE] ❌ no match found, usando full scan');
   } catch (err) {
-    console.warn('[PRE-PROBE] resolveTargetDayFolder error:', err);
+    handleError(err, 'PRE-PROBE resolveTargetDayFolder');
   }
 
   return null;
@@ -216,7 +218,7 @@ async function resolveTargetMonthFolder(basePath: string, targetDate: Date): Pro
     const candidate = `${basePath}\\${year}\\${monthFolder}`;
     const result = await window.electronAPI.checkPathExists(candidate);
     if (result?.exists) {
-      console.log('[PRE-PROBE] ✅ ENCONTRADO mes (con año):', candidate);
+      logger.debug('[PRE-PROBE] ✅ ENCONTRADO mes (con año):', candidate);
       return candidate;
     }
   }
@@ -225,7 +227,7 @@ async function resolveTargetMonthFolder(basePath: string, targetDate: Date): Pro
     const candidate = `${basePath}\\${monthFolder}`;
     const result = await window.electronAPI.checkPathExists(candidate);
     if (result?.exists) {
-      console.log('[PRE-PROBE] ✅ ENCONTRADO mes (sin año):', candidate);
+      logger.debug('[PRE-PROBE] ✅ ENCONTRADO mes (sin año):', candidate);
       return candidate;
     }
   }
@@ -246,13 +248,13 @@ async function resolveTargetMonthFolder(basePath: string, targetDate: Date): Pro
         const dnUpper = dirName.toUpperCase();
         if (dnUpper.includes(monthNameUpper) || dnUpper === monthNum || dnUpper.startsWith(monthNum)) {
           const candidate = `${yearPath}\\${dirName}`;
-          console.log('[PRE-PROBE] ✅ ENCONTRADO mes por child probe en año:', candidate);
+          logger.debug('[PRE-PROBE] ✅ ENCONTRADO mes por child probe en año:', candidate);
           return candidate;
         }
       }
     }
   } catch (err) {
-    console.warn('[PRE-PROBE] child probe month failed:', err);
+    handleError(err, 'PRE-PROBE child probe month');
   }
 
   return null;
@@ -290,7 +292,7 @@ async function resolveTargetRangeFolder(basePath: string, startDate: Date, endDa
     const yearPath = `${basePath}\\${startYear}`;
     const yearExists = await window.electronAPI.checkPathExists(yearPath);
     if (yearExists?.exists) {
-      console.log('[PRE-PROBE] ✅ ENCONTRADO año para rango:', yearPath);
+      logger.debug('[PRE-PROBE] ✅ ENCONTRADO año para rango:', yearPath);
       return yearPath;
     }
   }
@@ -440,7 +442,7 @@ export async function identifyInvoicePdf(folderPath: string, ocrCache?: Map<stri
     // Filtrar por nombres que realmente correspondan a facturas COTU según la lista del usuario
     pdfFiles = pdfFiles.filter(f => isTargetInvoiceFilename((f.filePath.split(/[\\\/]/).pop() || '')));
   } catch (e) {
-    console.error('[identifyInvoicePdf] Error listando PDFs en', folderPath, e);
+    handleError(e, 'identifyInvoicePdf');
     return null;
   }
 
@@ -449,7 +451,7 @@ export async function identifyInvoicePdf(folderPath: string, ocrCache?: Map<stri
   if (pdfFiles.length === 1) {
     const singleFilename = pdfFiles[0].filePath.split(/[\\\/]/).pop() || '';
     if (!isTargetInvoiceFilename(singleFilename)) {
-      console.log('[identifyInvoicePdf] archivo único no es factura COTU explicita:', singleFilename);
+      logger.debug('[identifyInvoicePdf] archivo único no es factura COTU explicita:', singleFilename);
       return null;
     }
     return { invoicePath: pdfFiles[0].filePath, confidence: 'high', layer: 1, mtimeMs: pdfFiles[0].mtimeMs };
@@ -499,7 +501,7 @@ export async function identifyInvoicePdf(folderPath: string, ocrCache?: Map<stri
         candidate.totalScore = candidate.filenameScore + score;
       }
     } catch (e) {
-      console.warn('[identifyInvoicePdf] Error leyendo pág. 1 de:', candidate.filename, e);
+      handleError(e, 'identifyInvoicePdf');
     }
   }));
 
@@ -789,7 +791,7 @@ function extractMetadataFromPath(
 
     return invoice;
   } catch (error) {
-    console.error(`Error procesando archivo ${filePath}:`, error);
+    handleError(error, 'extractInvoiceData');
     return null;
   }
 }
@@ -818,7 +820,7 @@ export async function scanLocalDirectory(
   const ocrCache = new Map<string, string>();
 
   if (!window.electronAPI) {
-    console.error('Electron API no disponible.');
+    handleError('Electron API no disponible', 'scanLocal');
     return {
       invoices: [], duration: 0,
       stats: {
@@ -974,13 +976,13 @@ export async function scanLocalDirectory(
           invoice.invoicePdfPath = identified.invoicePath;
           pdfPath = identified.invoicePath;
 
-          console.log('[SCAN] Leyendo PDF (página 1):', identified.invoicePath);
+          logger.debug('[SCAN] Leyendo PDF (página 1):', identified.invoicePath);
           let text = await parsePdfCached(identified.invoicePath, 1, identified.mtimeMs);
           if (!text || text.trim().length < 100) {
             text = await performOCR(identified.invoicePath, ocrCache);
           }
 
-          console.log('[SCAN] Texto extraído:', text ? text.substring(0, 200) : 'VACÍO');
+          logger.debug('[SCAN] Texto extraído:', text ? text.substring(0, 200) : 'VACÍO');
 
           if (text) {
             const extracted = extractAmountFromText(text);
@@ -995,7 +997,7 @@ export async function scanLocalDirectory(
             amountExtractionFailed = true;
           }
         } catch (err) {
-          console.error('[SCAN] Error procesando carpeta', folderPath, ':', err);
+          handleError(err, 'SCAN process folder');
           amountExtractionFailed = true;
         }
 
@@ -1044,7 +1046,7 @@ export async function scanLocalDirectory(
           if (amountExtractionFailed) stats.amountExtractionFailed++;
         }
 
-        console.log('[SCAN] Invoice a guardar:', JSON.stringify({
+        logger.debug('[SCAN] Invoice a guardar:', JSON.stringify({
           invoiceNumber: invoice.invoiceNumber,
           amount: invoice.amount,
           patient: invoice.patient,

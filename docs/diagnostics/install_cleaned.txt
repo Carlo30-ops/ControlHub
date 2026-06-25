@@ -1,0 +1,27 @@
+npm verbose cli C:\Program Files\nodejs\node.exe C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js
+npm info using npm@11.12.1
+npm info using node@v24.15.0
+npm verbose title npm install
+npm verbose argv "install" "--loglevel" "verbose"
+npm verbose logfile logs-max:10 dir:C:\Users\factu\AppData\Local\npm-cache\_logs\2026-06-24T21_06_11_165Z-
+npm verbose logfile C:\Users\factu\AppData\Local\npm-cache\_logs\2026-06-24T21_06_11_165Z-debug-0.log
+npm http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 756ms
+npm http fetch GET 200 https://registry.npmjs.org/xlsx 313ms (cache revalidated)
+
+removed 105 packages, and audited 660 packages in 4s
+
+104 packages are looking for funding
+  run `npm fund` for details
+
+1 high severity vulnerability
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+npm verbose cwd C:\DEV\TODO EN UNO\ControlHub
+npm verbose os Windows_NT 10.0.26200
+npm verbose node v24.15.0
+npm verbose npm  v11.12.1
+npm verbose exit 0
+npm info ok

@@ -67,9 +67,9 @@ MESES = {
     9: "SEPTIEMBRE", 10: "OCTUBRE", 11: "NOVIEMBRE", 12: "DICIEMBRE"
 }
 
-def compute_default_source():
+def compute_default_source(custom_candidates=None):
     home = os.path.expanduser('~')
-    candidates = [
+    candidates = custom_candidates if custom_candidates else [
         os.path.join(home, 'OneDrive', 'Documentos 1', 'TERAPIAS', 'DOCUMENTOS PARA ARMAR'),
         os.path.join(home, 'OneDrive', 'Documentos', 'TERAPIAS', 'DOCUMENTOS PARA ARMAR'),
         os.path.join(home, 'OneDrive', 'Documentos 1', 'TERAPIAS'),

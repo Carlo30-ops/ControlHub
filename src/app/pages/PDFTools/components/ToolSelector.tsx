@@ -1,7 +1,7 @@
 // ToolSelector with lazy-loaded ToolConfigForm
 import React, { useState, lazy, Suspense } from 'react';
-import { ToolConfig } from '@/types';
-import { cn } from '@/components/ui/utils';
+import { ToolConfig } from '../../../types';
+import { cn } from '../../../components/ui/utils';
 
 // Lazy import del formulario de configuración de herramientas
 const LazyToolConfigForm = lazy(() => import('./ToolConfigForm'));

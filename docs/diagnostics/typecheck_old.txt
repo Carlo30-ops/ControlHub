@@ -1,0 +1,38 @@
+
+> controlhub@3.2.0 typecheck
+> tsc --noEmit
+
+src/app/components/ui/alert-dialog.tsx(4,39): error TS2307: Cannot find module '@radix-ui/react-alert-dialog' or its corresponding type declarations.
+src/app/components/ui/badge.tsx(2,22): error TS2307: Cannot find module '@radix-ui/react-slot' or its corresponding type declarations.
+src/app/components/ui/breadcrumb.tsx(2,22): error TS2307: Cannot find module '@radix-ui/react-slot' or its corresponding type declarations.
+src/app/components/ui/button.tsx(2,22): error TS2307: Cannot find module '@radix-ui/react-slot' or its corresponding type declarations.
+src/app/components/ui/collapsible.tsx(3,39): error TS2307: Cannot find module '@radix-ui/react-collapsible' or its corresponding type declarations.
+src/app/components/ui/dialog.tsx(4,34): error TS2307: Cannot find module '@radix-ui/react-dialog' or its corresponding type declarations.
+src/app/components/ui/dropdown-menu.tsx(4,40): error TS2307: Cannot find module '@radix-ui/react-dropdown-menu' or its corresponding type declarations.
+src/app/components/ui/label.tsx(4,33): error TS2307: Cannot find module '@radix-ui/react-label' or its corresponding type declarations.
+src/app/components/ui/popover.tsx(4,35): error TS2307: Cannot find module '@radix-ui/react-popover' or its corresponding type declarations.
+src/app/components/ui/progress.tsx(4,36): error TS2307: Cannot find module '@radix-ui/react-progress' or its corresponding type declarations.
+src/app/components/ui/scroll-area.tsx(4,38): error TS2307: Cannot find module '@radix-ui/react-scroll-area' or its corresponding type declarations.
+src/app/components/ui/select.tsx(4,34): error TS2307: Cannot find module '@radix-ui/react-select' or its corresponding type declarations.
+src/app/components/ui/separator.tsx(4,37): error TS2307: Cannot find module '@radix-ui/react-separator' or its corresponding type declarations.
+src/app/components/ui/slider.tsx(4,34): error TS2307: Cannot find module '@radix-ui/react-slider' or its corresponding type declarations.
+src/app/components/ui/switch.tsx(4,34): error TS2307: Cannot find module '@radix-ui/react-switch' or its corresponding type declarations.
+src/app/pages/History.tsx(300,77): error TS7006: Parameter 'open' implicitly has an 'any' type.
+src/app/pages/PDFTools/components/ToolConfigForm.tsx(2,28): error TS2307: Cannot find module '@/types' or its corresponding type declarations.
+src/app/pages/PDFTools/components/ToolConfigForm.tsx(3,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/app/pages/PDFTools/components/ToolConfigForm.tsx(4,24): error TS2307: Cannot find module '@/components/ui/slider' or its corresponding type declarations.
+src/app/pages/PDFTools/components/ToolConfigForm.tsx(5,79): error TS2307: Cannot find module '@/components/ui/select' or its corresponding type declarations.
+src/app/pages/PDFTools/components/ToolConfigForm.tsx(101,24): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/app/pages/PDFTools/components/ToolSelector.tsx(3,28): error TS2307: Cannot find module '@/types' or its corresponding type declarations.
+src/app/pages/PDFTools/components/ToolSelector.tsx(4,20): error TS2307: Cannot find module '@/components/ui/utils' or its corresponding type declarations.
+src/app/pages/PDFTools/hooks/usePdfTool.ts(3,26): error TS2307: Cannot find module '../types' or its corresponding type declarations.
+src/app/pages/PDFTools/index.tsx(887,37): error TS2304: Cannot find name 'cn'.
+src/app/pages/PDFTools/index.tsx(1050,29): error TS2304: Cannot find name 'cn'.
+src/app/pages/PDFTools/index.tsx(1329,26): error TS2304: Cannot find name 'cn'.
+src/app/pages/PDFTools/index.tsx(1361,28): error TS2304: Cannot find name 'cn'.
+src/app/pages/PDFTools/index.tsx(1439,32): error TS2304: Cannot find name 'cn'.
+src/app/pages/PDFTools/index.tsx(1607,35): error TS2304: Cannot find name 'cn'.
+src/app/pages/Reports.tsx(488,64): error TS7006: Parameter 'val' implicitly has an 'any' type.
+src/app/pages/Settings.tsx(156,89): error TS7006: Parameter 'v' implicitly has an 'any' type.
+src/app/utils/excelWrapper.ts(1,26): error TS2307: Cannot find module 'exceljs' or its corresponding type declarations.
+src/app/utils/excelWrapper.ts(21,25): error TS7006: Parameter 'col' implicitly has an 'any' type.

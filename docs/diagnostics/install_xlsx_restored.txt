@@ -1,0 +1,48 @@
+npm verbose cli C:\Program Files\nodejs\node.exe C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js
+npm info using npm@11.12.1
+npm info using node@v24.15.0
+npm verbose title npm install
+npm verbose argv "install" "--loglevel" "verbose"
+npm verbose logfile logs-max:10 dir:C:\Users\factu\AppData\Local\npm-cache\_logs\2026-06-24T20_27_14_031Z-
+npm verbose logfile C:\Users\factu\AppData\Local\npm-cache\_logs\2026-06-24T20_27_14_031Z-debug-0.log
+npm http fetch GET 200 https://registry.npmjs.org/xlsx 536ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/ssf 104ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/word 302ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/wmf 310ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/adler-32 318ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/cfb 494ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/codepage 567ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/frac 95ms (cache revalidated)
+npm http cache frac@https://registry.npmjs.org/frac/-/frac-1.1.2.tgz 0ms (cache hit)
+npm http cache word@https://registry.npmjs.org/word/-/word-0.3.0.tgz 0ms (cache hit)
+npm http cache codepage@https://registry.npmjs.org/codepage/-/codepage-1.15.0.tgz 0ms (cache hit)
+npm http cache wmf@https://registry.npmjs.org/wmf/-/wmf-1.0.2.tgz 0ms (cache hit)
+npm http cache ssf@https://registry.npmjs.org/ssf/-/ssf-0.11.2.tgz 0ms (cache hit)
+npm http cache cfb@https://registry.npmjs.org/cfb/-/cfb-1.2.2.tgz 0ms (cache hit)
+npm http cache adler-32@https://registry.npmjs.org/adler-32/-/adler-32-1.3.1.tgz 0ms (cache hit)
+npm http cache xlsx@https://registry.npmjs.org/xlsx/-/xlsx-0.18.5.tgz 0ms (cache hit)
+npm http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 218ms
+npm http fetch GET 200 https://registry.npmjs.org/xlsx 94ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/uuid 106ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/exceljs 88ms (cache revalidated)
+
+added 8 packages, and audited 765 packages in 4s
+
+117 packages are looking for funding
+  run `npm fund` for details
+
+3 vulnerabilities (2 moderate, 1 high)
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+npm verbose cwd C:\DEV\TODO EN UNO\ControlHub
+npm verbose os Windows_NT 10.0.26200
+npm verbose node v24.15.0
+npm verbose npm  v11.12.1
+npm verbose exit 0
+npm info ok

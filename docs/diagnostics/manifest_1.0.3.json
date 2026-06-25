@@ -1,0 +1,15 @@
+npm error code E404
+npm error 404 No match found for version 1.0.3
+npm error 404
+npm error 404  The requested resource '@radix-ui/react-dropdown-menu@1.0.3' could not be found or you do not have permission to access it.
+npm error 404
+npm error 404 Note that you can also install from a
+npm error 404 tarball, folder, http url, or git url.
+{
+  "error": {
+    "code": "E404",
+    "summary": "No match found for version 1.0.3",
+    "detail": "The requested resource '@radix-ui/react-dropdown-menu@1.0.3' could not be found or you do not have permission to access it.\n\nNote that you can also install from a\ntarball, folder, http url, or git url."
+  }
+}
+npm error A complete log of this run can be found in: C:\Users\factu\AppData\Local\npm-cache\_logs\2026-06-24T19_51_39_036Z-debug-0.log

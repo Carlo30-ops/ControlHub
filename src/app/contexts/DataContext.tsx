@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo, useCallback } from "react";
 import { Invoice, ScanResult, AppSettings as Settings } from "../../shared/types";
+import { logger } from "../utils/logger";
 
 interface DataContextType {
   settings: Settings;
@@ -131,7 +132,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
                   }
                 }
               } catch (err) {
-                console.warn('[DataContext] Error parsing legacy ordertrack-settings:', err);
+                logger.warn('[DataContext] Error parsing legacy ordertrack-settings:', err);
               }
             }
 
@@ -155,7 +156,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
                   }
                 }
               } catch (err) {
-                console.warn('[DataContext] Error parsing legacy ordertrack-history:', err);
+                logger.warn('[DataContext] Error parsing legacy ordertrack-history:', err);
               }
             }
 
@@ -175,11 +176,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
             try {
               await window.electronAPI.config.set(migrationKey, true);
             } catch (err) {
-              console.warn('[DataContext] Error setting legacy migration flag:', err);
+              logger.warn('[DataContext] Error setting legacy migration flag:', err);
             }
           }
         } catch (err) {
-          console.warn('[DataContext] Error checking legacy migration flag:', err);
+          logger.warn('[DataContext] Error checking legacy migration flag:', err);
         }
       }
 
@@ -216,7 +217,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             await window.electronAPI.saveSettings(mergedSettings);
           }
         } catch (err) {
-          console.error('[DataContext] Error cargando settings desde IPC:', err);
+          logger.error('[DataContext] Error cargando settings desde IPC:', err);
         }
       }
 
@@ -227,7 +228,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             setHistory(savedHistory);
           }
         } catch (err) {
-          console.error('[DataContext] Error cargando historial desde IPC:', err);
+          logger.error('[DataContext] Error cargando historial desde IPC:', err);
         }
       }
       
@@ -275,7 +276,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       
       // Persistir vía IPC
       if (window.electronAPI?.saveSettings) {
-        window.electronAPI.saveSettings(updated).catch(err => console.error('[DataContext] Error saving settings via IPC:', err));
+        window.electronAPI.saveSettings(updated).catch(err => logger.error('[DataContext] Error saving settings via IPC:', err));
       }
       return updated;
     });
@@ -287,7 +288,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const next = await window.electronAPI.saveScan(result);
         setHistory(next);
       } catch (err) {
-        console.error('[DataContext] Error in addToHistory IPC:', err);
+        logger.error('[DataContext] Error in addToHistory IPC:', err);
       }
     } else {
       setHistory(prev => [result, ...prev]);
@@ -300,7 +301,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const next = await window.electronAPI.deleteScan(id);
         setHistory(next);
       } catch (err) {
-        console.error('[DataContext] Error in deleteFromHistory IPC:', err);
+        logger.error('[DataContext] Error in deleteFromHistory IPC:', err);
       }
     } else {
       setHistory(prev => prev.filter(item => item.id !== id));
@@ -313,7 +314,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         await window.electronAPI.clearHistory();
         setHistory([]);
       } catch (err) {
-        console.error('[DataContext] Error in clearHistory IPC:', err);
+        logger.error('[DataContext] Error in clearHistory IPC:', err);
       }
     } else {
       setHistory([]);
@@ -326,7 +327,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const next = await window.electronAPI.trimHistory(keepCount);
         setHistory(next);
       } catch (err) {
-        console.error('[DataContext] Error in trimHistory IPC:', err);
+        logger.error('[DataContext] Error in trimHistory IPC:', err);
       }
     } else {
       setHistory(prev => prev.slice(0, keepCount));

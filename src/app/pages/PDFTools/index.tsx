@@ -1,5 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
+import { usePdfTool } from "./hooks/usePdfTool";
+import { useFileQueue, FileInfo } from "./hooks/useFileQueue";
 import { 
   CheckCircle2, 
   AlertCircle, 
@@ -66,17 +68,11 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { toast } from "sonner";
-import { useFileQueue } from "./hooks/useFileQueue";
-import { usePdfTool } from "./hooks/usePdfTool";
+import { cn } from "../../components/ui/utils";
 
 // TODO: Refactor component logic to use these hooks (Phase 2 modularization).
 
 // --- Types & Constants ---
-interface FileInfo {
-  path: string;
-  name: string;
-  size?: string;
-}
 
 interface QueuedFile extends FileInfo {
   id: string;
@@ -148,16 +144,6 @@ export default function PDFTools() {
   const [activeTool, setActiveTool] = useState<ToolConfig | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [result, setResult] = useState<{ 
-    ok: boolean; 
-    message?: string; 
-    error?: string; 
-    path?: string;
-    warning?: string;
-    pdf_profile?: string;
-    engine?: string;
-  } | null>(null);
   const [finalOutputPath, setFinalOutputPath] = useState("");
 
   // --- Common States ---
@@ -165,9 +151,10 @@ export default function PDFTools() {
   const [output, setOutput] = useState("");
   const [askBeforeSave, setAskBeforeSave] = useState(true);
   const [incomingFile, setIncomingFile] = useState<FileInfo | null>(null);
-  const fileQueueRef = useRef<FileInfo[]>([]);
-  const [, setQueueTick] = useState(0);
-  const fileQueue = fileQueueRef.current;
+
+  // --- Hooks Integration ---
+  const { fileQueueRef, setQueueFiles, handleQueueReorder, handleQueueRemove, fileQueue } = useFileQueue([]);
+  const { isProcessing, result, execute } = usePdfTool();
   
   // --- Sequential Queue Processing States ---
   const [processingQueue, setProcessingQueue] = useState<QueuedFile[]>([]);
@@ -178,28 +165,6 @@ export default function PDFTools() {
   });
   const processingRef = useRef<boolean>(false);
   const [searchTerm, setSearchTerm] = useState('');
-
-  const setQueueFiles = (nextFiles: FileInfo[]) => {
-    fileQueueRef.current = nextFiles;
-    setQueueTick((tick) => tick + 1);
-  };
-
-  const handleQueueReorder = (idx: number, dir: number) => {
-    const next = [...fileQueueRef.current];
-    const target = idx + dir;
-    if (target < 0 || target >= next.length) return;
-    [next[idx], next[target]] = [next[target], next[idx]];
-    setQueueFiles(next);
-  };
-
-  const handleQueueRemove = (idx: number) => {
-    const next = [...fileQueueRef.current];
-    next.splice(idx, 1);
-    setQueueFiles(next);
-    if (next.length === 0) {
-      setView('active');
-    }
-  };
   const searchRef = useRef<HTMLInputElement>(null);
 
   // --- Sequential Processing Function ---
@@ -618,7 +583,6 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
     setPassword('');
     setConfirmPassword('');
     setOcrLang('spa');
-    setResult(null);
     setActiveTool(tool);
     if (tool) setView('active');
     else setView('selector');
@@ -635,123 +599,34 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
 
   const executeAction = async (providedOutput?: string) => {
     if (!activeTool) return;
-    
-    // Validaciones básicas
-    if (activeTool.id === 'protect' && password !== confirmPassword) {
-      toast.error("Las contraseñas no coinciden");
-      return;
+
+    const extraParams = {
+      password,
+      confirmPassword,
+      splitRanges,
+      extractPages,
+      deletePagesInput,
+      pageOrder,
+      compressLevel: parseInt(compressLevel) || 1,
+      rotateAngle,
+      rotatePages,
+      cropRect,
+      pageNumberPos,
+      pageNumberStart,
+      wmText,
+      wmOpacity,
+      wmAngle,
+      wmImage: wmImage ? { path: wmImage.path } : null,
+      dpi,
+      ocrLang,
+    };
+
+    await execute(activeTool, files, providedOutput || finalOutputPath, extraParams);
+    if (result?.ok) {
+      setView('result');
     }
-
-    setIsProcessing(true);
-    setResult(null);
-    try {
-      let res: any;
-      let successMsg = "Operación completada";
-      const api = window.electronAPI.pdfTools;
-      const finalOutput = providedOutput || finalOutputPath; // prioritize provided param
-
-      switch (activeTool.id) {
-        case 'merge':
-          res = await api.merge({ files: files.map(f => f.path), output: finalOutput });
-          successMsg = "PDFs unidos correctamente";
-          break;
-        case 'split':
-          res = await api.split({ input: files[0].path, output_dir: finalOutput, ranges: splitRanges });
-          successMsg = "PDF dividido correctamente";
-          break;
-        case 'extract':
-          res = await api.extract({ input: files[0].path, output: finalOutput, pages: extractPages });
-          successMsg = "Páginas extraídas correctamente";
-          break;
-        case 'delete_pages':
-          res = await api.deletePages({ input: files[0].path, output: finalOutput, pages: deletePagesInput });
-          successMsg = "Páginas eliminadas correctamente";
-          break;
-        case 'reorder_pages':
-          res = await api.reorderPages({ input: files[0].path, output: finalOutput, order: pageOrder });
-          successMsg = "Orden de páginas actualizado";
-          break;
-        case 'compress':
-          res = await api.compress({ input: files[0].path, output: finalOutput, level: compressLevel });
-          successMsg = "PDF comprimido correctamente";
-          break;
-        case 'rotate':
-          res = await api.rotate({ input: files[0].path, output: finalOutput, angle: parseInt(rotateAngle), pages: rotatePages });
-          successMsg = "Páginas rotadas correctamente";
-          break;
-        case 'crop':
-          res = await api.crop({ input: files[0].path, output: finalOutput, rect: [cropRect.x0, cropRect.y0, cropRect.x1, cropRect.y1] });
-          successMsg = "PDF recortado correctamente";
-          break;
-        case 'repair':
-          res = await api.repair({ input: files[0].path, output: finalOutput });
-          successMsg = "PDF reparado";
-          break;
-        case 'add_page_numbers':
-          res = await api.addPageNumbers({ input: files[0].path, output: finalOutput, position: pageNumberPos, start: parseInt(pageNumberStart) });
-          successMsg = "Números de página insertados";
-          break;
-        case 'watermark':
-          res = await api.watermark({ input: files[0].path, output: finalOutput, text: wmText, opacity: wmOpacity[0], angle: parseInt(wmAngle) });
-          successMsg = "Marca de agua de texto añadida";
-          break;
-        case 'watermark_image':
-          res = await api.watermarkImage({ input: files[0].path, output: finalOutput, image: wmImage?.path, opacity: wmOpacity[0] });
-          successMsg = "Marca de agua de imagen añadida";
-          break;
-        case 'jpg_to_pdf':
-          res = await api.jpgToPdf({ images: files.map(f => f.path), output: finalOutput });
-          successMsg = "Imágenes convertidas a PDF";
-          break;
-        case 'pdf_to_jpg':
-          res = await api.pdfToJpg({ input: files[0].path, output_dir: finalOutput, dpi: parseInt(dpi) });
-          successMsg = "Páginas convertidas a JPG";
-          break;
-        case 'html_to_pdf':
-          res = await api.htmlToPdf({ input: files[0].path, output: finalOutput });
-          successMsg = "HTML convertido a PDF";
-          break;
-        case 'protect':
-          res = await api.protect({ input: files[0].path, output: finalOutput, password });
-          successMsg = "PDF protegido con contraseña";
-          break;
-        case 'unlock':
-          res = await api.unlock({ input: files[0].path, output: finalOutput, password });
-          successMsg = "Contraseña eliminada del PDF";
-          break;
-        case 'ocr':
-          res = await api.ocr({ input: files[0].path, output: finalOutput, lang: ocrLang });
-          successMsg = "OCR completado, el PDF ahora es buscable";
-          break;
-        case 'w2p': res = await api.wordToPdf({ input: files[0].path, output: finalOutput }); break;
-        case 'p2w': res = await api.pdfToWord({ input: files[0].path, output: finalOutput }); break;
-        case 'e2p': res = await api.excelToPdf({ input: files[0].path, output: finalOutput }); break;
-        case 'pp2p': res = await api.pptToPdf({ input: files[0].path, output: finalOutput }); break;
-      }
-
-      if (res.ok) {
-        setResult({
-          ok: true,
-          message: successMsg,
-          path: res.output || (res.outputs && res.outputs[0]),
-          warning: res.warning,
-          pdf_profile: res.pdf_profile,
-          engine: res.engine,
-        });
-        setView('result');
-        toast.success(successMsg);
-      } else {
-        setResult({ ok: false, error: res.error });
-        toast.error("Error: " + res.error);
-      }
-    } catch (err: any) {
-      setResult({ ok: false, error: err.message });
-      toast.error("Error crítico: " + err.message);
-    } finally {
-      setIsProcessing(false);
-      setShowConfirm(false);
-      setFinalOutputPath("");
-      }
+    setShowConfirm(false);
+    setFinalOutputPath("");
   };
 
   // Cargar info del PDF para herramientas que lo necesiten

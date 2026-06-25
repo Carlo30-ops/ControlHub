@@ -2,13 +2,13 @@ import React, { Suspense } from "react";
 import { createHashRouter } from "react-router";
 import { MainLayout } from "./components/layouts/MainLayout";
 import { SkeletonDashboard } from "./components/ui/skeleton";
-const Dashboard = React.lazy(() => import("./pages/Dashboard").then(m => ({ default: m.Dashboard })));
-const Scanner = React.lazy(() => import("./pages/Scanner").then(m => ({ default: m.Scanner })));
+const Dashboard = React.lazy(() => import("./pages/Dashboard/index").then(m => ({ default: m.Dashboard })));
+const Scanner = React.lazy(() => import("./pages/Scanner/index").then(m => ({ default: m.Scanner })));
 const History = React.lazy(() => import("./pages/History").then(m => ({ default: m.History })));
 const Settings = React.lazy(() => import("./pages/Settings").then(m => ({ default: m.Settings })));
 const NotFound = React.lazy(() => import("./pages/NotFound").then(m => ({ default: m.NotFound })));
 const Terapias = React.lazy(() => import("./pages/Terapias"));
-const Reports = React.lazy(() => import("./pages/Reports").then(m => ({ default: m.Reports })));
+const Reports = React.lazy(() => import("./pages/Reports/index").then(m => ({ default: m.Reports })));
 const PDFTools = React.lazy(() => import("./pages/PDFTools"));
 
 export const router = createHashRouter([

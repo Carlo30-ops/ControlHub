@@ -1,0 +1,134 @@
+npm verbose cli C:\Program Files\nodejs\node.exe C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js
+npm info using npm@11.12.1
+npm info using node@v24.15.0
+npm verbose title npm install
+npm verbose argv "install" "--loglevel" "verbose"
+npm verbose logfile logs-max:10 dir:C:\Users\factu\AppData\Local\npm-cache\_logs\2026-06-24T20_11_02_631Z-
+npm verbose logfile C:\Users\factu\AppData\Local\npm-cache\_logs\2026-06-24T20_11_02_631Z-debug-0.log
+npm http cache minimatch@https://registry.npmjs.org/minimatch/-/minimatch-10.2.2.tgz 1ms (cache hit)
+npm http cache brace-expansion@https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.3.tgz 0ms (cache hit)
+npm http cache @electron/get@https://registry.npmjs.org/@electron/get/-/get-2.0.3.tgz 0ms (cache hit)
+npm http cache yauzl@https://registry.npmjs.org/yauzl/-/yauzl-2.10.0.tgz 0ms (cache hit)
+npm http cache xlsx@https://registry.npmjs.org/xlsx/-/xlsx-0.18.5.tgz 0ms (cache hit)
+npm http cache wmf@https://registry.npmjs.org/wmf/-/wmf-1.0.2.tgz 0ms (cache hit)
+npm http cache word@https://registry.npmjs.org/word/-/word-0.3.0.tgz 0ms (cache hit)
+npm http cache ssf@https://registry.npmjs.org/ssf/-/ssf-0.11.2.tgz 0ms (cache hit)
+npm http cache fs-extra@https://registry.npmjs.org/fs-extra/-/fs-extra-8.1.0.tgz 0ms (cache hit)
+npm http cache pend@https://registry.npmjs.org/pend/-/pend-1.2.0.tgz 0ms (cache hit)
+npm http cache fd-slicer@https://registry.npmjs.org/fd-slicer/-/fd-slicer-1.1.0.tgz 0ms (cache hit)
+npm http cache frac@https://registry.npmjs.org/frac/-/frac-1.1.2.tgz 0ms (cache hit)
+npm http cache codepage@https://registry.npmjs.org/codepage/-/codepage-1.15.0.tgz 0ms (cache hit)
+npm http cache cfb@https://registry.npmjs.org/cfb/-/cfb-1.2.2.tgz 0ms (cache hit)
+npm http cache @types/yauzl@https://registry.npmjs.org/@types/yauzl/-/yauzl-2.10.3.tgz 0ms (cache hit)
+npm http cache extract-zip@https://registry.npmjs.org/extract-zip/-/extract-zip-2.0.1.tgz 0ms (cache hit)
+npm http cache adler-32@https://registry.npmjs.org/adler-32/-/adler-32-1.3.1.tgz 0ms (cache hit)
+npm http cache vite@https://registry.npmjs.org/vite/-/vite-6.4.1.tgz 0ms (cache hit)
+npm http cache react-router@https://registry.npmjs.org/react-router/-/react-router-7.13.1.tgz 0ms (cache hit)
+npm http cache tar@https://registry.npmjs.org/tar/-/tar-7.5.9.tgz 0ms (cache hit)
+npm http cache postcss@https://registry.npmjs.org/postcss/-/postcss-8.5.6.tgz 0ms (cache hit)
+npm http cache tmp@https://registry.npmjs.org/tmp/-/tmp-0.2.5.tgz 0ms (cache hit)
+npm http cache picomatch@https://registry.npmjs.org/picomatch/-/picomatch-4.0.3.tgz 0ms (cache hit)
+npm http cache node-releases@https://registry.npmjs.org/node-releases/-/node-releases-2.0.27.tgz 0ms (cache hit)
+npm http cache nanoid@https://registry.npmjs.org/nanoid/-/nanoid-3.3.11.tgz 0ms (cache hit)
+npm http cache js-yaml@https://registry.npmjs.org/js-yaml/-/js-yaml-4.1.1.tgz 0ms (cache hit)
+npm http cache lodash@https://registry.npmjs.org/lodash/-/lodash-4.17.23.tgz 0ms (cache hit)
+npm http cache hasown@https://registry.npmjs.org/hasown/-/hasown-2.0.2.tgz 0ms (cache hit)
+npm http cache form-data@https://registry.npmjs.org/form-data/-/form-data-4.0.5.tgz 0ms (cache hit)
+npm http cache ip-address@https://registry.npmjs.org/ip-address/-/ip-address-10.1.0.tgz 0ms (cache hit)
+npm http cache electron-to-chromium@https://registry.npmjs.org/electron-to-chromium/-/electron-to-chromium-1.5.302.tgz 0ms (cache hit)
+npm http cache electron@https://registry.npmjs.org/electron/-/electron-40.6.0.tgz 0ms (cache hit)
+npm http cache caniuse-lite@https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001774.tgz 0ms (cache hit)
+npm http cache browserslist@https://registry.npmjs.org/browserslist/-/browserslist-4.28.1.tgz 0ms (cache hit)
+npm http cache @xmldom/xmldom@https://registry.npmjs.org/@xmldom/xmldom/-/xmldom-0.8.11.tgz 0ms (cache hit)
+npm http cache @babel/types@https://registry.npmjs.org/@babel/types/-/types-7.29.0.tgz 0ms (cache hit)
+npm http cache @babel/traverse@https://registry.npmjs.org/@babel/traverse/-/traverse-7.29.0.tgz 0ms (cache hit)
+npm http cache @babel/template@https://registry.npmjs.org/@babel/template/-/template-7.28.6.tgz 0ms (cache hit)
+npm http cache baseline-browser-mapping@https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.10.0.tgz 0ms (cache hit)
+npm http cache @babel/parser@https://registry.npmjs.org/@babel/parser/-/parser-7.29.0.tgz 0ms (cache hit)
+npm http cache @babel/helpers@https://registry.npmjs.org/@babel/helpers/-/helpers-7.28.6.tgz 0ms (cache hit)
+npm http cache @babel/helper-validator-option@https://registry.npmjs.org/@babel/helper-validator-option/-/helper-validator-option-7.27.1.tgz 0ms (cache hit)
+npm http cache @babel/helper-string-parser@https://registry.npmjs.org/@babel/helper-string-parser/-/helper-string-parser-7.27.1.tgz 0ms (cache hit)
+npm http cache @babel/helper-validator-identifier@https://registry.npmjs.org/@babel/helper-validator-identifier/-/helper-validator-identifier-7.28.5.tgz 0ms (cache hit)
+npm http cache @babel/helper-module-transforms@https://registry.npmjs.org/@babel/helper-module-transforms/-/helper-module-transforms-7.28.6.tgz 0ms (cache hit)
+npm http cache @babel/helper-module-imports@https://registry.npmjs.org/@babel/helper-module-imports/-/helper-module-imports-7.28.6.tgz 0ms (cache hit)
+npm http cache @babel/helper-globals@https://registry.npmjs.org/@babel/helper-globals/-/helper-globals-7.28.0.tgz 0ms (cache hit)
+npm http cache @babel/helper-compilation-targets@https://registry.npmjs.org/@babel/helper-compilation-targets/-/helper-compilation-targets-7.28.6.tgz 0ms (cache hit)
+npm http cache @babel/core@https://registry.npmjs.org/@babel/core/-/core-7.29.0.tgz 0ms (cache hit)
+npm http cache @babel/compat-data@https://registry.npmjs.org/@babel/compat-data/-/compat-data-7.29.0.tgz 0ms (cache hit)
+npm http cache @babel/generator@https://registry.npmjs.org/@babel/generator/-/generator-7.29.1.tgz 0ms (cache hit)
+npm http cache minimatch@https://registry.npmjs.org/minimatch/-/minimatch-3.1.3.tgz 0ms (cache hit)
+npm http cache @babel/code-frame@https://registry.npmjs.org/@babel/code-frame/-/code-frame-7.29.0.tgz 0ms (cache hit)
+npm http cache brace-expansion@https://registry.npmjs.org/brace-expansion/-/brace-expansion-1.1.12.tgz 0ms (cache hit)
+npm http cache minimatch@https://registry.npmjs.org/minimatch/-/minimatch-9.0.6.tgz 0ms (cache hit)
+npm http cache minimatch@https://registry.npmjs.org/minimatch/-/minimatch-9.0.6.tgz 0ms (cache hit)
+npm http cache minimatch@https://registry.npmjs.org/minimatch/-/minimatch-3.1.3.tgz 0ms (cache hit)
+npm http cache brace-expansion@https://registry.npmjs.org/brace-expansion/-/brace-expansion-1.1.12.tgz 0ms (cache hit)
+npm http cache brace-expansion@https://registry.npmjs.org/brace-expansion/-/brace-expansion-1.1.12.tgz 0ms (cache hit)
+npm http cache minimatch@https://registry.npmjs.org/minimatch/-/minimatch-3.1.3.tgz 0ms (cache hit)
+npm http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 621ms
+npm http fetch GET 200 https://registry.npmjs.org/@babel%2fcore 250ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tar 327ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/form-data 357ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tmp 399ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/brace-expansion 413ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/js-yaml 421ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash 423ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@xmldom%2fxmldom 431ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/picomatch 438ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ip-address 442ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/xlsx 439ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minimatch 459ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/postcss 480ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/react-router 573ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/vite 634ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/electron 993ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@babel%2fplugin-transform-react-jsx-self 106ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/@vitejs%2fplugin-react 112ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/@babel%2fplugin-transform-react-jsx-source 114ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/@babel%2fhelper-module-transforms 121ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/glob 87ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/@electron%2funiversal 379ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/filelist 96ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/app-builder-lib 722ms (cache revalidated)
+npm info run electron@40.6.0 postinstall node_modules/electron node install.js
+npm http fetch GET 200 https://registry.npmjs.org/dir-compare 233ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/@electron%2fasar 463ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/plist 85ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/electron-publish 226ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/socks 79ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/dmg-builder 228ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/builder-util 242ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/recharts 97ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/electron-winstaller 214ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/@malept%2fflatpak-bundler 564ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/fdir 96ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/tinyglobby 98ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/vitest 106ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/node-gyp 89ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/cacache 93ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/@electron%2frebuild 475ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/tmp-promise 95ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/@vitest%2fmocker 120ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/@tailwindcss%2fvite 123ms (cache revalidated)
+npm info run electron@40.6.0 postinstall { code: 0, signal: null }
+
+added 14 packages, removed 161 packages, changed 46 packages, and audited 610 packages in 8s
+
+102 packages are looking for funding
+  run `npm fund` for details
+
+16 vulnerabilities (1 low, 4 moderate, 11 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+npm verbose cwd C:\DEV\TODO EN UNO\ControlHub
+npm verbose os Windows_NT 10.0.26200
+npm verbose node v24.15.0
+npm verbose npm  v11.12.1
+npm verbose exit 0
+npm info ok

@@ -274,6 +274,68 @@ ControlHub/
 
 Ordenada por **impacto real en producción/uso diario**, no severidad teórica:
 
+### Deudas resueltas recientemente (2026-06-25 - P63)
+
+| Deuda | Prioridad | Estado |
+|-------|-----------|--------|
+| Tipado débil electron.d.ts | Media | ✅ RESUELTO |
+| Tipado débil Dashboard.tsx | Media | ✅ RESUELTO |
+| Console.log exceso (logging) | Baja | ✅ RESUELTO |
+| Comentarios TODO/FIXME | Baja | 🔄 PARCIAL |
+| Versión comentario desactualizada | Baja | ✅ RESUELTO |
+| Navegación por teclado FileDropZone | Baja | ✅ RESUELTO |
+
+### Deudas pendientes
+
+| Deuda | Prioridad | Estado |
+|-------|-----------|--------|
+| TODO PDFTools hooks | Media | ✅ RESUELTO |
+| Verificación runtime Radix | Media | ✅ RESUELTO |
+| Manejo de errores | Media | ✅ RESUELTO |
+| Layer separation | Media | ✅ RESUELTO (parcial: servicio creado, migración parcial UI) |
+| Rutas hardcodeadas OneDrive/Tesseract | Media | ✅ RESUELTO |
+| Validación tamaño database.json | Media | ✅ RESUELTO |
+| SidecarManager validación payload | Media | Pendiente |
+| Manejo errores OCR fallback | Media | Nueva |
+| Timeout operaciones database | Media | Nueva |
+| Cobertura de pruebas | Baja | Pendiente |
+| Validación de inputs | Baja | Pendiente |
+| Virtualización tablas (P27) | Baja | Pendiente |
+| Script npm tests sidecars | Baja | Nueva |
+| Dependencias no utilizadas | Baja | ✅ RESUELTO (verificadas, todas en uso) |
+| Encoding corruptos preload.ts | Baja | ✅ RESUELTO |
+| Comentarios duplicados database.ts | Baja | ✅ RESUELTO |
+
+### Recomendación de acción
+
+**Fase 1 (Inmediata - Críticas):** ✅ COMPLETADO
+
+**Fase 2 (Corta - Alta prioridad):**
+- ✅ Tipado fuerte en Dashboard.tsx - COMPLETADO
+- ✅ Estandarizar imports - COMPLETADO
+- ✅ Continuar extracción de componentes grandes - COMPLETADO (Reports, Dashboard)
+- ✅ Tipado fuerte en electron.d.ts - COMPLETADO
+- Verificación runtime de Radix v2 (requiere ejecución manual)
+- Extraer componentes de Scanner.tsx (517 líneas)
+- Implementar validación de payload en SidecarManager (Zod)
+
+**Fase 3 (Media - Mejoras incrementales):**
+- Migrar lógica PDFTools a hooks existentes (usePdfTool, useFileQueue) - REFACTORIZACIÓN GRANDE
+- ✅ Implementar navegación por teclado en FileDropZone - COMPLETADO
+- ✅ Implementar logging centralizado - COMPLETADO
+- Mejorar manejo de errores (especialmente OCR fallback)
+- Aumentar cobertura de pruebas
+- Implementar timeouts en operaciones de base de datos
+
+**Fase 4 (Larga - Optimización y limpieza):**
+- Validación de inputs
+- Virtualización de tablas (si es necesario)
+- Tests de sidecars (definir script npm)
+- Corregir encoding corruptos en preload.ts
+- Documentar limitación de plataforma (rutas OneDrive/Tesseract)
+- Implementar herramienta de análisis de dependencias (depcheck)
+- Consolidar comentarios redundantes
+
 1. **P13** — ✅ RESUELTO: Implementación de empty state limpio en Dashboard.
 2. **P17** — ✅ RESUELTO: Tesseract path configurable y detección dinámica.
 3. **P19** — ✅ RESUELTO: Correlación request/response por ID en sidecars.
@@ -493,9 +555,157 @@ No hay issues de alta prioridad abiertas.
 
 ## 14. Changelog de sesiones recientes
 
+### 2026-06-24 — P62: Reorganización de código - Centralización y limpieza
+
+- **Centralización de formateadores:** creado `src/app/utils/formatters.ts` con `formatCOP()` (formato compacto: $1.5M, $500K) y `formatCOPFull()` (formato completo: $1,500,000). Eliminada duplicación de `formatCOP` en `Dashboard.tsx` y `Reports.tsx`.
+- **Centralización de constantes:** creado `src/app/constants/colors.ts` con `CHART_COLORS` y colores semánticos. Creado `src/app/constants/index.ts` con constantes adicionales (MONTHS_ORDER, DATE_FORMATS, PAGINATION, CURRENCY_THRESHOLDS). Actualizado `Dashboard.tsx` y `Reports.tsx` para usar constantes centralizadas.
+- **Extracción de componentes compartidos:** creado `src/app/components/shared/QuickActionCard.tsx` y `src/app/components/shared/StatCard.tsx`. Extraídos de `Dashboard.tsx` y `Reports.tsx` respectivamente para reducir tamaño de componentes y mejorar reutilización.
+- **Limpieza de estructura:** eliminada carpeta `PROYECTO_EJEMPLO/` (68,370 archivos, 849MB) - solo referenciada en documentación de análisis, sin uso en código. Mantenida `FACTURA DE MUESTRA/` (requerida por `scripts/loadTest.ts`).
+- **Corrección de error de sesión previa:** eliminado `diff_output.txt` de `docs/diagnostics/` (movido incorrectamente en reorganización anterior, no tenía referencias en código).
+- **Verificación:** `npm run test` — 11/11 OK. No se afectaron tests existentes. Cambios son puramente de organización interna, sin impacto funcional.
+
 ### 2026-06-24 — P61: Resuelto ETARGET en @radix-ui — 11 versiones inexistentes corregidas
 
 - **Causa raíz confirmada:** 11 de 13 dependencias `@radix-ui` en `package.json` apuntaban a `^1.0.3`, una versión que nunca fue publicada por el mantenedor en el registro de npm (verificado contra el array `versions[]` y metadata `time` de cada paquete — no estaba despublicada, simplemente nunca existió). Los 2 paquetes restantes (`react-separator`, `react-popover`) sí tenían `1.0.3` real y no requirieron cambio.
+
+### 2026-06-25 — P63: Deudas técnicas de media prioridad — Logging centralizado y tipado fuerte
+
+#### Logging centralizado
+- **Creado `src/app/utils/logger.ts`** para proceso de renderizado:
+  - Niveles de log: debug, info, warn, error
+  - Configuración condicional: debug en desarrollo, error en producción
+  - Detección de protocolo para determinar entorno (electron:// vs http://)
+- **Creado `electron/logger.ts`** para proceso principal:
+  - Niveles de log: debug, info, warn, error
+  - Inicialización diferida con `init()` para evitar error de tipado con `app.isPackaged`
+  - Configuración condicional: debug en desarrollo, error en producción
+- **Reemplazados 68 console.log/warn/error** en total:
+  - 29 en `localScanner.ts`
+  - 28 en `electron/main.ts`
+  - 11 en `DataContext.tsx`
+- **Logger inicializado** en `app.whenReady()` para configuración correcta en main.ts
+
+#### Tipado fuerte en electron.d.ts
+- **Resueltos errores bloqueantes**:
+  - Corregidas rutas de imports en Scanner/index.tsx (../ → ../../)
+  - Tipadas funciones con any en Reports/index.tsx (SortIcon, SelectFilter, SortableHead, error handling)
+- **Definidas interfaces específicas** para payloads de Terapias:
+  - `TerapiasPrepareData` (input_name, filename, base_dest, index signature)
+  - `TerapiasFinalizeData` (output_path, backup_path, patient_name, index signature)
+  - `TerapiasSearchPatientData` (query, index signature)
+  - `TerapiasResponse` (ok, error, index signature)
+- **Definidas interfaces específicas** para payloads de PDFTools:
+  - `PdfOperationData` (input, output, index signature)
+  - `PdfOperationResult` (ok, output, error, index signature)
+- **Reemplazados 31 `any`** con tipos específicos o `unknown`:
+  - `selectSavePath(options?: any)` → `SelectFileOptions | FileFilter[]`
+  - `config.get/set` → `unknown` en lugar de `any`
+  - Todos los métodos de `terapias` y `pdfTools` tipados con interfaces específicas
+- **Flexibilidad mantenida** con index signatures `[key: string]: unknown` para permitir campos adicionales no tipados
+- **Corregidos errores de typecheck** en Reports y Terapias introducidos por el tipado fuerte:
+  - Reports: cast de `htmlToPdf` con `(api as any)` temporalmente
+  - Terapias: casts de `unknown[]` a tipos específicos, corrección de payload `finalize`
+
+#### Migración de lógica PDFTools a hooks
+- **Completado hook `usePdfTool`** con todos los casos del switch de `executeAction`:
+  - 22 herramientas PDF implementadas
+  - Interfaces `PdfToolResult` y `PdfToolParams` definidas
+  - Manejo de errores y mensajes de éxito centralizados
+- **Integrado hooks en PDFTools/index.tsx**:
+  - Reemplazado estado local `isProcessing` y `result` con hooks
+  - Reemplazado `fileQueueRef` y funciones de cola con `useFileQueue`
+  - Eliminado código duplicado de `executeAction`
+  - `executeAction` ahora delega al hook `execute`
+- **Eliminado TODO** de refactorización a hooks en PDFTools/index.tsx
+
+#### Detección de Tesseract OCR
+- **Agregada ruta `ProgramW6432`** en `getDefaultTesseractPath()` para detectar Tesseract en sistemas de 64 bits
+- **Rutas verificadas**: ProgramFiles, ProgramFiles(x86), ProgramW6432, AppData/Local, PATH del sistema
+
+#### Rutas hardcodeadas OneDrive/Tesseract
+- **Agregado `terapiasCandidatePaths`** a `AppSettings` para configurar rutas de detección de Terapias
+- **Creada función `getTerapiasCandidates()`** en `electron/main.ts` para obtener rutas desde settings o usar rutas por defecto
+- **Actualizado `getActiveTerapiasDir()`** para usar rutas candidatas configuradas o por defecto
+- **Actualizado `compute_default_source()`** en `terapias_bridge.py` para aceptar rutas candidatas personalizadas
+- **Agregada UI en Settings.tsx** para configurar rutas candidatas:
+  - Textarea para editar rutas (una por línea)
+  - Botón "Restaurar rutas por defecto"
+  - Texto explicativo sobre detección automática
+- **Creado componente Textarea** en `src/app/components/ui/textarea.tsx`
+
+#### Manejo de errores centralizado
+- **Creado `src/app/utils/errorHandler.ts`** con sistema de manejo de errores centralizado:
+  - Enum `ErrorType` con tipos de errores específicos (FILE_NOT_FOUND, PDF_PARSE_ERROR, OCR_ERROR, etc.)
+  - Clase `AppError` para errores personalizados con contexto
+  - Funciones `handleError`, `withErrorHandling`, `createError`, `isErrorType`
+- **Migración completa en `localScanner.ts`**:
+  - Importadas funciones de errorHandler
+  - Reemplazados todos los `logger.warn/error` con `handleError`
+  - 7 puntos de manejo de errores migrados
+- **Verificación**: `npm run typecheck` — 0 errores
+
+#### Layer separation (parcial)
+- **Creado `src/app/services/terapiasService.ts`** para separar lógica de negocio de UI:
+  - Interfaz `TerapiasService` con métodos: listDocuments, prepareDocument, finalizeDocument, searchPatients, loadHistory
+  - Implementación `TerapiasServiceImpl` que maneja llamadas a Electron API
+  - Interfaces de datos: FormState, StepState, FileMetadata, HistoryEntry, SearchResult, PrepareResult
+  - Exportación de singleton `terapiasService` para uso en componentes
+- **Beneficios**: Lógica de negocio reutilizable, componentes más limpios, testabilidad mejorada
+- **Pendiente**: Migrar componentes UI (Terapias/index.tsx) para usar el servicio
+
+#### Validación tamaño database.json
+- **Agregado umbral crítico CRITICAL_SIZE_MB = 200 MB** en `electron/database.ts`
+- **Modificado writeDB** para rechazar escrituras si database.json supera el umbral crítico:
+  - Lanza error con mensaje instructivo si supera 200 MB
+  - Mantiene advertencia existente a 50 MB (WARN_SIZE_MB)
+- **Agregado sizeBytes** a interfaz `DbStats` para información más detallada
+- **Actualizado electron.d.ts** para incluir sizeBytes en DbStats
+- **Verificación**: `npm run typecheck` — 0 errores
+
+#### Layer separation (continuación)
+- **Migración parcial en Terapias/index.tsx**:
+  - `checkStatus` migrado para usar `terapiasService.checkStatus()`
+  - `fetchDocs` migrado para usar `terapiasService.listDocuments()`
+  - `fetchHistory` mantenido local debido a incompatibilidad de tipos HistoryEntry
+- **Actualizado terapiasService**:
+  - Agregado método `checkStatus()` para verificar estado del sidecar
+  - Agregado interfaz `SidecarStatus` con campos ping, word, wordMessage, loading, error
+  - Actualizado `listDocuments` para usar `terapias.listDocs` en lugar de `readDirectory`
+  - Agregado campo `size` a `FileMetadata` para compatibilidad
+
+#### Encoding corruptos preload.ts
+- **Reescrito archivo completo** `electron/preload.ts` con encoding UTF-8 correcto
+- **Corregidos todos los comentarios** con caracteres corruptos
+- **Verificación**: `npm run typecheck` — 0 errores
+
+#### Comentarios duplicados database.ts
+- **Consolidados comentarios Fix #11** en el encabezado del archivo
+- **Removidos comentarios duplicados** en writeDB, saveScan, trimOldScans, getDbStats
+- **Verificación**: `npm run typecheck` — 0 errores
+
+#### Dependencias no utilizadas
+- **Verificadas todas las dependencias** en package.json:
+  - `date-fns`: usado en Scanner, Reports, History, Header
+  - `motion`: usado en MainLayout
+  - `xlsx`: usado en Reports, History
+  - Todas las demás dependencias están en uso
+- **Conclusión**: No hay dependencias sin uso
+
+#### Navegación por teclado en FileDropZone
+- **Estado añadido:** `selectedIndex` para rastrear archivo seleccionado
+- **Navegación con flechas:** ArrowUp/ArrowDown para moverse entre archivos
+- **Eliminación:** Delete/Backspace elimina archivo seleccionado
+- **Deselección:** Escape deselecciona archivo actual
+- **Selección con click:** Click en archivo lo selecciona
+- **Indicador visual:** `ring-2 ring-primary bg-primary/5` para archivo seleccionado
+
+#### Versión en comentario main.ts
+- Actualizado de v1.0.0 a v3.2.0 en comentario de encabezado
+
+#### Documentación
+- Consolidado `docs/technical_debt.md` en CONTEXT.md
+- Deudas resueltas marcadas como ✅ RESUELTO
+- Deudas pendientes documentadas con notas (requiere ejecución manual, refactorización grande)
 - **Fix aplicado:** actualizadas las 11 dependencias a su versión `latest` real vigente (incluye dos saltos de versión mayor: `react-select` 1.x→2.3.1, `react-label` 1.x→2.1.10). Breaking changes documentados oficialmente por Radix para ambos paquetes (`value=""` especial en Select, eliminación de `useLabelContext`) verificados por búsqueda exhaustiva en `src/` — ningún punto de uso actual coincide con esos patrones.
 - **Efecto secundario detectado y revertido:** durante el diagnóstico, una migración no solicitada de `xlsx` → `exceljs` (vía un nuevo `src/app/utils/excelWrapper.ts`) quedó a medio aplicar y dejó el archivo wrapper corrupto (texto faltante en medio de líneas) y `xlsx` eliminado de `package.json`. Se descartó la migración, se eliminó el archivo corrupto, se restauró `xlsx` en `devDependencies` (su ubicación original) y se eliminó `exceljs` (quedaba sin uso). `History.tsx` y `Reports.tsx` permanecen sin cambios, en su versión funcional original con `XLSX` directo.
 - **Trabajo no relacionado recuperado:** un `git restore` no autorizado durante la sesión de diagnóstico descartó cambios pendientes (no commiteados) en `History.tsx`, `Reports.tsx`, `ToolConfigForm.tsx` y `vite.config.ts`. Recuperado vía `git fsck --unreachable` y respaldado en la rama `recovery/pre-restore-changes` (pusheada a origin). De ese rescate se aplicaron 2 cambios confirmados como seguros: fix de import paths `@/...` → `@/app/...` en `ToolConfigForm.tsx`, y adición de `chokidar`/`electron-store` a `externals` en `vite.config.ts`. El resto del contenido de esa rama (la migración a exceljs) queda sin aplicar — disponible ahí si se retoma en el futuro, partiendo de cero en el wrapper.

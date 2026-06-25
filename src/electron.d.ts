@@ -8,6 +8,7 @@ import { ScanResult, AppSettings } from './shared/types';
 export interface DbStats {
   count: number;
   sizeMB: number;
+  sizeBytes: number;
   path: string;
 }
 
@@ -46,11 +47,55 @@ export interface FolderUpdatedData {
   path: string;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Interfaces para payloads de Terapias
+// ─────────────────────────────────────────────────────────────────────────────
+export interface TerapiasPrepareData {
+  input_name: string;
+  filename: string;
+  base_dest: string;
+  [key: string]: unknown; // Permitir campos adicionales
+}
+
+export interface TerapiasFinalizeData {
+  output_path: string;
+  backup_path: string;
+  patient_name: string;
+  [key: string]: unknown;
+}
+
+export interface TerapiasSearchPatientData {
+  query: string;
+  [key: string]: unknown;
+}
+
+export interface TerapiasResponse {
+  ok: boolean;
+  error?: string;
+  [key: string]: unknown;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Interfaces para payloads de PDFTools
+// ─────────────────────────────────────────────────────────────────────────────
+export interface PdfOperationData {
+  input: string;
+  output?: string;
+  [key: string]: unknown;
+}
+
+export interface PdfOperationResult {
+  ok: boolean;
+  output?: string;
+  error?: string;
+  [key: string]: unknown;
+}
+
 interface ElectronAPI {
   // â”€â”€ DiÃ¡logos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   selectDirectory(): Promise<string | null>;
   selectFile(options?: SelectFileOptions | FileFilter[]): Promise<string | null>;
-  selectSavePath(options?: any): Promise<string | null>;
+  selectSavePath(options?: SelectFileOptions | FileFilter[]): Promise<string | null>;
   getPathForFile(file: File): string;
   security: {
     validateAndRegisterDroppedFile(path: string): Promise<{ ok: boolean; error?: string }>;
@@ -109,8 +154,8 @@ interface ElectronAPI {
   };
 
   config: {
-    get(key: string): Promise<any>;
-    set(key: string, value: any): Promise<void>;
+    get(key: string): Promise<unknown>;
+    set(key: string, value: unknown): Promise<void>;
   };
 
   tesseract: {
@@ -130,38 +175,38 @@ interface ElectronAPI {
     ping(): Promise<{ ok: boolean }>;
     checkWord(): Promise<{ ok: boolean; word_installed: boolean; message?: string; error?: string }>;
     listDocs(): Promise<{ ok: boolean; files: { name: string; modified: number; size: number }[]; error?: string }>;
-    prepare(data: any): Promise<{ ok: boolean; folder: string; doc_path: string; patient: string; error?: string }>;
-    finalize(data: any): Promise<{ ok: boolean; pdf_path: string; backup_path: string; error?: string }>;
-    getHistory(): Promise<{ ok: boolean; history: any[]; error?: string }>;
-    searchPatient(data: any): Promise<{ ok: boolean; results: any[]; error?: string }>;
+    prepare(data: TerapiasPrepareData): Promise<TerapiasResponse & { folder?: string; doc_path?: string; patient?: string }>;
+    finalize(data: TerapiasFinalizeData): Promise<TerapiasResponse & { pdf_path?: string; backup_path?: string }>;
+    getHistory(): Promise<{ ok: boolean; history: unknown[]; error?: string }>;
+    searchPatient(data: TerapiasSearchPatientData): Promise<{ ok: boolean; results: unknown[]; error?: string }>;
   };
 
   pdfTools: {
     ping(): Promise<{ ok: boolean }>;
-    merge(data: any): Promise<any>;
-    compress(data: any): Promise<any>;
-    split(data: any): Promise<any>;
-    rotate(data: any): Promise<any>;
-    extract(data: any): Promise<any>;
-    wordToPdf(data: any): Promise<any>;
-    pdfToWord(data: any): Promise<any>;
-    excelToPdf(data: any): Promise<any>;
-    pptToPdf(data: any): Promise<any>;
-    deletePages(data: any): Promise<any>;
-    reorderPages(data: any): Promise<any>;
-    watermark(data: any): Promise<any>;
-    watermarkImage(data: any): Promise<any>;
-    crop(data: any): Promise<any>;
-    addPageNumbers(data: any): Promise<any>;
-    jpgToPdf(data: any): Promise<any>;
-    pdfToJpg(data: any): Promise<any>;
+    merge(data: PdfOperationData): Promise<PdfOperationResult>;
+    compress(data: PdfOperationData): Promise<PdfOperationResult>;
+    split(data: PdfOperationData): Promise<PdfOperationResult>;
+    rotate(data: PdfOperationData): Promise<PdfOperationResult>;
+    extract(data: PdfOperationData): Promise<PdfOperationResult>;
+    wordToPdf(data: PdfOperationData): Promise<PdfOperationResult>;
+    pdfToWord(data: PdfOperationData): Promise<PdfOperationResult>;
+    excelToPdf(data: PdfOperationData): Promise<PdfOperationResult>;
+    pptToPdf(data: PdfOperationData): Promise<PdfOperationResult>;
+    deletePages(data: PdfOperationData): Promise<PdfOperationResult>;
+    reorderPages(data: PdfOperationData): Promise<PdfOperationResult>;
+    watermark(data: PdfOperationData): Promise<PdfOperationResult>;
+    watermarkImage(data: PdfOperationData): Promise<PdfOperationResult>;
+    crop(data: PdfOperationData): Promise<PdfOperationResult>;
+    addPageNumbers(data: PdfOperationData): Promise<PdfOperationResult>;
+    jpgToPdf(data: PdfOperationData): Promise<PdfOperationResult>;
+    pdfToJpg(data: PdfOperationData): Promise<PdfOperationResult>;
     pdfThumbnail(data: { input: string; dpi?: number }): Promise<{ ok: boolean; thumb_path?: string; error?: string }>;
-    htmlToPdf(data: any): Promise<any>;
-    protect(data: any): Promise<any>;
-    unlock(data: any): Promise<any>;
-    repair(data: any): Promise<any>;
-    ocr(data: any): Promise<any>;
-    getPageInfo(data: any): Promise<any>;
+    htmlToPdf(data: PdfOperationData): Promise<PdfOperationResult>;
+    protect(data: PdfOperationData): Promise<PdfOperationResult>;
+    unlock(data: PdfOperationData): Promise<PdfOperationResult>;
+    repair(data: PdfOperationData): Promise<PdfOperationResult>;
+    ocr(data: PdfOperationData): Promise<PdfOperationResult>;
+    getPageInfo(data: PdfOperationData): Promise<{ ok: boolean; page_count?: number; pages?: Array<{ width: number; height: number }>; error?: string }>;
     // â”€â”€ Seguridad (IPC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // security moved to root level
   };

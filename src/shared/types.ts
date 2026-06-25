@@ -85,7 +85,7 @@ export interface AppSettings {
   scanning: ScanningSettings;
   display: DisplaySettings;
   customInsurers: { name: string; aliases: string }[];
-  
+
   // Campos de Operador y Módulos extra
   operatorName?: string;
   operatorEmail?: string;
@@ -95,6 +95,8 @@ export interface AppSettings {
   terapiasBaseDest?: string;
   /** Carpeta de respaldo PDF en Terapias */
   terapiasBackup?: string;
+  /** Rutas candidatas para detectar automáticamente la carpeta de Terapias */
+  terapiasCandidatePaths?: string[];
   // Theme and recent folder (migrated from legacy localStorage)
   theme?: 'light' | 'dark';
   lastScanPath?: string;

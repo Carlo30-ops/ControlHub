@@ -53,14 +53,7 @@ import {
 import { FileDropZone } from "../../components/shared/FileDropZone";
 import { toast } from "sonner";
 import { cn } from "../../components/ui/utils";
-
-interface SidecarStatus {
-  ping: boolean;
-  word: boolean;
-  wordMessage: string;
-  loading: boolean;
-  error: string | null;
-}
+import { terapiasService, SidecarStatus } from "../../services/terapiasService";
 
 interface FormState {
   inputName: string;
@@ -204,12 +197,10 @@ export default function Terapias() {
 
     setIsListing(true);
     try {
-      const res = await window.electronAPI.terapias.listDocs();
-      if (res.ok) {
-        setAvailableDocs(res.files);
-        if (res.files.length > 0 && !form.filename) {
-          setForm(prev => ({ ...prev, filename: res.files[0].name }));
-        }
+      const docs = await terapiasService.listDocuments(dir);
+      setAvailableDocs(docs);
+      if (docs.length > 0 && !form.filename) {
+        setForm(prev => ({ ...prev, filename: docs[0].name }));
       }
     } catch (err) {
       console.error("Error listing docs:", err);
@@ -222,7 +213,7 @@ export default function Terapias() {
     try {
       const res = await window.electronAPI.terapias.getHistory();
       if (res.ok) {
-        setHistory(res.history);
+        setHistory(res.history as HistoryEntry[]);
       }
     } catch (err) {
       console.error("Error fetching history:", err);
@@ -308,25 +299,24 @@ export default function Terapias() {
   };
 
   const checkStatus = async (activeSource: string) => {
-    setStatus(prev => ({ ...prev, loading: true, error: null }));
+    setStatus((prev: SidecarStatus) => ({ ...prev, loading: true, error: null }));
     try {
-      const pingRes = await window.electronAPI.terapias.ping();
-      const wordRes = await window.electronAPI.terapias.checkWord();
+      const serviceStatus = await terapiasService.checkStatus();
       
       setStatus({
-        ping: pingRes.ok,
-        word: wordRes.ok,
-        wordMessage: wordRes.message || wordRes.error || "",
+        ping: serviceStatus.ping,
+        word: serviceStatus.word,
+        wordMessage: serviceStatus.wordMessage,
         loading: false,
-        error: null
+        error: serviceStatus.error
       });
       
-      if (pingRes.ok) {
+      if (serviceStatus.ping) {
         fetchDocs(activeSource);
         fetchHistory();
       }
     } catch (err: any) {
-      setStatus(prev => ({ 
+      setStatus((prev: SidecarStatus) => ({ 
         ...prev, 
         loading: false, 
         ping: false,
@@ -349,7 +339,7 @@ export default function Terapias() {
         dest_root: form.baseDest
       });
       if (res.ok) {
-        setSearchResults(res.results);
+        setSearchResults(res.results as SearchResult[]);
       }
     } catch (err) {
       console.error("Error searching patient:", err);
@@ -505,9 +495,9 @@ export default function Terapias() {
         setPrepareResult(res);
         setStep({
           current: 2,
-          docPath: res.doc_path,
-          patient: res.patient,
-          folder: res.folder
+          docPath: res.doc_path || null,
+          patient: res.patient || null,
+          folder: res.folder || null
         });
         toast.success("Archivo organizado y Word abierto");
       } else {
@@ -534,9 +524,9 @@ export default function Terapias() {
     setIsProcessing(true);
     try {
       const res = await window.electronAPI.terapias.finalize({
-        doc_path: step.docPath,
-        backup: form.backup,
-        patient: step.patient ?? ""
+        output_path: step.docPath || "",
+        backup_path: form.backup,
+        patient_name: step.patient ?? ""
       });
       
       if (res.ok) {
