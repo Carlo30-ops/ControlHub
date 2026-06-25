@@ -67,6 +67,23 @@ export interface TerapiasService {
 }
 
 class TerapiasServiceImpl implements TerapiasService {
+  private normalizeFileMetadata(files: unknown[]): FileMetadata[] {
+    if (!Array.isArray(files)) {
+      return [];
+    }
+
+    return files.map((file: any) => ({
+      name: String(file?.name ?? ""),
+      path: String(file?.path ?? ""),
+      modified: Number(file?.modified ?? 0),
+      size: Number(file?.size ?? 0),
+    }));
+  }
+
+  private isWordDocument(filename: string): boolean {
+    return /\.(docx?|DOCX?)$/.test(filename);
+  }
+
   async listDocuments(sourceDir: string): Promise<FileMetadata[]> {
     if (!window.electronAPI?.terapias?.listDocs) {
       throw new Error('Electron API no disponible');
@@ -77,12 +94,7 @@ class TerapiasServiceImpl implements TerapiasService {
       if (!res.ok) {
         throw new Error('Error listando documentos');
       }
-      return res.files.map((f: any) => ({
-        name: f.name || '',
-        path: f.path || '',
-        modified: f.modified || 0,
-        size: f.size || 0,
-      }));
+      return this.normalizeFileMetadata(res.files);
     } catch (error) {
       throw new Error(`Error listando documentos: ${error}`);
     }
@@ -98,12 +110,7 @@ class TerapiasServiceImpl implements TerapiasService {
       if (!res.ok) {
         throw new Error(res.error || 'Error al buscar archivos');
       }
-      return res.files.map((f: any) => ({
-        name: f.name || '',
-        path: f.path || '',
-        modified: f.modified || 0,
-        size: f.size || 0,
-      }));
+      return this.normalizeFileMetadata(res.files).filter((file) => this.isWordDocument(file.name));
     } catch (error) {
       throw new Error(`Error en auto-detección: ${error}`);
     }
@@ -218,7 +225,9 @@ class TerapiasServiceImpl implements TerapiasService {
 
     try {
       const pingRes = await window.electronAPI.terapias.ping();
-      let wordRes: { ok: boolean; message?: string; error?: string } = { ok: false };
+      let wordRes: { ok: boolean; word_installed?: boolean; message?: string; error?: string } = {
+        ok: false,
+      };
       let wordError: string | null = null;
 
       try {
@@ -239,12 +248,13 @@ class TerapiasServiceImpl implements TerapiasService {
         };
       }
 
+      const wordInstalled = wordRes.word_installed !== false;
       const status = {
         ping: pingRes.ok === true,
-        word: wordRes.ok === true,
+        word: wordRes.ok === true && wordInstalled,
         wordMessage: wordRes.message || '',
         loading: false,
-        error: wordRes.ok === true ? null : wordRes.error || wordError,
+        error: wordRes.ok === true && wordInstalled ? null : wordRes.error || wordError,
       };
       
       logger.debug(`Terapias status: ping=${status.ping}, word=${status.word}`);

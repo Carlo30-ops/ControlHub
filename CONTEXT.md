@@ -1,7 +1,7 @@
 # CONTEXT.md — ControlHub
 
 > Documento técnico para IAs y sesiones nuevas. **No es documentación de usuario.**
-> Última revisión contra código: 2026-06-23. Versión app: **3.2.0** (`package.json`).
+> Última revisión contra código: 2026-06-25. Versión app: **3.2.0** (`package.json`).
 > Repositorio standalone — proyectos de referencia (COTU Analytics, Organizador robusto) ya integrados y eliminados del workspace.
 
 ---

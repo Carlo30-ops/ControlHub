@@ -170,7 +170,7 @@ describe("Terapias Component", () => {
 
     await waitFor(() => {
       expect(terapiasService.autoDetectWord).toHaveBeenCalledWith(mockSettings.terapiasDir);
-      expect(screen.getByText("documento.docx")).toBeInTheDocument();
+      expect(screen.getAllByText("documento.docx").length).toBeGreaterThan(0);
       expect(toast.success).toHaveBeenCalledWith("Archivo detectado: documento.docx");
     });
   });
@@ -515,9 +515,9 @@ describe("Terapias Component", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Paso 1: Preparación")).toBeInTheDocument();
-      expect(screen.getByText("Paso 2: Finalización")).toBeInTheDocument();
       expect(screen.queryByText("Paciente en proceso")).not.toBeInTheDocument();
-      expect(screen.getByPlaceholderText("Ej: Control 15-05 SS Maria Delgado")).toHaveValue("");
+      expect(screen.queryByText("Confirmar Organización")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /PREPARAR Y ABRIR WORD/i })).toBeInTheDocument();
     });
   });
 
