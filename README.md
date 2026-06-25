@@ -58,6 +58,10 @@ npm run build
 # Build + instalador NSIS (.exe con Python embebido)
 npm run build:electron
 
+> En Windows también puedes ejecutar `build_desktop.bat` desde la raíz de `ControlHub` para cerrar ControlHub, limpiar `release\win-unpacked` y generar el instalador.
+
+> El instalador completo requiere que `python-embed/` esté presente en el repositorio raíz y contenga `python.exe`.
+
 # Tests unitarios
 npm run test
 

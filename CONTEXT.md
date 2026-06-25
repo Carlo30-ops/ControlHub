@@ -429,6 +429,10 @@ npm run build
 # Build + instalador NSIS Windows
 npm run build:electron
 
+También se puede usar `build_desktop.bat` desde la raíz de `ControlHub` para cerrar instancias abiertas, limpiar builds previos y generar el instalador NSIS.
+
+> El instalador completo necesita que `python-embed/` exista en la raíz del repositorio y que contenga `python.exe`.
+
 # Preview del bundle Vite (sin Electron)
 npm run preview
 

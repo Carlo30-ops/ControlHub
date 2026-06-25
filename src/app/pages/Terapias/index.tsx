@@ -1004,6 +1004,15 @@ export default function Terapias() {
               <GuideStep num="1" text="Busca archivos en la carpeta de entrada configurada arriba." />
               <GuideStep num="2" text="El motor creará la estructura AÑO/MES/DÍA automáticamente." />
               <GuideStep num="3" text="Completa el archivo en Word y guárdalo antes de finalizar." />
+
+              <div className="rounded-2xl border border-border p-4 bg-muted/50">
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-3">Atajos de teclado</p>
+                <div className="space-y-3">
+                  <ShortcutRow combo="Ctrl+O" description="Buscar Word en la carpeta origen" />
+                  <ShortcutRow combo="F5" description="Refrescar la lista de documentos disponibles" />
+                  <ShortcutRow combo="Ctrl+F" description="Enfocar el buscador de pacientes" />
+                </div>
+              </div>
               
               {prepareResult && prepareResult.ok && (
                 <div className="p-5 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 space-y-4 animate-in slide-in-from-right-4 duration-500">
@@ -1079,6 +1088,15 @@ export default function Terapias() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ShortcutRow({ combo, description }: { combo: string; description: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-2xl border border-border bg-card p-3 text-xs font-semibold text-foreground">
+      <span className="text-muted-foreground">{description}</span>
+      <span className="rounded-full border border-border bg-muted px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-foreground">{combo}</span>
     </div>
   );
 }

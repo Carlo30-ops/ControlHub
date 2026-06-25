@@ -562,4 +562,16 @@ describe("Terapias Component", () => {
     });
   });
 
+  // Test 20: Mostrar atajos de teclado en la guía rápida
+  it("should display keyboard shortcuts in the quick guide", async () => {
+    renderComponent();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Atajos de teclado/i)).toBeInTheDocument();
+      expect(screen.getByText(/Ctrl\+O/i)).toBeInTheDocument();
+      expect(screen.getByText(/F5/i)).toBeInTheDocument();
+      expect(screen.getByText(/Ctrl\+F/i)).toBeInTheDocument();
+    });
+  });
+
 });

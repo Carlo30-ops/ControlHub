@@ -56,7 +56,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:electron": "vite build && electron-builder",
+    "build:electron": "node scripts/verify-python-embed.js && vite build && electron-builder",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "load-test": "tsx scripts/loadTest.ts",
