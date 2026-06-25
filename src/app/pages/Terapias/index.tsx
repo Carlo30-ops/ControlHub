@@ -53,6 +53,7 @@ import {
 import { FileDropZone } from "../../components/shared/FileDropZone";
 import { toast } from "sonner";
 import { cn } from "../../components/ui/utils";
+import { logger } from "../../utils/logger";
 import { terapiasService, SidecarStatus } from "../../services/terapiasService";
 
 interface FormState {
@@ -167,8 +168,8 @@ export default function Terapias() {
     setIsListing(true);
     try {
       const files = await terapiasService.autoDetectWord(sourceDir);
-      setAvailableDocs(files);
-      if (files.length === 0) {
+      setAvailableDocs(files ?? []);
+      if (!files || files.length === 0) {
         toast.error("No se encontró ningún documento Word en la carpeta origen");
       } else if (files.length === 1) {
         setForm(prev => ({ ...prev, filename: files[0].name }));
@@ -193,12 +194,13 @@ export default function Terapias() {
     setIsListing(true);
     try {
       const docs = await terapiasService.listDocuments(dir);
-      setAvailableDocs(docs);
-      if (docs.length > 0 && !form.filename) {
-        setForm(prev => ({ ...prev, filename: docs[0].name }));
+      const safeDocs = docs ?? [];
+      setAvailableDocs(safeDocs);
+      if (safeDocs.length > 0 && !form.filename) {
+        setForm(prev => ({ ...prev, filename: safeDocs[0].name }));
       }
     } catch (err) {
-      console.error("Error listing docs:", err);
+      logger.error("Error listing docs:", err);
     } finally {
       setIsListing(false);
     }
@@ -209,7 +211,7 @@ export default function Terapias() {
       const history = await terapiasService.loadHistory();
       setHistory(history);
     } catch (err) {
-      console.error("Error fetching history:", err);
+      logger.error("Error fetching history:", err);
     }
   };
 
@@ -330,7 +332,7 @@ export default function Terapias() {
       const results = await terapiasService.searchPatients(query, sourceDir, form.baseDest);
       setSearchResults(results);
     } catch (err) {
-      console.error("Error searching patient:", err);
+      logger.error("Error searching patient:", err);
     } finally {
       setIsSearching(false);
     }
@@ -475,7 +477,7 @@ export default function Terapias() {
       const res = await terapiasService.prepareDocument({
         inputName: confirmData.inputName,
         filename: confirmData.filename,
-        baseDest: confirmData.destination,
+        baseDest: form.baseDest,
         backup: form.backup,
       }, sourceDir);
       
@@ -512,11 +514,7 @@ export default function Terapias() {
 
     setIsProcessing(true);
     try {
-      const res = await window.electronAPI.terapias.finalize({
-        output_path: step.docPath || "",
-        backup_path: form.backup,
-        patient_name: step.patient ?? ""
-      });
+      const res = await terapiasService.finalizeDocument(step.docPath || "", form.backup, step.patient ?? "");
       
       if (res.ok) {
         toast.success("PDF generado y archivo original respaldado");

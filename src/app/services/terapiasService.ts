@@ -2,6 +2,7 @@
  * Servicio de Terapias - Lógica de negocio separada de la UI
  * Maneja operaciones de preparación, finalización y búsqueda de terapias
  */
+import { logger } from "../utils/logger";
 
 export interface FormState {
   inputName: string;
@@ -142,9 +143,9 @@ class TerapiasServiceImpl implements TerapiasService {
 
     try {
       const result = await window.electronAPI.terapias.finalize({
-        output_path: outputPath,
-        backup_path: backupPath,
-        patient_name: patientName,
+        doc_path: outputPath,
+        backup: backupPath,
+        patient: patientName,
       });
 
       return {
@@ -169,6 +170,10 @@ class TerapiasServiceImpl implements TerapiasService {
         dest_root: destRoot,
       });
 
+      if (!result.ok) {
+        throw new Error(result.error || 'Error en búsqueda de pacientes');
+      }
+
       return (result.results || []).map((r: any) => ({
         name: r.name || '',
         path: r.path || '',
@@ -190,8 +195,8 @@ class TerapiasServiceImpl implements TerapiasService {
         date: h.date || new Date(h.timestamp || 0).toISOString(),
         patient: h.patient || '',
         filename: h.filename || '',
-        pdfPath: h.pdf_path || h.destination || '',
-        backupPath: h.backup_path || '',
+        pdfPath: h.pdf_path || h.pdfPath || h.destination || '',
+        backupPath: h.backup_path || h.backupPath || '',
       }));
     } catch (error) {
       console.error('Error cargando historial:', error);
@@ -201,6 +206,7 @@ class TerapiasServiceImpl implements TerapiasService {
 
   async checkStatus(): Promise<SidecarStatus> {
     if (!window.electronAPI?.terapias?.ping || !window.electronAPI?.terapias?.checkWord) {
+      logger.warn("Electron API terapias no disponible");
       return {
         ping: false,
         word: false,
@@ -212,22 +218,46 @@ class TerapiasServiceImpl implements TerapiasService {
 
     try {
       const pingRes = await window.electronAPI.terapias.ping();
-      const wordRes = await window.electronAPI.terapias.checkWord();
+      let wordRes: { ok: boolean; message?: string; error?: string } = { ok: false };
+      let wordError: string | null = null;
 
-      return {
-        ping: pingRes.ok,
-        word: wordRes.ok,
+      try {
+        wordRes = await window.electronAPI.terapias.checkWord();
+      } catch (error) {
+        wordError = error instanceof Error ? error.message : String(error);
+        logger.error("Error en checkWord:", wordError);
+      }
+
+      if (!pingRes) {
+        logger.warn("Respuesta nula de ping");
+        return {
+          ping: false,
+          word: false,
+          wordMessage: wordRes.message || '',
+          loading: false,
+          error: 'Respuesta inválida del sidecar',
+        };
+      }
+
+      const status = {
+        ping: pingRes.ok === true,
+        word: wordRes.ok === true,
         wordMessage: wordRes.message || '',
         loading: false,
-        error: null,
+        error: wordRes.ok === true ? null : wordRes.error || wordError,
       };
+      
+      logger.debug(`Terapias status: ping=${status.ping}, word=${status.word}`);
+      return status;
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
+      logger.error("Error en checkStatus:", errorMsg);
       return {
         ping: false,
         word: false,
         wordMessage: '',
         loading: false,
-        error: error instanceof Error ? error.message : 'Error desconocido',
+        error: errorMsg,
       };
     }
   }

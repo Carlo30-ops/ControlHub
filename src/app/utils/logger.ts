@@ -14,7 +14,8 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 
 // Configuración: cambiar a 'debug' para ver todos los logs en desarrollo
 // En producción, solo se muestran errores
-const IS_DEV = !window.location.protocol.includes('file'); // Vite dev server
+const IS_BROWSER = typeof window !== 'undefined' && typeof window.location !== 'undefined';
+const IS_DEV = IS_BROWSER ? !window.location.protocol.includes('file') : false;
 const CURRENT_LOG_LEVEL: LogLevel = IS_DEV ? 'debug' : 'error';
 
 class Logger {

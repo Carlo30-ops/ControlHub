@@ -58,9 +58,12 @@ export interface TerapiasPrepareData {
 }
 
 export interface TerapiasFinalizeData {
-  output_path: string;
-  backup_path: string;
-  patient_name: string;
+  doc_path?: string;
+  backup?: string;
+  patient?: string;
+  output_path?: string;
+  backup_path?: string;
+  patient_name?: string;
   [key: string]: unknown;
 }
 
