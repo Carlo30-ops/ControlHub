@@ -297,6 +297,92 @@ C:\\Users\\TuUsuario\\Documents\\TERAPIAS`}
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Microsoft Word (WINWORD.EXE)</Label>
+                  <Badge variant="outline" className="text-[10px] font-bold border-primary/20 text-primary">REQUERIDO PARA TERAPIAS</Badge>
+                </div>
+                <div className="flex flex-col md:flex-row gap-3">
+                  <Input 
+                    value={settings.wordExecutablePath || "No configurado (se buscará automáticamente)"} 
+                    disabled 
+                    className="flex-1 h-12 rounded-xl bg-muted/50 border-border text-muted-foreground font-bold"
+                  />
+                  <Button 
+                    variant="outline" 
+                    onClick={async () => {
+                      try {
+                        const newPath = await window.electronAPI.selectFile({
+                          filters: [{ name: "Ejecutables", extensions: ["exe"] }],
+                          defaultPath: "C:\\Program Files\\Microsoft Office"
+                        });
+                        if (newPath) {
+                          const base = newPath.split(/[\\/]/).pop()?.toLowerCase();
+                          if (base !== 'winword.exe') {
+                            toast.error('El archivo seleccionado no es WINWORD.EXE');
+                            return;
+                          }
+                          updateSettings({ wordExecutablePath: newPath });
+                          toast.success('Ruta de Word actualizada', {
+                            description: newPath,
+                          });
+                        }
+                      } catch (err) {
+                        toast.error("Error al seleccionar el ejecutable");
+                      }
+                    }}
+                    className="h-12 px-6 rounded-xl font-bold border-border bg-card shrink-0"
+                  >
+                    Localizar WINWORD.EXE
+                  </Button>
+                </div>
+              </div>
+
+              <Separator className="opacity-50" />
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Motor de Compresión (Ghostscript)</Label>
+                  <Badge variant="outline" className="text-[10px] font-bold border-primary/20 text-primary">REQUERIDO PARA COMPRESIÓN PDF</Badge>
+                </div>
+                <div className="flex flex-col md:flex-row gap-3">
+                  <Input 
+                    value={settings.ghostscriptPath || "No detectado (se buscará en PATH)"} 
+                    disabled 
+                    className="flex-1 h-12 rounded-xl bg-muted/50 border-border text-muted-foreground font-bold"
+                  />
+                  <Button 
+                    variant="outline" 
+                    onClick={async () => {
+                      try {
+                        const newPath = await window.electronAPI.selectFile({
+                          filters: [{ name: "Ejecutables", extensions: ["exe"] }],
+                          defaultPath: "C:\\Program Files\\gs"
+                        });
+                        if (newPath) {
+                          const base = newPath.split(/[\\/]/).pop()?.toLowerCase();
+                          if (!base?.includes('gswin')) {
+                            toast.error('El archivo seleccionado no es gswin64c.exe o gswin32c.exe');
+                            return;
+                          }
+                          updateSettings({ ghostscriptPath: newPath });
+                          toast.success('Ruta de Ghostscript actualizada', {
+                            description: newPath,
+                          });
+                        }
+                      } catch (err) {
+                        toast.error("Error al seleccionar el ejecutable");
+                      }
+                    }}
+                    className="h-12 px-6 rounded-xl font-bold border-border bg-card shrink-0"
+                  >
+                    Localizar gswin64c.exe
+                  </Button>
+                </div>
+              </div>
+
+              <Separator className="opacity-50" />
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
                   <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Motor OCR (Tesseract)</Label>
                   <Badge variant="outline" className="text-[10px] font-bold border-primary/20 text-primary">REQUERIDO PARA PDF ESCANEADOS</Badge>
                 </div>

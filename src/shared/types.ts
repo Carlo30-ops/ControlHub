@@ -91,6 +91,10 @@ export interface AppSettings {
   operatorEmail?: string;
   terapiasDir?: string;
   tesseractPath?: string;
+  /** Ruta manual al ejecutable de Word (WINWORD.EXE) */
+  wordExecutablePath?: string;
+  /** Ruta manual al ejecutable de Ghostscript (gswin64c.exe) */
+  ghostscriptPath?: string;
   /** Carpeta destino base del flujo Terapias (Año/Mes/Día/Paciente) */
   terapiasBaseDest?: string;
   /** Carpeta de respaldo PDF en Terapias */

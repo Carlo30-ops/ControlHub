@@ -176,7 +176,7 @@ interface ElectronAPI {
 
   terapias: {
     ping(): Promise<{ ok: boolean }>;
-    checkWord(): Promise<{ ok: boolean; word_installed: boolean; message?: string; error?: string }>;
+    checkWord(wordExecutablePath?: string): Promise<{ ok: boolean; word_installed: boolean; message?: string; error?: string }>;
     listDocs(): Promise<{ ok: boolean; files: { name: string; modified: number; size: number }[]; error?: string }>;
     prepare(data: TerapiasPrepareData): Promise<TerapiasResponse & { folder?: string; doc_path?: string; patient?: string }>;
     finalize(data: TerapiasFinalizeData): Promise<TerapiasResponse & { pdf_path?: string; backup_path?: string }>;

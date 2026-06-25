@@ -211,7 +211,7 @@ class TerapiasServiceImpl implements TerapiasService {
     }
   }
 
-  async checkStatus(): Promise<SidecarStatus> {
+  async checkStatus(wordExecutablePath?: string): Promise<SidecarStatus> {
     if (!window.electronAPI?.terapias?.ping || !window.electronAPI?.terapias?.checkWord) {
       logger.warn("Electron API terapias no disponible");
       return {
@@ -231,7 +231,7 @@ class TerapiasServiceImpl implements TerapiasService {
       let wordError: string | null = null;
 
       try {
-        wordRes = await window.electronAPI.terapias.checkWord();
+        wordRes = await window.electronAPI.terapias.checkWord(wordExecutablePath);
       } catch (error) {
         wordError = error instanceof Error ? error.message : String(error);
         logger.error("Error en checkWord:", wordError);
@@ -248,16 +248,19 @@ class TerapiasServiceImpl implements TerapiasService {
         };
       }
 
+      // Interpretar word_installed correctamente, con fallback a ok si word_installed no está definido
       const wordInstalled = wordRes.word_installed !== false;
+      const wordIsOk = wordRes.ok === true && wordInstalled;
+      
       const status = {
         ping: pingRes.ok === true,
-        word: wordRes.ok === true && wordInstalled,
+        word: wordIsOk,
         wordMessage: wordRes.message || '',
         loading: false,
-        error: wordRes.ok === true && wordInstalled ? null : wordRes.error || wordError,
+        error: wordIsOk ? null : (wordRes.error || wordError),
       };
       
-      logger.debug(`Terapias status: ping=${status.ping}, word=${status.word}`);
+      logger.debug(`Terapias status: ping=${status.ping}, word=${status.word}, wordMessage=${status.wordMessage}`);
       return status;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Error desconocido';

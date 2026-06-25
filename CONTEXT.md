@@ -433,6 +433,8 @@ También se puede usar `build_desktop.bat` desde la raíz de `ControlHub` para c
 
 > El instalador completo necesita que `python-embed/` exista en la raíz del repositorio y que contenga `python.exe`.
 
+> Validación: `release/ControlHub Setup 3.2.0.exe` existe y `release/win-unpacked/resources/python-embed/python.exe` está presente después del build.
+
 # Preview del bundle Vite (sin Electron)
 npm run preview
 

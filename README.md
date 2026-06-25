@@ -62,6 +62,8 @@ npm run build:electron
 
 > El instalador completo requiere que `python-embed/` esté presente en el repositorio raíz y contenga `python.exe`.
 
+> Validación: el instalador generado se encuentra en `release/ControlHub Setup 3.2.0.exe` y el runtime embebido está disponible en `release/win-unpacked/resources/python-embed/python.exe`.
+
 # Tests unitarios
 npm run test
 

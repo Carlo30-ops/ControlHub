@@ -85,12 +85,16 @@ DEFAULT_SOURCE = compute_default_source()
 # Referencia global para mantener Word "caliente"
 _word_app = None
 
-def find_word_executable():
+def find_word_executable(custom_path=None):
     """
     Busca dinámicamente el ejecutable de Word en el sistema.
-    Orden: Registry -> Rutas comunes -> PATH
+    Orden: Path configurado manualmente -> Registry -> Rutas comunes -> PATH
     """
-    # 1. Registro de Windows (App Paths) - fuente más confiable
+    # 1. Usar path configurado manualmente si existe y es válido
+    if custom_path and os.path.exists(custom_path):
+        return custom_path
+    
+    # 2. Registro de Windows (App Paths) - fuente más confiable
     try:
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\WINWORD.EXE") as key:
             path, _ = winreg.QueryValueEx(key, "")
@@ -127,36 +131,77 @@ def get_word_app():
     pythoncom.CoInitialize()
     try:
         if _word_app:
-            # Verificar si la instancia sigue viva
+            try:
+                # Verificar si la instancia sigue viva
+                _word_app.Visible = False
+                return _word_app, None
+            except Exception:
+                _word_app = None
+
+        try:
+            # Dispatch busca una instancia existente o crea una nueva
+            _word_app = win32com.client.Dispatch("Word.Application")
             _word_app.Visible = False
+            _word_app.DisplayAlerts = 0
             return _word_app, None
-    except Exception:
-        _word_app = None
+        except Exception as first_error:
+            try:
+                # Fallback a DispatchEx para crear una instancia COM limpia
+                _word_app = win32com.client.DispatchEx("Word.Application")
+                _word_app.Visible = False
+                _word_app.DisplayAlerts = 0
+                return _word_app, None
+            except Exception as second_error:
+                error_msg = str(second_error)
+                logger.error(f"No se pudo iniciar Word: {error_msg}")
+                return None, error_msg
+    finally:
+        if _word_app is None:
+            try:
+                pythoncom.CoUninitialize()
+            except Exception:
+                pass
 
-    try:
-        # Dispatch busca una instancia existente o crea una nueva
-        _word_app = win32com.client.Dispatch("Word.Application")
-        _word_app.Visible = False
-        _word_app.DisplayAlerts = 0
-        return _word_app, None
-    except Exception as e:
-        error_msg = str(e)
-        logger.error(f"No se pudo iniciar Word: {error_msg}")
-        return None, error_msg
 
-def handle_check_word():
+def handle_check_word(data):
     """Verifica si Word está disponible."""
+    custom_word_path = data.get("word_executable_path") if data else None
+    
     word, error = get_word_app()
     if word:
-        return {"ok": True, "message": "Microsoft Word está listo y persistente"}
-    else:
-        # Intentar diagnóstico adicional si Dispatch falló
-        word_path = find_word_executable()
-        detail = f"Ejecutable detectado en: {word_path}" if word_path else "No se detectó el ejecutable en rutas comunes ni PATH."
         return {
-            "ok": False, 
-            "error": f"No se pudo conectar con Microsoft Word (COM): {error}. {detail}"
+            "ok": True,
+            "word_installed": True,
+            "message": "Microsoft Word está listo y persistente"
         }
+
+    diagnostics = []
+    try:
+        reg_ok, reg_msg = check_word_install.check_word_in_registry()
+        diagnostics.append(reg_msg)
+    except Exception as diag_err:
+        diagnostics.append(f"Error al verificar registro: {diag_err}")
+
+    try:
+        exe_ok, exe_msg = check_word_install.check_word_executable()
+        diagnostics.append(exe_msg)
+    except Exception as diag_err:
+        diagnostics.append(f"Error al verificar ejecutable: {diag_err}")
+
+    try:
+        com_ok, com_msg = check_word_install.check_word_com()
+        diagnostics.append(com_msg)
+    except Exception as diag_err:
+        diagnostics.append(f"Error al verificar COM: {diag_err}")
+
+    word_path = find_word_executable(custom_word_path)
+    detail = f"Ejecutable detectado en: {word_path}" if word_path else "No se detectó el ejecutable en rutas comunes ni PATH."
+    return {
+        "ok": False,
+        "word_installed": False,
+        "message": "Microsoft Word no está disponible. Revisa el detalle de diagnóstico.",
+        "error": f"No se pudo conectar con Microsoft Word (COM): {error}. {detail} Detalles: {' | '.join(diagnostics)}"
+    }
 
 def handle_list_docs(data):
     """Lista archivos Word en la carpeta origen ordenados por mtime desc."""

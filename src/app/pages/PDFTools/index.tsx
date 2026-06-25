@@ -657,6 +657,18 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
 
   const handleActionRequest = async () => {
   if (!activeTool) return;
+  
+  // Validación de tamaño de archivos (usando size de FileInfo si está disponible)
+  const MAX_FILE_SIZE_MB = 50;
+  for (const file of files) {
+    if (file.size) {
+      const sizeMB = parseFloat(file.size) / (1024 * 1024);
+      if (sizeMB > MAX_FILE_SIZE_MB) {
+        toast.warning(`Archivo grande: ${file.name} (${sizeMB.toFixed(1)} MB). La operación puede tardar más.`);
+      }
+    }
+  }
+  
   // If askBeforeSave is enabled, prompt for destination before any confirmation modal
   if (askBeforeSave) {
     const srcFile = files[0];

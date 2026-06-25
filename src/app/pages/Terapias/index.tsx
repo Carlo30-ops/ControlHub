@@ -296,7 +296,7 @@ export default function Terapias() {
   const checkStatus = async (activeSource: string) => {
     setStatus((prev: SidecarStatus) => ({ ...prev, loading: true, error: null }));
     try {
-      const serviceStatus = await terapiasService.checkStatus();
+      const serviceStatus = await terapiasService.checkStatus(settings.wordExecutablePath);
       
       setStatus({
         ping: serviceStatus.ping,
@@ -350,7 +350,7 @@ export default function Terapias() {
       checkStatus(activeSource);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.terapiasDir, settings.terapiasBaseDest, settings.terapiasBackup]);
+  }, [settings.terapiasDir, settings.terapiasBaseDest, settings.terapiasBackup, settings.wordExecutablePath]);
 
   useEffect(() => {
     if (sidecarStatus.Terapias === 'running' && sourceDir.trim()) {

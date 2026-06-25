@@ -556,7 +556,11 @@ const pdfSidecar = new SidecarManager(
 
 // IPC Handlers para Terapias
 ipcMain.handle('terapias:ping', () => terapiasSidecar.send({ cmd: 'ping' }));
-ipcMain.handle('terapias:check_word', () => terapiasSidecar.send({ cmd: 'check_word' }));
+ipcMain.handle('terapias:check_word', async (_, wordExecutablePath?: string) => {
+  const settings = await getAppSettings();
+  const pathToUse = wordExecutablePath || settings.wordExecutablePath;
+  return terapiasSidecar.send({ cmd: 'check_word', data: { word_executable_path: pathToUse } });
+});
 ipcMain.handle('terapias:list_docs', async () => {
   const sourceDir = await getActiveTerapiasDir();
   return terapiasSidecar.send({ cmd: 'list_docs', data: { source_dir: sourceDir } });
@@ -600,7 +604,10 @@ const validatePdfHandler = (cmd: string, data: any) => {
   return pdfSidecar.send({ cmd, data });
 };
 ipcMain.handle('pdf:merge', (_, data) => validatePdfHandler('merge', data));
-ipcMain.handle('pdf:compress', (_, data) => validatePdfHandler('compress', data));
+ipcMain.handle('pdf:compress', async (_, data) => {
+  const settings = await getAppSettings();
+  return validatePdfHandler('compress', { ...data, ghostscript_path: settings.ghostscriptPath });
+});
 ipcMain.handle('pdf:split', (_, data) => validatePdfHandler('split', data));
 ipcMain.handle('pdf:rotate', (_, data) => validatePdfHandler('rotate', data));
 ipcMain.handle('pdf:extract', (_, data) => validatePdfHandler('extract', data));

@@ -55,6 +55,35 @@ try:
         
         return None
 
+    def resolve_ghostscript_path(user_path=None):
+        """Busca el ejecutable de Ghostscript en orden de prioridad."""
+        # 1. Ruta configurada por el usuario
+        if user_path and os.path.exists(user_path):
+            return user_path
+            
+        # 2. Rutas comunes en Windows
+        common_paths = [
+            r'C:\Program Files\gs\gs10.03.1\bin\gswin64c.exe',
+            r'C:\Program Files\gs\gs10.03.1\bin\gswin32c.exe',
+            r'C:\Program Files\gs\gs10.02.1\bin\gswin64c.exe',
+            r'C:\Program Files\gs\gs10.02.1\bin\gswin32c.exe',
+            r'C:\Program Files\gs\gs10.01.2\bin\gswin64c.exe',
+            r'C:\Program Files\gs\gs10.01.2\bin\gswin32c.exe',
+            r'C:\Program Files\gs\gs9.56.0\bin\gswin64c.exe',
+            r'C:\Program Files\gs\gs9.56.0\bin\gswin32c.exe',
+            r'C:\Program Files (x86)\gs\gs10.03.1\bin\gswin64c.exe',
+            r'C:\Program Files (x86)\gs\gs10.03.1\bin\gswin32c.exe',
+        ]
+        for p in common_paths:
+            if os.path.exists(p): return p
+            
+        # 3. Buscar en el PATH del sistema
+        import shutil
+        path_in_env = shutil.which("gswin64c") or shutil.which("gswin32c") or shutil.which("gs")
+        if path_in_env: return path_in_env
+        
+        return None
+
     # --- Helpers ---
     # ... (rest of the file content)
 except Exception as e:
@@ -101,13 +130,14 @@ def handle_compress(data):
         input_file = os.path.abspath(data.get("input", ""))
         output_file = os.path.abspath(data.get("output", "compressed.pdf"))
         level = data.get("level", "screen")
+        ghostscript_path = data.get("ghostscript_path")
+        
         if level == "fast":
             with pikepdf.open(input_file) as pdf:
                 pdf.save(output_file, linearize=True)
             return {"ok": True, "output": output_file, "engine": "pikepdf-fast"}
         
-        import shutil
-        gs_cmd = shutil.which("gswin64c") or shutil.which("gswin32c") or shutil.which("gs")
+        gs_cmd = resolve_ghostscript_path(ghostscript_path)
         if not gs_cmd:
             # Fallback 1: PyMuPDF (mejor compresión de imágenes)
             try:
@@ -882,7 +912,12 @@ def handle_pdf_to_word(data):
                     return _ok_result(output_file, base_warning, profile)
                 elif strategy == "pdf2docx":
                     pythoncom.CoInitialize()
-                    from pdf2docx import Converter
+                    try:
+                        from pdf2docx import Converter
+                    except ImportError:
+                        errors.append("pdf2docx: Librería no instalada. Ejecuta: pip install pdf2docx")
+                        continue
+                    
                     cv = Converter(input_file)
                     cv.convert(output_file,
                         start=0, end=None,
