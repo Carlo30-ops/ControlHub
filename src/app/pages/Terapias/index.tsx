@@ -166,21 +166,16 @@ export default function Terapias() {
 
     setIsListing(true);
     try {
-      const res = await window.electronAPI.terapias.listDocs();
-      if (res.ok) {
-        const files = (res as any).files;
-        setAvailableDocs(files);
-        if (files.length === 0) {
-          toast.error("No se encontró ningún documento Word en la carpeta origen");
-        } else if (files.length === 1) {
-          setForm(prev => ({ ...prev, filename: files[0].name }));
-          toast.success(`Archivo detectado: ${files[0].name}`);
-        } else {
-          setPickerMode('select');
-          setIsPickerOpen(true);
-        }
+      const files = await terapiasService.autoDetectWord(sourceDir);
+      setAvailableDocs(files);
+      if (files.length === 0) {
+        toast.error("No se encontró ningún documento Word en la carpeta origen");
+      } else if (files.length === 1) {
+        setForm(prev => ({ ...prev, filename: files[0].name }));
+        toast.success(`Archivo detectado: ${files[0].name}`);
       } else {
-        toast.error("Error al buscar archivos: " + res.error);
+        setPickerMode('select');
+        setIsPickerOpen(true);
       }
     } catch (err) {
       toast.error("Error crítico al buscar archivos");
@@ -211,10 +206,8 @@ export default function Terapias() {
 
   const fetchHistory = async () => {
     try {
-      const res = await window.electronAPI.terapias.getHistory();
-      if (res.ok) {
-        setHistory(res.history as HistoryEntry[]);
-      }
+      const history = await terapiasService.loadHistory();
+      setHistory(history);
     } catch (err) {
       console.error("Error fetching history:", err);
     }
@@ -334,13 +327,8 @@ export default function Terapias() {
     
     setIsSearching(true);
     try {
-      const res = await window.electronAPI.terapias.searchPatient({
-        query,
-        dest_root: form.baseDest
-      });
-      if (res.ok) {
-        setSearchResults(res.results as SearchResult[]);
-      }
+      const results = await terapiasService.searchPatients(query, sourceDir, form.baseDest);
+      setSearchResults(results);
     } catch (err) {
       console.error("Error searching patient:", err);
     } finally {
@@ -484,11 +472,12 @@ export default function Terapias() {
     setIsConfirmOpen(false);
     setIsProcessing(true);
     try {
-      const res = await window.electronAPI.terapias.prepare({
-        input_name: confirmData.inputName,
+      const res = await terapiasService.prepareDocument({
+        inputName: confirmData.inputName,
         filename: confirmData.filename,
-        base_dest: confirmData.destination
-      });
+        baseDest: confirmData.destination,
+        backup: form.backup,
+      }, sourceDir);
       
       if (res.ok) {
         setForm(prev => ({ ...prev, filename: confirmData.filename }));

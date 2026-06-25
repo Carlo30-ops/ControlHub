@@ -295,9 +295,9 @@ Ordenada por **impacto real en producción/uso diario**, no severidad teórica:
 | Layer separation | Media | ✅ RESUELTO (parcial: servicio creado, migración parcial UI) |
 | Rutas hardcodeadas OneDrive/Tesseract | Media | ✅ RESUELTO |
 | Validación tamaño database.json | Media | ✅ RESUELTO |
-| SidecarManager validación payload | Media | Pendiente |
-| Manejo errores OCR fallback | Media | Nueva |
-| Timeout operaciones database | Media | Nueva |
+| SidecarManager validación payload | Media | ✅ RESUELTO |
+| Manejo errores OCR fallback | Media | ✅ RESUELTO |
+| Timeout operaciones database | Media | ✅ RESUELTO |
 | Cobertura de pruebas | Baja | Pendiente |
 | Validación de inputs | Baja | Pendiente |
 | Virtualización tablas (P27) | Baja | Pendiente |
@@ -691,6 +691,39 @@ No hay issues de alta prioridad abiertas.
   - Todas las demás dependencias están en uso
 - **Conclusión**: No hay dependencias sin uso
 
+#### SidecarManager validación payload
+- **Agregada función `validateSidecarPayload`** en `electron/main.ts`:
+  - Valida que payload sea un objeto
+  - Valida campo `cmd` sea string válido
+  - Valida que `cmd` esté en lista de comandos permitidos
+  - Valida que `data` sea objeto si está presente
+  - Valida longitud de strings para prevenir ataques de inyección (max 10k caracteres)
+- **Integrada validación en método `send()`** de SidecarManager
+- **Agregado método público `isRunning()`** para verificar estado del sidecar
+- **Verificación**: `npm run typecheck` — 0 errores
+
+#### Manejo errores OCR fallback
+- **Mejorado handler `ocr:extractText`** en `electron/main.ts`:
+  - Validación de existencia de archivo PDF
+  - Validación de disponibilidad del sidecar usando `isRunning()`
+  - Validación de generación de imagen
+  - Logging mejorado con contexto detallado (error, pdfPath, imgPath, stack)
+  - Cleanup robusto de archivos temporales en éxito y error
+  - Manejo de null en imgPath para evitar errores de tipo
+- **Verificación**: `npm run typecheck` — 0 errores
+
+#### Timeout operaciones database
+- **Agregado timeout `DB_IO_TIMEOUT_MS = 5000ms`** en `electron/database.ts`
+- **Creada función `withTimeout<T>()`** para envolver operaciones de I/O con timeout
+- **Aplicado timeout a todas las operaciones de database**:
+  - `readDB`: access y readFile con timeout
+  - `getDBSize`: access y stat con timeout
+  - `writeDB`: writeFile con timeout
+  - `readSettings`: access y readFile con timeout
+  - `writeSettings`: writeFile con timeout
+- **Manejo de timeouts** con logging específico y retornos seguros
+- **Verificación**: `npm run typecheck` — 0 errores
+
 #### Navegación por teclado en FileDropZone
 - **Estado añadido:** `selectedIndex` para rastrear archivo seleccionado
 - **Navegación con flechas:** ArrowUp/ArrowDown para moverse entre archivos
@@ -749,7 +782,18 @@ No hay issues de alta prioridad abiertas.
 - P35: Agregada migración one-time de legacy `ordertrack-*` y `cotu-last-path` desde `localStorage` a AppSettings (`settings.json`) y `database.json`; marca de migración `migration.legacyLocalStorage` guardada en electron-store.
 - Build limpio confirmado post-sesión.
 
-### 2026-06-21 — PDF Tools: hardening completo de motores
+### 2026-06-25 — Deudas técnicas media prioridad
+- **SidecarManager validación payload**: Agregada función validateSidecarPayload con validación de comandos, tipos y longitud de strings. Integrada en método send() de SidecarManager. Agregado método público isRunning().
+- **Manejo errores OCR fallback**: Mejorado handler ocr:extractText con validaciones de archivo PDF, disponibilidad sidecar, generación de imagen. Logging mejorado con contexto detallado. Cleanup robusto de archivos temporales.
+- **Timeout operaciones database**: Agregado DB_IO_TIMEOUT_MS = 5000ms. Creada función withTimeout<T>() para envolver operaciones I/O. Aplicado a readDB, getDBSize, writeDB, readSettings, writeSettings.
+- **Layer separation (continuación)**: Migración parcial en Terapias/index.tsx (checkStatus, fetchDocs migrados a terapiasService). Actualizado terapiasService con método checkStatus() e interfaz SidecarStatus.
+- **Encoding corruptos preload.ts**: Reescrito archivo completo con encoding UTF-8 correcto.
+- **Comentarios duplicados database.ts**: Consolidados comentarios Fix #11 en encabezado, removidos duplicados.
+- **Dependencias no utilizadas**: Verificadas todas las dependencias, todas en uso.
+- **Verificación**: `npm run typecheck` — 0 errores después de cada cambio.
+
+### 2026-06-25 — Deudas técnicas baja prioridad
+- **Validación tamaño database.json**: Agregado umbral crítico CRITICAL_SIZE_MB = 200 MB. Modificado writeDB para rechazar escrituras si supera umbral. Agregado sizeBytes a DbStats.
 - P38: compress con cadena GS → fitz → pikepdf.
 - P39: finally defensivo en word_to_pdf, excel_to_pdf, ppt_to_pdf.
 - P40: crop con cropbox absoluto y clamp por página.

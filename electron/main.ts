@@ -273,6 +273,43 @@ const SIDECAR_COMMAND_TIMEOUTS: Record<string, number> = {
   'ocr': 300000,           // 5 minutos
 };
 
+// Validación de payload para sidecar
+interface SidecarPayload {
+  id?: string;
+  cmd?: string;
+  data?: any;
+}
+
+function validateSidecarPayload(payload: any): { valid: boolean; error?: string } {
+  if (!payload || typeof payload !== 'object') {
+    return { valid: false, error: 'Payload must be an object' };
+  }
+
+  if (!payload.cmd || typeof payload.cmd !== 'string') {
+    return { valid: false, error: 'Payload must have a valid cmd field' };
+  }
+
+  const validCommands = Object.keys(SIDECAR_COMMAND_TIMEOUTS);
+  if (!validCommands.includes(payload.cmd)) {
+    return { valid: false, error: `Unknown command: ${payload.cmd}. Valid commands: ${validCommands.join(', ')}` };
+  }
+
+  // Validar que data sea un objeto si está presente
+  if (payload.data !== undefined && typeof payload.data !== 'object') {
+    return { valid: false, error: 'Payload data must be an object if present' };
+  }
+
+  // Validar longitud de strings para prevenir ataques de inyección
+  const maxStringLength = 10000;
+  for (const [key, value] of Object.entries(payload)) {
+    if (typeof value === 'string' && value.length > maxStringLength) {
+      return { valid: false, error: `Field ${key} exceeds maximum length of ${maxStringLength} characters` };
+    }
+  }
+
+  return { valid: true };
+}
+
 class SidecarManager {
   private process: ChildProcess | null = null;
   private name: string;
@@ -401,6 +438,13 @@ class SidecarManager {
         return reject(new Error(`El proceso Python ${this.name} no está iniciado.`));
       }
 
+      // Validar payload antes de enviar
+      const validation = validateSidecarPayload(payload);
+      if (!validation.valid) {
+        logger.error(`[Sidecar] ${this.name}: Payload validation failed: ${validation.error}`);
+        return reject(new Error(`Payload validation failed: ${validation.error}`));
+      }
+
       const id = (++this.requestIdCounter).toString();
       payload.id = id;
 
@@ -470,6 +514,10 @@ class SidecarManager {
       this.process = null;
     }
     this.setStatus('closed');
+  }
+
+  isRunning(): boolean {
+    return this.status === 'running' || this.status === 'ok';
   }
 }
 
@@ -595,7 +643,19 @@ ipcMain.handle('ocr:extractText', async (_, pdfPath: string) => {
   const tempDir = path.join(os.tmpdir(), 'controlhub-ocr');
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 
+  let imgPath: string | null = null;
+
   try {
+    // Validar que el archivo PDF existe
+    if (!fs.existsSync(pdfPath)) {
+      throw new Error(`Archivo PDF no existe: ${pdfPath}`);
+    }
+
+    // Validar que el sidecar esté disponible
+    if (!pdfSidecar.isRunning()) {
+      throw new Error('Sidecar PDF no está disponible para OCR fallback');
+    }
+
     // 1. Convertir página 1 del PDF a JPG usando el sidecar
     // Solicitar al sidecar solo la primera página para OCR (reduce I/O y tiempo)
     const res = await pdfSidecar.send({ 
@@ -607,8 +667,13 @@ ipcMain.handle('ocr:extractText', async (_, pdfPath: string) => {
       throw new Error(res.error || 'Fallo al convertir PDF a imagen');
     }
 
-    const imgPath = res.outputs[0];
+    imgPath = res.outputs[0];
     
+    // Validar que la imagen se generó correctamente
+    if (!imgPath || !fs.existsSync(imgPath)) {
+      throw new Error(`Imagen generada no existe: ${imgPath}`);
+    }
+
     // 2. Extraer texto con Tesseract en el Main Process
     // Pasar explícitamente `workerPath` para evitar que tesseract.js construya
     // una ruta relativa errónea durante el bundle (ver issue con worker-script).
@@ -621,14 +686,39 @@ ipcMain.handle('ocr:extractText', async (_, pdfPath: string) => {
         return { workerPath: path.join(__dirname, '..', 'node_modules', 'tesseract.js', 'src', 'worker', 'node', 'index.js') };
       }
     })();
+
+    logger.debug('[MAIN-OCR] Iniciando reconocimiento Tesseract para:', imgPath);
     const { data: { text } } = await Tesseract.recognize(imgPath, 'spa', workerOptions);
     
     // 3. Limpiar archivo temporal
-    fs.unlinkSync(imgPath);
+    if (imgPath && fs.existsSync(imgPath)) {
+      try {
+        fs.unlinkSync(imgPath);
+        logger.debug('[MAIN-OCR] Archivo temporal eliminado:', imgPath);
+      } catch (cleanupErr) {
+        logger.warn('[MAIN-OCR] Error eliminando archivo temporal:', cleanupErr);
+      }
+    }
     
     return text;
   } catch (err: any) {
-    logger.error('[MAIN-OCR] Error:', err);
+    logger.error('[MAIN-OCR] Error en OCR fallback:', {
+      error: err.message,
+      pdfPath,
+      imgPath,
+      stack: err.stack
+    });
+
+    // Intentar limpiar archivo temporal incluso en caso de error
+    if (imgPath && fs.existsSync(imgPath)) {
+      try {
+        fs.unlinkSync(imgPath);
+      } catch (cleanupErr) {
+        logger.warn('[MAIN-OCR] Error eliminando archivo temporal después de error:', cleanupErr);
+      }
+    }
+
+    // Retornar string vacío en caso de error para mantener compatibilidad
     return "";
   }
 });

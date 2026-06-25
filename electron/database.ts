@@ -36,6 +36,9 @@ const WARN_SIZE_MB = 50;
 /** Umbral crítico en MB. Se rechaza la escritura si se excede. */
 const CRITICAL_SIZE_MB = 200;
 
+/** Timeout para operaciones de I/O de database (en ms) */
+const DB_IO_TIMEOUT_MS = 5000;
+
 // Rutas de datos
 const DB_PATH = path.join(app.getPath('userData'), 'database.json');
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
@@ -74,25 +77,46 @@ const DEFAULT_SETTINGS = {
 
 // ── Helpers de I/O async ─────────────────────────────────────────────────────
 
+/**
+ * Wrapper para agregar timeout a operaciones de I/O
+ */
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
+    const timeout = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+            reject(new Error(`Timeout en operación de database: ${operation} (${timeoutMs}ms)`));
+        }, timeoutMs);
+    });
+
+    return Promise.race([promise, timeout]);
+}
+
 async function readDB(): Promise<ScanResult[]> {
     try {
-        await fs.promises.access(DB_PATH);
-        const data = await fs.promises.readFile(DB_PATH, 'utf-8');
+        await withTimeout(fs.promises.access(DB_PATH), DB_IO_TIMEOUT_MS, 'readDB access');
+        const data = await withTimeout(fs.promises.readFile(DB_PATH, 'utf-8'), DB_IO_TIMEOUT_MS, 'readDB readFile');
         return JSON.parse(data) as ScanResult[];
-    } catch {
+    } catch (error) {
+        if (error instanceof Error && error.message.includes('Timeout')) {
+            console.error('[database] Timeout en readDB, retornando array vacío');
+            return [];
+        }
         return [];
     }
 }
 
 async function getDBSize(): Promise<{ sizeMB: number; sizeBytes: number; scanCount: number }> {
     try {
-        await fs.promises.access(DB_PATH);
-        const stats = await fs.promises.stat(DB_PATH);
+        await withTimeout(fs.promises.access(DB_PATH), DB_IO_TIMEOUT_MS, 'getDBSize access');
+        const stats = await withTimeout(fs.promises.stat(DB_PATH), DB_IO_TIMEOUT_MS, 'getDBSize stat');
         const sizeBytes = stats.size;
         const sizeMB = sizeBytes / (1024 * 1024);
         const data = await readDB();
         return { sizeMB, sizeBytes, scanCount: data.length };
-    } catch {
+    } catch (error) {
+        if (error instanceof Error && error.message.includes('Timeout')) {
+            console.error('[database] Timeout en getDBSize, retornando valores por defecto');
+            return { sizeMB: 0, sizeBytes: 0, scanCount: 0 };
+        }
         return { sizeMB: 0, sizeBytes: 0, scanCount: 0 };
     }
 }
@@ -117,8 +141,12 @@ async function writeDB(data: ScanResult[]): Promise<void> {
             );
         }
         
-        await fs.promises.writeFile(DB_PATH, json, 'utf-8');
+        await withTimeout(fs.promises.writeFile(DB_PATH, json, 'utf-8'), DB_IO_TIMEOUT_MS, 'writeDB writeFile');
     } catch (error) {
+        if (error instanceof Error && error.message.includes('Timeout')) {
+            console.error('[database] Timeout en writeDB, datos no guardados');
+            throw new Error('Timeout al guardar database.json');
+        }
         console.error('[database] Error escribiendo DB:', error);
         throw error;
     }
@@ -126,18 +154,30 @@ async function writeDB(data: ScanResult[]): Promise<void> {
 
 async function readSettings(): Promise<any> {
     try {
-        await fs.promises.access(SETTINGS_PATH);
-        const data = await fs.promises.readFile(SETTINGS_PATH, 'utf-8');
+        await withTimeout(fs.promises.access(SETTINGS_PATH), DB_IO_TIMEOUT_MS, 'readSettings access');
+        const data = await withTimeout(fs.promises.readFile(SETTINGS_PATH, 'utf-8'), DB_IO_TIMEOUT_MS, 'readSettings readFile');
         return JSON.parse(data);
-    } catch {
+    } catch (error) {
+        if (error instanceof Error && error.message.includes('Timeout')) {
+            console.error('[database] Timeout en readSettings, retornando null');
+            return null;
+        }
         return null;
     }
 }
 
 async function writeSettings(settings: any): Promise<void> {
     try {
-        await fs.promises.writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8');
+        await withTimeout(
+            fs.promises.writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8'),
+            DB_IO_TIMEOUT_MS,
+            'writeSettings writeFile'
+        );
     } catch (error) {
+        if (error instanceof Error && error.message.includes('Timeout')) {
+            console.error('[database] Timeout en writeSettings, settings no guardados');
+            throw new Error('Timeout al guardar settings.json');
+        }
         console.error('[database] Error escribiendo Settings:', error);
     }
 }

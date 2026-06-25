@@ -25,26 +25,26 @@ export interface FileMetadata {
 }
 
 export interface HistoryEntry {
-  id: string;
-  timestamp: number;
-  filename: string;
+  date: string;
   patient: string;
-  destination: string;
-  status: 'completed' | 'failed';
+  filename: string;
+  pdfPath: string;
+  backupPath: string;
 }
 
 export interface SearchResult {
-  id: string;
   name: string;
   path: string;
-  matchedFields: string[];
+  lastModified: number;
 }
 
 export interface PrepareResult {
-  docPath: string | null;
+  ok: boolean;
+  doc_path: string | null;
   patient: string | null;
   folder: string | null;
-  metadata?: unknown;
+  pdf_path?: string;
+  error?: string;
 }
 
 export interface SidecarStatus {
@@ -57,9 +57,10 @@ export interface SidecarStatus {
 
 export interface TerapiasService {
   listDocuments(sourceDir: string): Promise<FileMetadata[]>;
+  autoDetectWord(sourceDir: string): Promise<FileMetadata[]>;
   prepareDocument(form: FormState, sourceDir: string): Promise<PrepareResult>;
-  finalizeDocument(prepareResult: PrepareResult, outputPath: string, backupPath: string): Promise<void>;
-  searchPatients(query: string, sourceDir: string): Promise<SearchResult[]>;
+  finalizeDocument(outputPath: string, backupPath: string, patientName: string): Promise<{ ok: boolean; pdf_path?: string; error?: string }>;
+  searchPatients(query: string, sourceDir: string, destRoot?: string): Promise<SearchResult[]>;
   loadHistory(): Promise<HistoryEntry[]>;
   checkStatus(): Promise<SidecarStatus>;
 }
@@ -86,6 +87,27 @@ class TerapiasServiceImpl implements TerapiasService {
     }
   }
 
+  async autoDetectWord(sourceDir: string): Promise<FileMetadata[]> {
+    if (!window.electronAPI?.terapias?.listDocs) {
+      throw new Error('Electron API no disponible');
+    }
+
+    try {
+      const res = await window.electronAPI.terapias.listDocs();
+      if (!res.ok) {
+        throw new Error(res.error || 'Error al buscar archivos');
+      }
+      return res.files.map((f: any) => ({
+        name: f.name || '',
+        path: f.path || '',
+        modified: f.modified || 0,
+        size: f.size || 0,
+      }));
+    } catch (error) {
+      throw new Error(`Error en auto-detección: ${error}`);
+    }
+  }
+
   async prepareDocument(form: FormState, sourceDir: string): Promise<PrepareResult> {
     if (!window.electronAPI?.terapias?.prepare) {
       throw new Error('Electron API no disponible');
@@ -101,33 +123,41 @@ class TerapiasServiceImpl implements TerapiasService {
       });
 
       return {
-        docPath: result.doc_path || null,
+        ok: result.ok || false,
+        doc_path: result.doc_path || null,
         patient: result.patient || null,
         folder: result.folder || null,
-        metadata: result.metadata,
+        pdf_path: result.pdf_path as string | undefined,
+        error: result.error as string | undefined,
       };
     } catch (error) {
       throw new Error(`Error preparando documento: ${error}`);
     }
   }
 
-  async finalizeDocument(prepareResult: PrepareResult, outputPath: string, backupPath: string): Promise<void> {
+  async finalizeDocument(outputPath: string, backupPath: string, patientName: string): Promise<{ ok: boolean; pdf_path?: string; error?: string }> {
     if (!window.electronAPI?.terapias?.finalize) {
       throw new Error('Electron API no disponible');
     }
 
     try {
-      await window.electronAPI.terapias.finalize({
+      const result = await window.electronAPI.terapias.finalize({
         output_path: outputPath,
         backup_path: backupPath,
-        patient_name: prepareResult.patient || '',
+        patient_name: patientName,
       });
+
+      return {
+        ok: result.ok || false,
+        pdf_path: result.pdf_path as string | undefined,
+        error: result.error as string | undefined,
+      };
     } catch (error) {
       throw new Error(`Error finalizando documento: ${error}`);
     }
   }
 
-  async searchPatients(query: string, sourceDir: string): Promise<SearchResult[]> {
+  async searchPatients(query: string, sourceDir: string, destRoot?: string): Promise<SearchResult[]> {
     if (!window.electronAPI?.terapias?.searchPatient) {
       throw new Error('Electron API no disponible');
     }
@@ -136,13 +166,13 @@ class TerapiasServiceImpl implements TerapiasService {
       const result = await window.electronAPI.terapias.searchPatient({
         query,
         source_dir: sourceDir,
+        dest_root: destRoot,
       });
 
       return (result.results || []).map((r: any) => ({
-        id: r.id || '',
         name: r.name || '',
         path: r.path || '',
-        matchedFields: r.matched_fields || [],
+        lastModified: r.last_modified || r.lastModified || 0,
       }));
     } catch (error) {
       throw new Error(`Error buscando pacientes: ${error}`);
@@ -157,12 +187,11 @@ class TerapiasServiceImpl implements TerapiasService {
     try {
       const result = await window.electronAPI.terapias.getHistory();
       return (result.history || []).map((h: any) => ({
-        id: h.id || '',
-        timestamp: h.timestamp || 0,
-        filename: h.filename || '',
+        date: h.date || new Date(h.timestamp || 0).toISOString(),
         patient: h.patient || '',
-        destination: h.destination || '',
-        status: h.status || 'completed',
+        filename: h.filename || '',
+        pdfPath: h.pdf_path || h.destination || '',
+        backupPath: h.backup_path || '',
       }));
     } catch (error) {
       console.error('Error cargando historial:', error);
