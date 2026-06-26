@@ -945,3 +945,47 @@ No hay issues de alta prioridad abiertas.
 - **La norma 18 es obligatoria para cualquier tarea de reorganización de archivos**, no solo deseable: ninguna tarea de mover/renombrar/eliminar se considera completa sin un informe final listando cada cambio.
 - Estas normas no sustituyen las reglas existentes en la sección "9. Lo que NO hacer" — ambas aplican; en caso de conflicto entre estas políticas y una entrada de "Lo que NO hacer", prevalece "Lo que NO hacer".
 
+
+## RULES.md (merged)
+# RULES
+
+1. Toda documentación nueva va en CONTEXT.md, no en archivos markdown separados.
+2. No crear archivos `CHANGELOG_*`, `ARCHITECTURE_*`, `README_*`, `TESTING_*`, `EXECUTIVE_SUMMARY_*` por feature individual.
+3. El build debe pasar limpio antes de declarar cualquier issue como resuelto.
+4. No agregar dependencias sin verificar que no estén ya en package.json.
+5. Antes de declarar un fix de optimización de rendimiento como funcional, confirmar con logs reales en consola que el camino optimizado se ejecuta — un fallback silencioso a comportamiento anterior puede pasar desapercibido si solo se valida que "no rompió nada", sin confirmar que la mejora realmente se activó.
+6. Fuente de verdad del proyecto: CONTEXT.md y package.json. El README.md es solo onboarding público.
+7. Cada sesión de trabajo cierra con una sola actualización a CONTEXT.md, no con múltiples archivos de resumen.
+8. Configuración de usuario (`terapiasDir`, `tesseractPath`, rutas Terapias, columnas, etc.) persiste solo en `settings.json` vía `db:saveSettings`. `electron-store` reserva flags de migración one-time.
+9. La modularización de PDFTools se documenta en CONTEXT.md y los hooks/componentes se crean bajo `src/app/pages/PDFTools/hooks/` y `src/app/pages/PDFTools/components/`.
+
+## CONTRIBUTING.md (merged)
+# Contribuir a ControlHub
+
+Gracias por tu interés en mejorar ControlHub. Este proyecto es una app Electron + React orientada a **Windows**.
+
+## Antes de empezar
+
+1. Lee [CONTEXT.md](./CONTEXT.md) para arquitectura, IPC, lógica COTU y decisiones ya tomadas.
+2. Revisa la sección **15. Lógica de negocio COTU** en CONTEXT si tocas el escáner.
+3. No reintroduzcas patrones descartados (ver sección "Lo que NO hacer" en CONTEXT.md).
+
+## Entorno de desarrollo
+
+```bash
+npm install
+npm run dev
+```
+
+Verifica cambios con:
+
+```bash
+npm run build
+npm run test
+```
+
+Para sidecar Python:
+
+```bash
+pip install -r requirements.txt
+```

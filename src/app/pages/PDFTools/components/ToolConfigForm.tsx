@@ -17,26 +17,12 @@ export default function ToolConfigForm({
   params: Record<string, any>;
   onChange: (key: string, value: any) => void;
 }) {
-  const [errors, setErrors] = useState<Record<string, string>>({});
+import { setError, clearError, validateNotEmpty, sanitizeInput } from "../utils/validation";
 
-  if (!activeTool) return null;
+  const setError = (field: string, msg: string) => setError(setErrors, field, msg);
+  const clearError = (field: string) => clearError(setErrors, field);
+  const validateNotEmpty = (field: string, value: any, label: string) => validateNotEmpty(setErrors, field, value, label);
 
-  const setError = (field: string, msg: string) =>
-    setErrors((prev) => ({ ...prev, [field]: msg }));
-  const clearError = (field: string) =>
-    setErrors((prev) => {
-      const { [field]: _, ...rest } = prev;
-      return rest;
-    });
-
-  const validateNotEmpty = (field: string, value: any, label: string) => {
-    if (!value || (typeof value === 'string' && !value.trim())) {
-      setError(field, `${label} es obligatorio`);
-      return false;
-    }
-    clearError(field);
-    return true;
-  };
 
   // Render specific fields based on tool id – extend as needed.
   switch (activeTool.id) {
