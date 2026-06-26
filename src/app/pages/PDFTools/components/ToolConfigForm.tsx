@@ -27,6 +27,8 @@ export default function ToolConfigForm({
   const validateNotEmpty = (field: string, value: any, label: string) => validateFieldNotEmpty(setErrors, field, value, label);
 
 
+if (!activeTool) return null;
+
   // Render specific fields based on tool id – extend as needed.
   switch (activeTool.id) {
     case 'split':

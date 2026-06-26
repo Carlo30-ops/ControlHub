@@ -216,6 +216,39 @@ export default function Terapias() {
     }
   };
 
+// Added function to handle prepare with skip SS, moved before useEffect to avoid TDZ
+async function handlePrepareWithSkipSS() {
+  setIsSSAlertOpen(false);
+  const patientName = getPatientFromInput(form.inputName); // Will be PACIENTE_DESCONOCIDO
+
+  // Step 1: Find Word document using terapias:listDocs (consistent with rest of module)
+  let filename = form.filename;
+  if (!filename) {
+    const docs = await terapiasService.listDocuments(sourceDir);
+    if (docs.length === 0) {
+      toast.error("No se encontró ningún documento Word en la carpeta configurada.");
+      return;
+    }
+    if (docs.length > 1) {
+      setAvailableDocs(docs);
+      setPickerMode('prepare');
+      setIsPickerOpen(true);
+      return;
+    }
+    filename = docs[0].name;
+  }
+
+  setConfirmData({
+    filename,
+    inputName: form.inputName,
+    patient: patientName,
+    destination: getFinalPathPreview(form.baseDest, patientName)
+  });
+  setIsConfirmOpen(true);
+}
+
+useEffect(() => {
+
   useEffect(() => {
     if (location.pathname !== "/terapias") return;
 
@@ -308,6 +341,7 @@ export default function Terapias() {
     step.current,
     interactionsLocked,
     isProcessing,
+    // handlePrepareWithSkipSS moved above, safe to reference now
     handlePrepareWithSkipSS,
     executePrepare,
     handleFinalize
@@ -528,35 +562,6 @@ export default function Terapias() {
     setIsConfirmOpen(true);
   };
 
-  const handlePrepareWithSkipSS = async () => {
-    setIsSSAlertOpen(false);
-    const patientName = getPatientFromInput(form.inputName); // Será PACIENTE_DESCONOCIDO
-
-    // Paso 1: Buscar archivo Word usando terapias:listDocs (consistente con el resto del módulo)
-    let filename = form.filename;
-    if (!filename) {
-      const docs = await terapiasService.listDocuments(sourceDir);
-      if (docs.length === 0) {
-        toast.error("No se encontró ningún documento Word en la carpeta configurada.");
-        return;
-      }
-      if (docs.length > 1) {
-        setAvailableDocs(docs);
-        setPickerMode('prepare');
-        setIsPickerOpen(true);
-        return;
-      }
-      filename = docs[0].name;
-    }
-
-    setConfirmData({
-      filename,
-      inputName: form.inputName,
-      patient: patientName,
-      destination: getFinalPathPreview(form.baseDest, patientName)
-    });
-    setIsConfirmOpen(true);
-  };
 
   const executePrepare = async () => {
     if (!confirmData) return;
@@ -617,9 +622,19 @@ export default function Terapias() {
       if (res.ok) {
         toast.success("PDF generado y archivo original respaldado");
         
-        // Registrar el nuevo directorio de salida en la lista de permitidos antes de abrir
-        if (window.electronAPI?.security?.registerApprovedDirectory && step.folder) {
-          await window.electronAPI.security.registerApprovedDirectory(step.folder).catch(() => {});
+        // Registrar directorios en allowlist ANTES de llamar revealInFolder
+        if (window.electronAPI?.security?.registerApprovedDirectory) {
+          const foldersToRegister = [
+            step.folder,
+            res.pdf_path ? res.pdf_path.substring(0, res.pdf_path.lastIndexOf('\\')) : null,
+            form.baseDest || null,
+          ].filter(Boolean) as string[];
+
+          await Promise.all(
+            foldersToRegister.map(f =>
+              window.electronAPI.security.registerApprovedDirectory(f).catch(() => {})
+            )
+          );
         }
 
         // Revelar en carpeta automáticamente
@@ -850,7 +865,16 @@ export default function Terapias() {
                   </Button>
 
                   <Dialog open={isSSAlertOpen} onOpenChange={setIsSSAlertOpen}>
-                    <DialogContent className="rounded-2xl border-border bg-card shadow-md">
+                    <DialogContent
+                      className="rounded-2xl border-border bg-card shadow-md"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handlePrepareWithSkipSS();
+                        }
+                      }}
+                    >
                       <DialogHeader>
                         <DialogTitle className="text-xl font-bold flex items-center gap-2">
                           <AlertCircle className="w-6 h-6 text-amber-500" />
@@ -882,7 +906,16 @@ export default function Terapias() {
                   </Dialog>
 
                   <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
-                    <AlertDialogContent className="rounded-2xl border-border bg-card border-border shadow-md">
+                    <AlertDialogContent
+                      className="rounded-2xl border-border bg-card border-border shadow-md"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          executePrepare();
+                        }
+                      }}
+                    >
                       <AlertDialogHeader>
                         <AlertDialogTitle className="text-xl font-bold">Confirmar Organización</AlertDialogTitle>
                         <AlertDialogDescription className="text-sm font-medium space-y-4 pt-4 text-muted-foreground">
@@ -924,7 +957,28 @@ export default function Terapias() {
                   </AlertDialog>
 
                   <AlertDialog open={isPickerOpen} onOpenChange={setIsPickerOpen}>
-                    <AlertDialogContent className="max-w-2xl rounded-2xl border-border bg-card border-border shadow-md">
+                    <AlertDialogContent
+                      className="max-w-2xl rounded-2xl border-border bg-card border-border shadow-md"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && availableDocs.length > 0) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const doc = availableDocs[0];
+                          setForm(prev => ({ ...prev, filename: doc.name }));
+                          setIsPickerOpen(false);
+                          if (pickerMode === 'prepare') {
+                            const patientName = getPatientFromInput(form.inputName);
+                            setConfirmData({
+                              filename: doc.name,
+                              inputName: form.inputName,
+                              patient: patientName,
+                              destination: getFinalPathPreview(form.baseDest, patientName)
+                            });
+                            setIsConfirmOpen(true);
+                          }
+                        }
+                      }}
+                    >
                       <AlertDialogHeader>
                         <AlertDialogTitle className="text-xl font-bold">Seleccionar Documento</AlertDialogTitle>
                         <AlertDialogDescription className="text-sm font-medium pt-4 text-muted-foreground">
