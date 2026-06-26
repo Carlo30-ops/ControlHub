@@ -92,6 +92,47 @@ flowchart TB
   PB -->|pikepdf fitz win32com| PyLibs[Python libs]
 ```
 
+### Aislamiento de módulos (Layer Separation)
+
+Para garantizar la independencia, desacoplamiento y consistencia de los submódulos principales del frontend, se ha implementado una estrategia de segregación y typechecking por módulos usando archivos `tsconfig` dedicados:
+
+*   **Estrategia TSConfig:** Cada módulo de negocio independiente tiene su propio archivo de configuración que extiende al principal:
+    *   [tsconfig.pdftools.json](file:///C:/DEV/TODO%20EN%20UNO/ControlHub/tsconfig.pdftools.json) (Herramientas PDF)
+    *   [tsconfig.terapias.json](file:///C:/DEV/TODO%20EN%20UNO/ControlHub/tsconfig.terapias.json) (Organizador de Terapias)
+    *   [tsconfig.reports.json](file:///C:/DEV/TODO%20EN%20UNO/ControlHub/tsconfig.reports.json) (Reportes COTU Analytics)
+*   **Propósito de `noEmit: true`:** Dado que el compilador y empaquetador del build de producción es Vite (a través de `esbuild` para transpilación veloz y `rollup` para bundling), los archivos `tsconfig.*.json` tienen como única responsabilidad la **verificación estática de tipos (typechecking)** sin generar archivos de salida (`js`), evitando conflictos en el output.
+*   **Archivos Incluidos (`include`):** Cada tsconfig del módulo restringe su análisis de forma estricta a su ruta bajo `src/app/pages/<Modulo>`, pero incluye de forma explícita las dependencias comunes y globales para la resolución de tipos:
+    *   El archivo de tipos globales `src/electron.d.ts` (para `window.electronAPI`).
+    *   Interfaces de dominio centralizadas en `src/shared/types.ts`.
+    *   Contextos, componentes y utilidades compartidas requeridas.
+
+```mermaid
+graph TD
+    RootTS[tsconfig.json raíz] -->|references| TS_PDF[tsconfig.pdftools.json]
+    RootTS -->|references| TS_TER[tsconfig.terapias.json]
+    RootTS -->|references| TS_REP[tsconfig.reports.json]
+
+    subgraph PDFTools [Módulo PDFTools]
+        TS_PDF -.->|typecheck strictly| Pages_PDF[src/app/pages/PDFTools/*]
+    end
+
+    subgraph Terapias [Módulo Terapias]
+        TS_TER -.->|typecheck strictly| Pages_TER[src/app/pages/Terapias/*]
+    end
+
+    subgraph Reports [Módulo Reports]
+        TS_REP -.->|typecheck strictly| Pages_REP[src/app/pages/Reports/*]
+    end
+
+    SharedTypes[src/shared/types.ts] -.->|included by all| TS_PDF
+    SharedTypes -.->|included by all| TS_TER
+    SharedTypes -.->|included by all| TS_REP
+
+    ElectronTypes[src/electron.d.ts] -.->|included by all| TS_PDF
+    ElectronTypes -.->|included by all| TS_TER
+    ElectronTypes -.->|included by all| TS_REP
+```
+
 ### Flujo COTU (escaneo de facturas)
 
 ```text

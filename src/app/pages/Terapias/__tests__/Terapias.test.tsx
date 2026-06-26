@@ -76,7 +76,9 @@ describe("Terapias Component", () => {
       loading: false,
       error: null,
     });
-    vi.spyOn(terapiasService, "listDocuments").mockResolvedValue([]);
+    vi.spyOn(terapiasService, "listDocuments").mockResolvedValue([
+      { name: "documento_con_ss.docx", modified: Date.now(), size: 1024, path: "C:\\terapias\\origen\\documento_con_ss.docx" }
+    ]);
     vi.spyOn(terapiasService, "loadHistory").mockResolvedValue([]);
     vi.spyOn(terapiasService, "autoDetectWord").mockResolvedValue([]);
     vi.spyOn(terapiasService, "searchPatients").mockResolvedValue([]);
@@ -273,7 +275,12 @@ describe("Terapias Component", () => {
 
   // Test 10: Flujo de finalización exitoso
   it("should successfully finalize document, generate PDF and backup original", async () => {
-    vi.spyOn(terapiasService, "listDocuments").mockResolvedValue([{ name: "documento_con_ss.docx", modified: Date.now(), size: 1024, path: "C:\\terapias\\origen\\documento_con_ss.docx" }]);
+    const listDocsSpy = vi.spyOn(terapiasService, "listDocuments");
+    listDocsSpy.mockResolvedValueOnce([
+      { name: "documento_con_ss.docx", modified: Date.now(), size: 1024, path: "C:\\terapias\\origen\\documento_con_ss.docx" }
+    ]);
+    // La siguiente llamada (después de finalizar) devolverá vacío
+    listDocsSpy.mockResolvedValueOnce([]); 
     vi.spyOn(terapiasService, "prepareDocument").mockResolvedValue({
       ok: true,
       doc_path: "C:\\terapias\\destino\\2026\\06-JUNIO\\25 DE JUNIO\\Maria Delgado\\documento_con_ss.docx",
@@ -284,7 +291,6 @@ describe("Terapias Component", () => {
       ok: true,
       pdf_path: "C:\\terapias\\destino\\2026\\06-JUNIO\\25 DE JUNIO\\Maria Delgado\\documento_con_ss.pdf",
     });
-    vi.spyOn(terapiasService, "listDocuments").mockResolvedValue([]); // Para el fetchDocs después de finalizar
     vi.spyOn(terapiasService, "loadHistory").mockResolvedValue([]); // Para el fetchHistory después de finalizar
 
     renderComponent();
