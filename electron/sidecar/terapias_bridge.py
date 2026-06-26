@@ -88,41 +88,38 @@ _word_app = None
 def find_word_executable(custom_path=None):
     """
     Busca dinámicamente el ejecutable de Word en el sistema.
-    Orden: Path configurado manualmente -> Registry -> Rutas comunes -> PATH
+    Basado en Organizador robusto - más simple y robusto.
+    Orden: Path configurado manualmente -> Rutas comunes -> PATH
     """
-    # 1. Usar path configurado manualmente si existe y es válido
-    if custom_path and os.path.exists(custom_path):
-        return custom_path
+    candidates = []
     
-    # 2. Registro de Windows (App Paths) - fuente más confiable
-    try:
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\WINWORD.EXE") as key:
-            path, _ = winreg.QueryValueEx(key, "")
-            if os.path.exists(path):
-                return path
-    except Exception:
-        pass
-
-    # 2. Rutas conocidas comunes (fallback)
+    # 1. Path configurado manualmente
+    if custom_path:
+        candidates.append(custom_path)
+    
+    # 2. Rutas comunes (mismas que Organizador robusto)
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    
     common_paths = [
-        r"C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE",
-        r"C:\Program Files\Microsoft Office\root\Office15\WINWORD.EXE",
-        r"C:\Program Files (x86)\Microsoft Office\root\Office16\WINWORD.EXE",
-        r"C:\Program Files\Microsoft Office 16\ClientX64\WINWORD.EXE",
-        r"C:\Program Files\Microsoft Office 15\ClientX64\WINWORD.EXE",
+        "winword.exe",
+        os.path.join(program_files, "Microsoft Office", "root", "Office16", "WINWORD.EXE"),
+        os.path.join(program_files_x86, "Microsoft Office", "root", "Office16", "WINWORD.EXE"),
+        r"C:\Program Files\Microsoft Office\Office16\WINWORD.EXE",
+        r"C:\Program Files (x86)\Microsoft Office\Office16\WINWORD.EXE",
     ]
-    for path in common_paths:
-        if os.path.exists(path):
-            return path
-
-    # 3. Variable de entorno PATH (shutil.which)
-    try:
-        path = shutil.which("WINWORD.EXE")
-        if path:
-            return path
-    except Exception:
-        pass
-
+    candidates.extend(common_paths)
+    
+    # 3. Buscar en orden (igual que Organizador robusto)
+    for path in candidates:
+        if os.path.isabs(path):
+            if os.path.isfile(path):
+                return path
+        else:
+            found = shutil.which(path)
+            if found:
+                return found
+    
     return None
 
 def get_word_app():
@@ -166,14 +163,34 @@ def get_word_app():
 def handle_check_word(data):
     """Verifica si Word está disponible."""
     custom_word_path = data.get("word_executable_path") if data else None
+    print(f"[check_word] custom_word_path recibido: {custom_word_path}", file=sys.stderr)
     
+    # Usar la ruta configurada manualmente si está disponible
+    if custom_word_path:
+        print(f"[check_word] Verificando ruta configurada: {custom_word_path}", file=sys.stderr)
+        print(f"[check_word] Existe el archivo: {os.path.exists(custom_word_path)}", file=sys.stderr)
+        word_path = find_word_executable(custom_word_path)
+        print(f"[check_word] find_word_executable retornó: {word_path}", file=sys.stderr)
+        if word_path:
+            return {
+                "ok": True,
+                "word_installed": True,
+                "message": f"Microsoft Word detectado en ruta configurada: {word_path}"
+            }
+        else:
+            print(f"[check_word] find_word_executable falló para ruta configurada", file=sys.stderr)
+    
+    print(f"[check_word] Intentando get_word_app (COM)...", file=sys.stderr)
     word, error = get_word_app()
     if word:
+        print(f"[check_word] get_word_app exitoso", file=sys.stderr)
         return {
             "ok": True,
             "word_installed": True,
             "message": "Microsoft Word está listo y persistente"
         }
+    else:
+        print(f"[check_word] get_word_app falló con error: {error}", file=sys.stderr)
 
     diagnostics = []
     try:
@@ -214,7 +231,11 @@ def handle_list_docs(data):
         
         files = []
         for ext in ["*.docx", "*.doc"]:
-            for f in glob.glob(os.path.join(source_dir, ext)):
+            pattern = os.path.join(source_dir, ext)
+            print(f"[list_docs] buscando patrón: {pattern}", file=sys.stderr)
+            matched = glob.glob(pattern)
+            print(f"[list_docs] archivos encontrados con {ext}: {len(matched)}", file=sys.stderr)
+            for f in matched:
                 stat = os.stat(f)
                 files.append({
                     "name": os.path.basename(f),
@@ -222,10 +243,12 @@ def handle_list_docs(data):
                     "size": stat.st_size
                 })
         
+        print(f"[list_docs] total archivos Word encontrados: {len(files)}", file=sys.stderr)
         # Ordenar por fecha de modificación descendente (más reciente primero)
         files.sort(key=lambda x: x["modified"], reverse=True)
         return {"ok": True, "files": files}
     except Exception as e:
+        print(f"[list_docs] error: {str(e)}", file=sys.stderr)
         return {"ok": False, "error": str(e)}
 
 def handle_prepare(data):
@@ -443,7 +466,7 @@ def main():
             if cmd == "ping":
                 response = {"ok": True, "status": "ready"}
             elif cmd == "check_word":
-                response = handle_check_word()
+                response = handle_check_word(data)
             elif cmd == "list_docs":
                 response = handle_list_docs(data)
             elif cmd == "prepare":

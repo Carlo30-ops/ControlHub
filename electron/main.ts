@@ -271,6 +271,14 @@ const SIDECAR_COMMAND_TIMEOUTS: Record<string, number> = {
   'ppt_to_pdf': 120000,
   'pdf_to_word': 300000,   // 5 minutos
   'ocr': 300000,           // 5 minutos
+
+  // Comandos del sidecar Terapias
+  'check_word': 15000,
+  'list_docs': 15000,
+  'prepare': 30000,
+  'finalize': 60000,
+  'get_history': 10000,
+  'search_patient': 30000,
 };
 
 // Validación de payload para sidecar
@@ -559,10 +567,15 @@ ipcMain.handle('terapias:ping', () => terapiasSidecar.send({ cmd: 'ping' }));
 ipcMain.handle('terapias:check_word', async (_, wordExecutablePath?: string) => {
   const settings = await getAppSettings();
   const pathToUse = wordExecutablePath || settings.wordExecutablePath;
-  return terapiasSidecar.send({ cmd: 'check_word', data: { word_executable_path: pathToUse } });
+  logger.debug(`[terapias:check_word] wordExecutablePath param: ${wordExecutablePath}`);
+  logger.debug(`[terapias:check_word] settings.wordExecutablePath: ${settings.wordExecutablePath}`);
+  logger.debug(`[terapias:check_word] pathToUse: ${pathToUse}`);
+  const result = await terapiasSidecar.send({ cmd: 'check_word', data: { word_executable_path: pathToUse } });
+  logger.debug(`[terapias:check_word] result: ${JSON.stringify(result)}`);
+  return result;
 });
-ipcMain.handle('terapias:list_docs', async () => {
-  const sourceDir = await getActiveTerapiasDir();
+ipcMain.handle('terapias:list_docs', async (_, sourceDirOverride?: string) => {
+  const sourceDir = sourceDirOverride || await getActiveTerapiasDir();
   return terapiasSidecar.send({ cmd: 'list_docs', data: { source_dir: sourceDir } });
 });
 ipcMain.handle('terapias:prepare', async (_, data) => {

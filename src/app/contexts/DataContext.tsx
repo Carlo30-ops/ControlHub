@@ -274,9 +274,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         display: { ...prev.display, ...(newSettings.display || {}) },
       };
       
-      // Persistir vía IPC
+      // Persistir vía IPC de forma asíncrona pero no bloquear UI
       if (window.electronAPI?.saveSettings) {
-        window.electronAPI.saveSettings(updated).catch(err => logger.error('[DataContext] Error saving settings via IPC:', err));
+        window.electronAPI.saveSettings(updated)
+          .then(() => logger.info('[DataContext] Settings guardados exitosamente'))
+          .catch(err => logger.error('[DataContext] Error saving settings via IPC:', err));
       }
       return updated;
     });

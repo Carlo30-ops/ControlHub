@@ -405,25 +405,27 @@ export default function Terapias() {
 
     const patientName = getPatientFromInput(form.inputName);
 
-    // Paso 1: Buscar archivo Word
+    // Paso 1: Buscar archivo Word usando terapias:listDocs (consistente con el resto del módulo)
     let filename = form.filename;
     
     if (!filename) {
-      const docFiles = await window.electronAPI.listFiles(sourceDir, ['.docx', '.doc']);
-      if (docFiles.length === 0) {
+      const docs = await terapiasService.listDocuments(sourceDir);
+      if (docs.length === 0) {
         toast.error("No se encontró ningún documento Word en la carpeta configurada.");
         return;
       }
-      if (docFiles.length > 1) {
+      if (docs.length > 1) {
+        setAvailableDocs(docs);
         setPickerMode('prepare');
         setIsPickerOpen(true);
         return;
       }
-      filename = docFiles[0];
+      filename = docs[0].name;
     } else {
       // Validar que el archivo seleccionado exista en la carpeta origen
-      const docFiles = await window.electronAPI.listFiles(sourceDir, ['.docx', '.doc']);
-      if (!docFiles.includes(filename)) {
+      const docs = await terapiasService.listDocuments(sourceDir);
+      const exists = docs.some(doc => doc.name === filename);
+      if (!exists) {
         toast.error("El archivo seleccionado no se encuentra en la carpeta origen configurada.");
         return;
       }
@@ -443,20 +445,21 @@ export default function Terapias() {
     setIsSSAlertOpen(false);
     const patientName = getPatientFromInput(form.inputName); // Será PACIENTE_DESCONOCIDO
 
-    // Paso 1: Buscar archivo Word (Lógica repetida pero necesaria para el flujo skip)
+    // Paso 1: Buscar archivo Word usando terapias:listDocs (consistente con el resto del módulo)
     let filename = form.filename;
     if (!filename) {
-      const docFiles = await window.electronAPI.listFiles(sourceDir, ['.docx', '.doc']);
-      if (docFiles.length === 0) {
+      const docs = await terapiasService.listDocuments(sourceDir);
+      if (docs.length === 0) {
         toast.error("No se encontró ningún documento Word en la carpeta configurada.");
         return;
       }
-      if (docFiles.length > 1) {
+      if (docs.length > 1) {
+        setAvailableDocs(docs);
         setPickerMode('prepare');
         setIsPickerOpen(true);
         return;
       }
-      filename = docFiles[0];
+      filename = docs[0].name;
     }
 
     setConfirmData({
@@ -618,7 +621,11 @@ export default function Terapias() {
                 {status.ping ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
                 Motor listo
               </Badge>
-              <Badge variant={status.word ? "outline" : "destructive"} className={cn("gap-1.5 font-bold border-none", status.word ? "bg-emerald-500/10 text-emerald-600" : "")}>
+              <Badge 
+                variant={status.word ? "outline" : "destructive"} 
+                className={cn("gap-1.5 font-bold border-none", status.word ? "bg-emerald-500/10 text-emerald-600" : "")}
+                title={status.wordMessage || (settings.wordExecutablePath ? `Ruta: ${settings.wordExecutablePath}` : "Configura Word en Settings")}
+              >
                 {status.word ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
                 {status.word ? "Word disponible" : "Word ausente"}
               </Badge>
@@ -638,7 +645,9 @@ export default function Terapias() {
             <p className="text-xs font-medium text-muted-foreground dark:text-muted-foreground mt-1">
               {!hasSourceDir
                 ? "Configura la carpeta origen desde settings.terapiasDir para iniciar el Paso 1."
-                : "El motor de Terapias o Microsoft Word no esta disponible. Reintenta la conexion antes de continuar."}
+                : !status.word
+                  ? "Microsoft Word no está disponible en este equipo."
+                  : "El motor de Terapias no está disponible. Reintenta la conexión antes de continuar."}
             </p>
           </div>
           <Button variant="outline" className="rounded-xl font-bold" onClick={handleSelectFolder("sourceDir")}>
@@ -708,6 +717,12 @@ export default function Terapias() {
                     placeholder="Ej: Control 15-05 SS Maria Delgado" 
                     value={form.inputName}
                     onChange={e => setForm(prev => ({ ...prev, inputName: e.target.value }))}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && form.inputName && !interactionsLocked) {
+                        e.preventDefault();
+                        handlePrepare();
+                      }
+                    }}
                     disabled={step.current !== 1 || interactionsLocked}
                     className="h-12 rounded-xl bg-card border-border font-bold"
                   />

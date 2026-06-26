@@ -132,7 +132,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   terapias: {
     ping: () => ipcRenderer.invoke('terapias:ping'),
     checkWord: (wordExecutablePath?: string) => ipcRenderer.invoke('terapias:check_word', wordExecutablePath),
-    listDocs: () => ipcRenderer.invoke('terapias:list_docs'),
+    listDocs: (sourceDir?: string) => ipcRenderer.invoke('terapias:list_docs', sourceDir),
     prepare: (data: any) => ipcRenderer.invoke('terapias:prepare', data),
     finalize: (data: any) => ipcRenderer.invoke('terapias:finalize', data),
     getHistory: () => ipcRenderer.invoke('terapias:get_history'),

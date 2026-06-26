@@ -106,7 +106,7 @@ class TerapiasServiceImpl implements TerapiasService {
     }
 
     try {
-      const res = await window.electronAPI.terapias.listDocs();
+      const res = await window.electronAPI.terapias.listDocs(sourceDir);
       if (!res.ok) {
         throw new Error(res.error || 'Error al buscar archivos');
       }
@@ -231,7 +231,9 @@ class TerapiasServiceImpl implements TerapiasService {
       let wordError: string | null = null;
 
       try {
+        logger.debug(`[terapiasService] Llamando checkWord con wordExecutablePath: ${wordExecutablePath}`);
         wordRes = await window.electronAPI.terapias.checkWord(wordExecutablePath);
+        logger.debug(`[terapiasService] checkWord response: ${JSON.stringify(wordRes)}`);
       } catch (error) {
         wordError = error instanceof Error ? error.message : String(error);
         logger.error("Error en checkWord:", wordError);
