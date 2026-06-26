@@ -1244,7 +1244,7 @@ useEffect(() => {
                           onClick={() => {
                             if (interactionsLocked || step.current !== 1) return;
                             window.electronAPI.shell.openFile(`${sourceDir}\\${doc.name}`);
-                          }}
+                          }
                         >
                           <FileText className="w-3.5 h-3.5 text-primary" /> 
                           Abrir Word original
