@@ -3,6 +3,8 @@ import { ToolConfig } from '@/app/types';
 import { Input } from '@/app/components/ui/input';
 import { Slider } from '@/app/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
+import { setError as setFieldError, clearError as clearFieldError, validateNotEmpty as validateFieldNotEmpty, sanitizeInput } from "../utils/validation";
+import { ErrorMap } from "../utils/validation";
 
 /**
  * Renderiza los campos de configuración específicos para la herramienta activa.
@@ -17,11 +19,12 @@ export default function ToolConfigForm({
   params: Record<string, any>;
   onChange: (key: string, value: any) => void;
 }) {
-import { setError, clearError, validateNotEmpty, sanitizeInput } from "../utils/validation";
+  const [errors, setErrors] = useState<ErrorMap>({});
 
-  const setError = (field: string, msg: string) => setError(setErrors, field, msg);
-  const clearError = (field: string) => clearError(setErrors, field);
-  const validateNotEmpty = (field: string, value: any, label: string) => validateNotEmpty(setErrors, field, value, label);
+  // Helper functions using imported utilities
+  const setError = (field: string, msg: string) => setFieldError(setErrors, field, msg);
+  const clearError = (field: string) => clearFieldError(setErrors, field);
+  const validateNotEmpty = (field: string, value: any, label: string) => validateFieldNotEmpty(setErrors, field, value, label);
 
 
   // Render specific fields based on tool id – extend as needed.

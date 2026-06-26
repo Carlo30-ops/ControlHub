@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
+import { executeTool } from "./tools/executeTool";
 import { usePdfTool } from "./hooks/usePdfTool";
 import { useFileQueue, FileInfo } from "./hooks/useFileQueue";
 import { 
@@ -204,89 +205,52 @@ export default function PDFTools() {
         } else {
           // Single-file tools: create unique output per file
           finalOutput = `${base}${activeTool.newExt || '_procesado.pdf'}`;
-        }
-
-        // Execute the operation
-        let res: any;
-        const api = window.electronAPI.pdfTools;
-
-        switch (activeTool.id) {
-          case 'split':
-            res = await api.split({ input: qFile.path, output_dir: finalOutput, ranges: splitRanges });
-            break;
-          case 'extract':
-            res = await api.extract({ input: qFile.path, output: finalOutput, pages: extractPages });
-            break;
-          case 'delete_pages':
-            res = await api.deletePages({ input: qFile.path, output: finalOutput, pages: deletePagesInput });
-            break;
-          case 'reorder_pages':
-            res = await api.reorderPages({ input: qFile.path, output: finalOutput, order: pageOrder });
-            break;
-          case 'compress':
-            res = await api.compress({ input: qFile.path, output: finalOutput, level: compressLevel });
-            break;
-          case 'rotate':
-            res = await api.rotate({ input: qFile.path, output: finalOutput, angle: parseInt(rotateAngle), pages: rotatePages });
-            break;
-          case 'crop':
-            res = await api.crop({ input: qFile.path, output: finalOutput, rect: [cropRect.x0, cropRect.y0, cropRect.x1, cropRect.y1] });
-            break;
-          case 'repair':
-            res = await api.repair({ input: qFile.path, output: finalOutput });
-            break;
-          case 'add_page_numbers':
-            res = await api.addPageNumbers({ input: qFile.path, output: finalOutput, position: pageNumberPos, start: parseInt(pageNumberStart) });
-            break;
-          case 'watermark':
-            res = await api.watermark({ input: qFile.path, output: finalOutput, text: wmText, opacity: wmOpacity[0], angle: parseInt(wmAngle) });
-            break;
-          case 'watermark_image':
-            res = await api.watermarkImage({ input: qFile.path, output: finalOutput, image: wmImage?.path, opacity: wmOpacity[0] });
-            break;
-          case 'pdf_to_jpg':
-            res = await api.pdfToJpg({ input: qFile.path, output_dir: finalOutput, dpi: parseInt(dpi) });
-            break;
-          case 'html_to_pdf':
-            res = await api.htmlToPdf({ input: qFile.path, output: finalOutput });
-            break;
-          case 'protect':
-            res = await api.protect({ input: qFile.path, output: finalOutput, password });
-            break;
-          case 'unlock':
-            res = await api.unlock({ input: qFile.path, output: finalOutput, password });
-            break;
-          case 'ocr':
-            res = await api.ocr({ input: qFile.path, output: finalOutput, lang: ocrLang });
-            break;
-          case 'w2p': res = await api.wordToPdf({ input: qFile.path, output: finalOutput }); break;
-          case 'p2w': res = await api.pdfToWord({ input: qFile.path, output: finalOutput }); break;
-          case 'e2p': res = await api.excelToPdf({ input: qFile.path, output: finalOutput }); break;
-          case 'pp2p': res = await api.pptToPdf({ input: qFile.path, output: finalOutput }); break;
-        }
-
-        if (res.ok) {
-          setProcessingQueue(prev => prev.map((f, idx) => 
-            idx === i ? { 
-              ...f, 
-              status: 'completed' as const,
-              outputPath: res.output || (res.outputs && res.outputs[0]),
-              progress: 100
-            } : f
-          ));
-          setProcessingStats(prev => ({ ...prev, completed: prev.completed + 1 }));
-          toast.success(`✓ ${qFile.name} procesado`);
-        } else {
-          setProcessingQueue(prev => prev.map((f, idx) => 
-            idx === i ? { 
-              ...f, 
-              status: 'error' as const,
-              errorMessage: res.error,
-              progress: 0
-            } : f
-          ));
-          setProcessingStats(prev => ({ ...prev, failed: prev.failed + 1 }));
-          toast.error(`✗ ${qFile.name}: ${res.error}`);
+          // Execute the operation using centralized executor
+          const api = window.electronAPI.pdfTools;
+          const execParams = {
+            password,
+            confirmPassword,
+            splitRanges,
+            extractPages,
+            deletePagesInput,
+            pageOrder,
+            compressLevel: parseInt(compressLevel) || 1,
+            rotateAngle,
+            rotatePages,
+            cropRect,
+            pageNumberPos,
+            pageNumberStart,
+            wmText,
+            wmOpacity,
+            wmAngle,
+            wmImage: wmImage ? { path: wmImage.path } : null,
+            dpi,
+            ocrLang,
+          };
+          const { res, successMsg } = await executeTool(api, activeTool, [qFile], finalOutput, execParams);
+          if (res?.ok) {
+            setProcessingQueue(prev => prev.map((f, idx) => 
+              idx === i ? {
+                ...f,
+                status: 'completed' as const,
+                outputPath: res.output || (res.outputs && res.outputs[0]),
+                progress: 100
+              } : f
+            ));
+            setProcessingStats(prev => ({ ...prev, completed: prev.completed + 1 }));
+            toast.success(`✓ ${qFile.name} procesado`);
+          } else {
+            setProcessingQueue(prev => prev.map((f, idx) => 
+              idx === i ? {
+                ...f,
+                status: 'error' as const,
+                errorMessage: res.error,
+                progress: 0
+              } : f
+            ));
+            setProcessingStats(prev => ({ ...prev, failed: prev.failed + 1 }));
+            toast.error(`✗ ${qFile.name}: ${res.error}`);
+          }
         }
       } catch (err: any) {
         setProcessingQueue(prev => prev.map((f, idx) => 

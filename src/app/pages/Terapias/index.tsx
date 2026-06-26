@@ -137,6 +137,7 @@ export default function Terapias() {
   
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isFinalizeConfirmOpen, setIsFinalizeConfirmOpen] = useState(false);
   
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isSSAlertOpen, setIsSSAlertOpen] = useState(false);
@@ -240,11 +241,77 @@ export default function Terapias() {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
+
+      // --- Gestión de velocidad: Aceptar con Enter en todos los diálogos ---
+      if (e.key === "Enter") {
+        if (isSSAlertOpen) {
+          e.preventDefault();
+          handlePrepareWithSkipSS();
+          return;
+        }
+
+        if (isConfirmOpen) {
+          e.preventDefault();
+          executePrepare();
+          return;
+        }
+
+        if (isPickerOpen) {
+          if (availableDocs.length > 0) {
+            e.preventDefault();
+            const doc = availableDocs[0];
+            setForm(prev => ({ ...prev, filename: doc.name }));
+            setIsPickerOpen(false);
+            if (pickerMode === 'prepare') {
+              const patientName = getPatientFromInput(form.inputName);
+              setConfirmData({
+                filename: doc.name,
+                inputName: form.inputName,
+                patient: patientName,
+                destination: getFinalPathPreview(form.baseDest, patientName)
+              });
+              setIsConfirmOpen(true);
+            }
+          }
+          return;
+        }
+
+        if (isFinalizeConfirmOpen) {
+          e.preventDefault();
+          setIsFinalizeConfirmOpen(false);
+          handleFinalize();
+          return;
+        }
+
+        // Si estamos en Paso 2 y no hay inputs enfocados, Enter abre la confirmación de finalización
+        if (step.current === 2 && !isInputFocused && !interactionsLocked && !isProcessing) {
+          e.preventDefault();
+          setIsFinalizeConfirmOpen(true);
+          return;
+        }
+      }
     };
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [location.pathname, handleAutoDetectWord, fetchDocs]);
+  }, [
+    location.pathname,
+    handleAutoDetectWord,
+    fetchDocs,
+    isSSAlertOpen,
+    isConfirmOpen,
+    isPickerOpen,
+    isFinalizeConfirmOpen,
+    availableDocs,
+    pickerMode,
+    form,
+    step.current,
+    interactionsLocked,
+    isProcessing,
+    handlePrepareWithSkipSS,
+    executePrepare,
+    handleFinalize
+  ]);
 
   // Detectar estados de navegación (Dashboard -> Terapias o PDF Tools -> Terapias)
   useEffect(() => {
@@ -346,6 +413,26 @@ export default function Terapias() {
       baseDest: settings.terapiasBaseDest || prev.baseDest,
       backup: settings.terapiasBackup || prev.backup,
     }));
+
+    // Registrar directorios en la lista de permitidos de seguridad para evitar bloqueos de IPC
+    if (window.electronAPI?.security?.registerApprovedDirectory) {
+      if (settings.terapiasDir) {
+        window.electronAPI.security.registerApprovedDirectory(settings.terapiasDir).catch(err => {
+          logger.error("Error registering source directory:", err);
+        });
+      }
+      if (settings.terapiasBaseDest) {
+        window.electronAPI.security.registerApprovedDirectory(settings.terapiasBaseDest).catch(err => {
+          logger.error("Error registering base dest directory:", err);
+        });
+      }
+      if (settings.terapiasBackup) {
+        window.electronAPI.security.registerApprovedDirectory(settings.terapiasBackup).catch(err => {
+          logger.error("Error registering backup directory:", err);
+        });
+      }
+    }
+
     if (activeSource) {
       checkStatus(activeSource);
     }
@@ -493,6 +580,14 @@ export default function Terapias() {
           patient: res.patient || null,
           folder: res.folder || null
         });
+
+        // Registrar el nuevo directorio del paciente en la lista de permitidos
+        if (window.electronAPI?.security?.registerApprovedDirectory && res.folder) {
+          window.electronAPI.security.registerApprovedDirectory(res.folder).catch(err => {
+            logger.error("Error registering patient folder:", err);
+          });
+        }
+
         toast.success("Archivo organizado y Word abierto");
       } else {
         toast.error("Error: " + res.error);
@@ -522,6 +617,11 @@ export default function Terapias() {
       if (res.ok) {
         toast.success("PDF generado y archivo original respaldado");
         
+        // Registrar el nuevo directorio de salida en la lista de permitidos antes de abrir
+        if (window.electronAPI?.security?.registerApprovedDirectory && step.folder) {
+          await window.electronAPI.security.registerApprovedDirectory(step.folder).catch(() => {});
+        }
+
         // Revelar en carpeta automáticamente
         if (res.pdf_path) {
           window.electronAPI.shell.revealInFolder(res.pdf_path);
@@ -918,11 +1018,12 @@ export default function Terapias() {
               </div>
 
               <div className="flex flex-col gap-4">
-                <AlertDialog>
+                <AlertDialog open={isFinalizeConfirmOpen} onOpenChange={setIsFinalizeConfirmOpen}>
                   <AlertDialogTrigger asChild>
                     <Button 
                       className="w-full h-16 rounded-2xl bg-secondary hover:bg-secondary/80 text-secondary-foreground font-bold text-xl shadow-sm gap-3 active:scale-[0.98] transition-all"
                       disabled={interactionsLocked || step.current !== 2 || !step.docPath || !form.backup}
+                      onClick={() => setIsFinalizeConfirmOpen(true)}
                     >
                       {isProcessing ? <RefreshCw className="w-8 h-8 animate-spin" /> : <><Download className="w-6 h-6" /> GENERAR PDF Y FINALIZAR</>}
                     </Button>
@@ -951,8 +1052,8 @@ export default function Terapias() {
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter className="pt-4">
-                      <AlertDialogCancel className="rounded-xl font-bold">Volver a Word</AlertDialogCancel>
-                      <AlertDialogAction className="rounded-xl bg-secondary hover:bg-secondary/80 text-secondary-foreground font-bold" disabled={interactionsLocked || step.current !== 2 || !step.docPath || !form.backup} onClick={handleFinalize}>CONFIRMAR Y CONVERTIR</AlertDialogAction>
+                      <AlertDialogCancel className="rounded-xl font-bold" onClick={() => setIsFinalizeConfirmOpen(false)}>Volver a Word</AlertDialogCancel>
+                      <AlertDialogAction className="rounded-xl bg-secondary hover:bg-secondary/80 text-secondary-foreground font-bold" disabled={interactionsLocked || step.current !== 2 || !step.docPath || !form.backup} onClick={() => { setIsFinalizeConfirmOpen(false); handleFinalize(); }}>CONFIRMAR Y CONVERTIR</AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
