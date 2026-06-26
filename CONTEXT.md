@@ -248,6 +248,7 @@ ControlHub/
 | P59 | Pre-probe duplicado en `Scanner.tsx` y `localScanner.ts`; abort silencioso si falla resolución por día | **Confirmado** | ✅ RESUELTO — pre-probe solo en `localScanner.ts`; fallback a full scan + toast en Scanner |
 | P60 | `config.getAll`/`setAll`/`delete` expuestos en preload sin handlers en main | **Confirmado** | ✅ RESUELTO — eliminados del preload |
 | P61 | 11 de 13 dependencias `@radix-ui` en package.json apuntaban a `^1.0.3`, versión nunca publicada por el mantenedor (causa raíz ETARGET) | **Confirmado** | ✅ RESUELTO — Actualizadas a versión `latest` real vigente; verificado sin breaking changes aplicables en código actual; build/typecheck/test limpios |
+| P62 | El aislamiento de módulos Terapias y PDFTools con archivos tsconfig dedicados fallaba debido a dependencias no declaradas y referencias incorrectas. | **Confirmado** | ✅ RESUELTO — Corregidos los archivos de configuración de TypeScript `tsconfig.terapias.json` y `tsconfig.pdftools.json`, corregida la firma de `listDocs()` en `electron.d.ts`, actualizados los mocks/spies en los tests y re-organizada la declaración de variables del renderizado para permitir la compilación limpia e independiente de ambos módulos. |
 
 ---
 

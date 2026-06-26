@@ -6,11 +6,11 @@
   },
   "include": [
     "src/electron.d.ts",
-    "src/app/pages/PDFTools",
+    "src/app/pages/Reports",
     "src/app/components",
     "src/app/contexts",
     "src/app/utils",
-    "src/app/types.ts",
+    "src/app/constants",
     "src/shared/types.ts"
   ]
 }

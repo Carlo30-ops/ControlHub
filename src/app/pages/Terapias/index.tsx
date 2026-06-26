@@ -247,8 +247,6 @@ async function handlePrepareWithSkipSS() {
   setIsConfirmOpen(true);
 }
 
-useEffect(() => {
-
   useEffect(() => {
     if (location.pathname !== "/terapias") return;
 
@@ -563,7 +561,7 @@ useEffect(() => {
   };
 
 
-  const executePrepare = async () => {
+  async function executePrepare() {
     if (!confirmData) return;
     
     setIsConfirmOpen(false);
@@ -602,9 +600,9 @@ useEffect(() => {
     } finally {
       setIsProcessing(false);
     }
-  };
+  }
 
-  const handleFinalize = async () => {
+  async function handleFinalize() {
     if (!engineReady) {
       toast.error("El motor de Terapias y Microsoft Word deben estar disponibles");
       return;

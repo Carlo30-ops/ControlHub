@@ -214,9 +214,8 @@ describe("Terapias Component", () => {
     });
   });
 
-  // Test 8: Continuar sin SS
   it("should proceed with PACIENTE_DESCONOCIDO if 'Continuar sin SS' is clicked", async () => {
-    vi.spyOn(mockElectronAPI, "listFiles").mockResolvedValue(["documento_sin_ss.docx"]);
+    vi.spyOn(terapiasService, "listDocuments").mockResolvedValue([{ name: "documento_sin_ss.docx", modified: Date.now(), size: 1024, path: "C:\\terapias\\origen\\documento_sin_ss.docx" }]);
     renderComponent();
     await waitFor(() => {
       expect(screen.getByText("Motor listo")).toBeInTheDocument();
@@ -240,7 +239,7 @@ describe("Terapias Component", () => {
 
   // Test 9: Flujo de preparación exitoso
   it("should successfully prepare document and move to step 2", async () => {
-    vi.spyOn(mockElectronAPI, "listFiles").mockResolvedValue(["documento_con_ss.docx"]);
+    vi.spyOn(terapiasService, "listDocuments").mockResolvedValue([{ name: "documento_con_ss.docx", modified: Date.now(), size: 1024, path: "C:\\terapias\\origen\\documento_con_ss.docx" }]);
     vi.spyOn(terapiasService, "prepareDocument").mockResolvedValue({
       ok: true,
       doc_path: "C:\\terapias\\destino\\2026\\06-JUNIO\\25 DE JUNIO\\Maria Delgado\\documento_con_ss.docx",
@@ -274,7 +273,7 @@ describe("Terapias Component", () => {
 
   // Test 10: Flujo de finalización exitoso
   it("should successfully finalize document, generate PDF and backup original", async () => {
-    vi.spyOn(mockElectronAPI, "listFiles").mockResolvedValue(["documento_con_ss.docx"]);
+    vi.spyOn(terapiasService, "listDocuments").mockResolvedValue([{ name: "documento_con_ss.docx", modified: Date.now(), size: 1024, path: "C:\\terapias\\origen\\documento_con_ss.docx" }]);
     vi.spyOn(terapiasService, "prepareDocument").mockResolvedValue({
       ok: true,
       doc_path: "C:\\terapias\\destino\\2026\\06-JUNIO\\25 DE JUNIO\\Maria Delgado\\documento_con_ss.docx",
@@ -329,7 +328,7 @@ describe("Terapias Component", () => {
 
   // Test 11: Manejo de errores en prepareDocument
   it("should show error toast if prepareDocument fails", async () => {
-    vi.spyOn(mockElectronAPI, "listFiles").mockResolvedValue(["documento.docx"]);
+    vi.spyOn(terapiasService, "listDocuments").mockResolvedValue([{ name: "documento.docx", modified: Date.now(), size: 1024, path: "C:\\terapias\\origen\\documento.docx" }]);
     vi.spyOn(terapiasService, "prepareDocument").mockResolvedValue({
       ok: false,
       error: "Error de prueba al preparar",
@@ -361,7 +360,7 @@ describe("Terapias Component", () => {
 
   // Test 12: Manejo de errores en finalizeDocument
   it("should show error toast if finalizeDocument fails", async () => {
-    vi.spyOn(mockElectronAPI, "listFiles").mockResolvedValue(["documento_con_ss.docx"]);
+    vi.spyOn(terapiasService, "listDocuments").mockResolvedValue([{ name: "documento_con_ss.docx", modified: Date.now(), size: 1024, path: "C:\\terapias\\origen\\documento_con_ss.docx" }]);
     vi.spyOn(terapiasService, "prepareDocument").mockResolvedValue({
       ok: true,
       doc_path: "C:\\terapias\\destino\\2026\\06-JUNIO\\25 DE JUNIO\\Maria Delgado\\documento_con_ss.docx",
@@ -489,7 +488,7 @@ describe("Terapias Component", () => {
       patient: "Maria Delgado",
       folder: "C:\\terapias\\destino\\2026\\06-JUNIO\\25 DE JUNIO\\Maria Delgado",
     });
-    vi.spyOn(mockElectronAPI, "listFiles").mockResolvedValue(["documento_con_ss.docx"]);
+    vi.spyOn(terapiasService, "listDocuments").mockResolvedValue([{ name: "documento_con_ss.docx", modified: Date.now(), size: 1024, path: "C:\\terapias\\origen\\documento_con_ss.docx" }]);
 
     renderComponent();
     await waitFor(() => {

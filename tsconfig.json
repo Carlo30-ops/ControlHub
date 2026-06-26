@@ -24,6 +24,7 @@
   "references": [
     { "path": "./tsconfig.node.json" },
     { "path": "./tsconfig.pdftools.json" },
-    { "path": "./tsconfig.terapias.json" }
+    { "path": "./tsconfig.terapias.json" },
+    { "path": "./tsconfig.reports.json" }
   ]
 }

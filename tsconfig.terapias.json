@@ -4,5 +4,16 @@
     "composite": true,
     "noEmit": true
   },
-  "include": ["src/app/pages/Terapias"]
+  "include": [
+    "src/electron.d.ts",
+    "src/app/pages/Terapias",
+    "src/app/services/terapiasService.ts",
+    "src/app/contexts/DataContext.tsx",
+    "src/app/contexts/ThemeContext.tsx",
+    "src/app/utils/logger.ts",
+    "src/app/components/ui/utils.ts",
+    "src/app/components/ui",
+    "src/app/components/shared",
+    "src/shared/types.ts"
+  ]
 }

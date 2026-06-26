@@ -1,4 +1,4 @@
-﻿// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // electron.d.ts â€” DeclaraciÃ³n de tipos globales para window.electronAPI
 // Fix #8:  Tipado completo para eliminar (window as any).electronAPI
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -177,7 +177,7 @@ interface ElectronAPI {
   terapias: {
     ping(): Promise<{ ok: boolean }>;
     checkWord(wordExecutablePath?: string): Promise<{ ok: boolean; word_installed: boolean; message?: string; error?: string }>;
-    listDocs(): Promise<{ ok: boolean; files: { name: string; modified: number; size: number }[]; error?: string }>;
+    listDocs(sourceDir: string): Promise<{ ok: boolean; files: { name: string; modified: number; size: number }[]; error?: string }>;
     prepare(data: TerapiasPrepareData): Promise<TerapiasResponse & { folder?: string; doc_path?: string; patient?: string }>;
     finalize(data: TerapiasFinalizeData): Promise<TerapiasResponse & { pdf_path?: string; backup_path?: string }>;
     getHistory(): Promise<{ ok: boolean; history: unknown[]; error?: string }>;

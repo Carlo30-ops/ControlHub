@@ -90,7 +90,7 @@ class TerapiasServiceImpl implements TerapiasService {
     }
 
     try {
-      const res = await window.electronAPI.terapias.listDocs();
+      const res = await window.electronAPI.terapias.listDocs(sourceDir);
       if (!res.ok) {
         throw new Error('Error listando documentos');
       }
