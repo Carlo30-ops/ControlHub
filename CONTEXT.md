@@ -1,7 +1,7 @@
 # CONTEXT.md — ControlHub
 
 > Documento técnico para IAs y sesiones nuevas. **No es documentación de usuario.**
-> Última revisión contra código: 2026-06-25. Versión app: **3.2.0** (`package.json`).
+> Última revisión contra código: 2026-06-28. Versión app: **3.2.0** (`package.json`).
 > Repositorio standalone — proyectos de referencia (COTU Analytics, Organizador robusto) ya integrados y eliminados del workspace.
 
 ---
@@ -187,13 +187,20 @@ PDFTools UI → IPC pdf:* (22 handlers)
 ControlHub/
 ├── CONTEXT.md                    ← documentación técnica (este archivo)
 ├── README.md                     ← onboarding público
+├── RULES.md                      ← convenciones de desarrollo
 ├── package.json                  ← versión, scripts, deps
 ├── vite.config.ts                ← build React + Electron, manualChunks
 ├── scripts/
-│   └── loadTest.ts               ← load test CLI (Node puro, sin Electron)
+│   ├── loadTest.ts               ← load test CLI (Node puro, sin Electron)
+│   └── verify-python-embed.js    ← verificación de runtime Python embebido
+├── docs/                         ← documentación adicional (análisis, desarrollo)
+│   ├── DASHBOARD_DESARROLLO.md    ← estado de módulos y comandos
+│   ├── MÓDULOS_LISTOS.md         ← análisis completo de módulos
+│   └── code_organization_analysis.md ← evaluación de organización de código
 ├── electron/
 │   ├── main.ts                   ← IPC, sidecars, watcher, OCR, ventana
 │   ├── preload.ts                ← contextBridge → electronAPI
+│   ├── logger.ts                 ← sistema de logging (main process)
 │   ├── pdfWorker.ts              ← UtilityProcess: readFile + pdf-parse
 │   ├── workerPool.ts             ← pool UtilityProcess
 │   ├── database.ts               ← persistencia JSON userData
@@ -209,13 +216,43 @@ ControlHub/
 │   ├── app/
 │   │   ├── App.tsx               ← ThemeProvider + DataProvider + Router
 │   │   ├── routes.tsx            ← hash router, lazy routes
-│   │   ├── config/validation.ts  ← validadores de settings
+│   │   ├── types.ts              ← tipos locales de la app
+│   │   ├── config/
+│   │   │   └── validation.ts      ← validadores de settings
+│   │   ├── constants/             ← constantes centralizadas
+│   │   │   ├── colors.ts          ← colores para gráficos y UI
+│   │   │   └── index.ts           ← meses, formatos, paginación, umbrales
 │   │   ├── contexts/             ← DataContext, ThemeContext
-│   │   ├── components/           ← layouts, navigation, ui (solo usados)
-│   │   ├── pages/                ← Scanner, Reports, Terapias, PDFTools...
+│   │   ├── components/
+│   │   │   ├── layouts/          ← MainLayout
+│   │   │   ├── navigation/       ← Header, Sidebar
+│   │   │   ├── shared/            ← FileDropZone, QuickActionCard, StatCard
+│   │   │   └── ui/                ← componentes shadcn/Radix
+│   │   ├── pages/
+│   │   │   ├── Dashboard/         ← KPIs, ChartComponents
+│   │   │   ├── Scanner/           ← ScanActions, ScanConfig, ScanProgress
+│   │   │   ├── Reports/           ← ExportButtons, FiltersPanel
+│   │   │   ├── Terapias/          ← flujo Word→PDF
+│   │   │   ├── PDFTools/          ← 22 herramientas PDF
+│   │   │   │   ├── components/    ← DocumentGrid, PageThumbnails, ResultView, etc.
+│   │   │   │   ├── hooks/         ← usePdfTool, useFileQueue
+│   │   │   │   ├── tools/         ← configuración de cada herramienta
+│   │   │   │   └── utils/         ← validation
+│   │   │   ├── Settings.tsx       ← configuración de usuario
+│   │   │   ├── History.tsx        ← historial de sesiones
+│   │   │   └── NotFound.tsx
+│   │   ├── services/              ← lógica de negocio separada de UI
+│   │   │   └── terapiasService.ts ← servicio de Terapias
 │   │   └── utils/
-│   │       ├── localScanner.ts   ← motor COTU v3.3.0
-│   │       └── mockData.ts       ← modo demo (Scanner)
+│   │       ├── logger.ts         ← sistema de logging (renderer)
+│   │       ├── errorHandler.ts    ← manejo de errores centralizado
+│   │       ├── formatters.ts      ← formateadores de moneda/fechas
+│   │       ├── mockData.ts       ← modo demo (Scanner)
+│   │       └── localScanner/      ← motor COTU modularizado
+│   │           ├── cache.ts       ← caché de PDF/OCR
+│   │           ├── extractors.ts  ← extracción de metadatos
+│   │           ├── invoiceIdentifier.ts ← identificación de facturas
+│   │           └── pathResolver.ts ← resolución de rutas por fecha
 │   └── tests/                    ← Vitest
 ├── python-embed/                 ← Python embebido producción (gitignored)
 └── public/                       ← iconos estáticos
@@ -455,6 +492,105 @@ win.webContents.send('scan-progress', payload);
 - Navegación programática post-escaneo: `navigate("/reports")` tras 1s
 - State: `{ autoSelect: true }` en Scanner para abrir selector de carpeta
 
+### Logging
+
+El proyecto implementa un sistema de logging dual con niveles condicionales:
+
+**Main Process (`electron/logger.ts`):**
+- Niveles: `debug`, `info`, `warn`, `error`
+- Configuración automática: `debug` en desarrollo, `error` en producción
+- Inicialización: `logger.init(app.isPackaged)` en main.ts
+- Métodos: `debug()`, `info()`, `warn()`, `error()`, `setLevel()`
+
+**Renderer (`src/app/utils/logger.ts`):**
+- Niveles: `debug`, `info`, `warn`, `error`
+- Configuración automática: `debug` en dev server, `error` en file protocol
+- Detección de entorno: `!window.location.protocol.includes('file')`
+- Métodos: `debug()`, `info()`, `warn()`, `error()`, `setLevel()`
+
+### Manejo de Errores
+
+Sistema centralizado en `src/app/utils/errorHandler.ts`:
+
+**Tipos de errores (`ErrorType` enum):**
+- Sistema de archivos: `FILE_NOT_FOUND`, `FILE_READ_ERROR`, `DIRECTORY_NOT_FOUND`
+- PDF: `PDF_PARSE_ERROR`, `PDF_CORRUPTED`, `PDF_PASSWORD_PROTECTED`
+- OCR: `OCR_ERROR`, `OCR_ENGINE_NOT_FOUND`, `OCR_TIMEOUT`
+- IPC/Red: `IPC_ERROR`, `NETWORK_ERROR`
+- Validación: `VALIDATION_ERROR`, `INVALID_INPUT`
+- Configuración: `CONFIG_ERROR`, `SETTINGS_ERROR`
+- General: `UNKNOWN_ERROR`
+
+**Clase `AppError`:**
+- Extiende `Error` con propiedades: `type`, `context`, `originalError`
+- Constructor: `new AppError(type, message, context?, originalError?)`
+
+**Funciones utilitarias:**
+- `handleError(error, context?)`: Maneja error centralizado con logging
+- `withErrorHandling(fn, context, defaultValue?)`: Wrapper async con manejo de errores
+- `createError(type, message, context?, originalError?)`: Factory de errores tipados
+- `isErrorType(error, type)`: Verifica tipo de error
+
+### Constantes Centralizadas
+
+**Colores (`src/app/constants/colors.ts`):**
+- `CHART_COLORS`: Array de 10 colores para gráficos (azules/slate)
+- Colores semánticos: `PRIMARY_COLOR`, `SUCCESS_COLOR`, `WARNING_COLOR`, `ERROR_COLOR`, `INFO_COLOR`
+
+**Generales (`src/app/constants/index.ts`):**
+- `MONTHS_ORDER`: Meses en español (Enero, Febrero, ...)
+- `DATE_FORMATS`: Formatos de fecha (`DISPLAY`, `ISO`, `MONTH_YEAR`)
+- `PAGINATION`: Límites de paginación (`DEFAULT_PAGE_SIZE: 10`, `MAX_PAGE_SIZE: 100`)
+- `CURRENCY_THRESHOLDS`: Umbrales de formateo (`BILLION`, `MILLION`, `THOUSAND`)
+
+### Formateadores Centralizados
+
+**Moneda (`src/app/utils/formatters.ts`):**
+- `formatCOP(value)`: Formato compacto ($1.5M, $500K, $10,000)
+- `formatCOPFull(value)`: Formato completo ($1,500,000.00)
+
+### Layer Separation - Servicios
+
+**Servicio de Terapias (`src/app/services/terapiasService.ts`):**
+- Implementa lógica de negocio separada de la UI (RULES.10)
+- Interfaz `TerapiasService` con métodos:
+  - `listDocuments(sourceDir)`: Lista documentos pendientes
+  - `autoDetectWord(sourceDir)`: Auto-detección de archivos Word
+  - `prepareDocument(form, sourceDir)`: Prepara documento para edición
+  - `finalizeDocument(outputPath, backupPath, patientName)`: Finaliza PDF
+  - `searchPatients(query, sourceDir, destRoot?)`: Busca pacientes
+  - `loadHistory()`: Carga historial de operaciones
+  - `checkStatus(wordExecutablePath?)`: Verifica estado sidecar + Word
+- Implementación `TerapiasServiceImpl` con normalización de metadatos
+- Singleton exportado: `terapiasService`
+
+### Modularización de localScanner
+
+El motor COTU (`src/app/utils/localScanner.ts`) se ha modularizado en submódulos:
+
+**`cache.ts`:**
+- `simpleHash(str)`: Hash simple de strings
+- `pdfTextCache`: Map de caché para PDF parsing
+- `performOCR(pdfPath, ocrCache?)`: OCR con caché opcional
+- `parsePdfCached(filePath, maxPages?, mtimeMs?)`: PDF parsing con caché
+
+**`extractors.ts`:**
+- `parseCOPNumber(raw)`: Parsea números COP con formato colombiano
+- `extractAmountFromText(text)`: Extrae monto total de texto de factura
+- `extractCotuFromPath(filePath)`: Extrae número COTU de ruta
+- `extractExtendedMetadata(text, invoice)`: Extrae paciente, NIT
+- `extractMetadataFromPath(fileData, fuseEngine)`: Extracción capa 1 (nombre)
+
+**`invoiceIdentifier.ts`:**
+- `identifyInvoicePdf(filePath)`: Identificación capa 1 + capa 2
+- Lógica de doble capa: nombre archivo → contenido PDF
+
+**`pathResolver.ts`:**
+- `resolveTargetDayFolder(basePath, targetDate)`: Resolución por día específico
+- `resolveTargetRangeFolder(basePath, startDate, endDate)`: Resolución por rango
+- Patrones de mes: `MM-NOMBRE`, `MM-DE NOMBRE`, `MM. NOMBRE`, `MM NOMBRE`
+- Patrones de día: `DD DE NOMBRE`, `DD NOMBRE`, `DD`
+
 ---
 
 ## 8. Comandos esenciales
@@ -493,6 +629,7 @@ npm run load-test
 - `npm run dev` abre DevTools automáticamente (`main.ts` → `openDevTools()`).
 - Load test requiere carpeta local `FACTURA DE MUESTRA/` con PDFs (gitignored; crear manualmente para benchmarks).
 - Python sidecars en dev usan `python-embed/python.exe` relativo a cwd.
+- `scripts/verify-python-embed.js` verifica la existencia del runtime Python embebido antes del build.
 - Sidecar tests: [INCIERTO] `pytest electron/sidecar/tests/` — no hay script npm definido.
 
 ---
@@ -602,6 +739,17 @@ No hay issues de alta prioridad abiertas.
 ---
 
 ## 14. Changelog de sesiones recientes
+
+### 2026-06-28 — Orquestación de PDFTools, visualización de miniaturas, corrección IPC, suite de pruebas Vitest y optimización de Dividir PDF
+
+- **Motor de Orquestación y Fix IPC PDFTools:** Implementada la lógica modular de ejecución de herramientas PDF (`executeTool.ts`, `compress.ts`, `merge.ts`, `split.ts`) e integrada con el sidecar Python (`pdf_bridge.py`). Resuelto error de validación `Payload validation failed: Unknown command: pdf_thumbnail` registrando el comando en `SIDECAR_COMMAND_TIMEOUTS` en `main.ts`.
+- **Previsualización de Miniaturas y Protocolo Privilegiado:** Registrado esquema de protocolo `pdfthumb` como privilegiado antes de `app.whenReady()` y ajustado el handler de entrega en `main.ts` para servir miniaturas PNG temporales sin bloqueos de seguridad o Content Security Policy.
+- **Optimización de la herramienta Dividir PDF (Split):** Integrada la visualización interactiva de páginas usando `PageThumbnails.tsx` en la herramienta `split`. Implementada la sincronización automática en tiempo real de la selección de miniaturas con el input de texto de rangos (`splitRanges`), incluyendo un botón para limpiar la selección.
+- **Corrección de carga de miniaturas en Split/PageThumbnails:** Modificada la función `handle_page_thumbnails` en el sidecar Python (`pdf_bridge.py`) y `PageThumbnails.tsx` para generar y cargar imágenes usando el protocolo privilegiado `pdfthumb://` en lugar del protocolo bloqueado `file://`.
+- **Gestión del estado de selección:** Añadido reinicio de `selectedPages` en `resetToolState` para evitar mantener páginas seleccionadas entre transiciones de herramientas.
+- **Componentes de Cuadrícula e Interacción Merge:** Actualizado [DocumentGrid.tsx](file:///c:/DEV/TODO%20EN%20UNO/ControlHub/src/app/pages/PDFTools/components/DocumentGrid.tsx) para soportar reordenamiento interactivo por arrastre (`onReorder`), conteo dinámico de páginas, peso en KB/MB y formateo estético alineado con el tema nativo de la app.
+- **Suite de pruebas de integración y unitarias:** Creados tests en Vitest (`compress.test.ts`, `merge.test.ts`, `split.test.ts`) y pruebas para `TerapiasService`, alcanzando 69 pruebas aprobadas exitosamente (`npm run test`).
+- **Verificación de build:** `npm run build` ejecutado y validado limpiamente para los tres targets (renderer, main, preload).
 
 ### 2026-06-24 — P62: Reorganización de código - Centralización y limpieza
 
@@ -1000,6 +1148,7 @@ No hay issues de alta prioridad abiertas.
 7. Cada sesión de trabajo cierra con una sola actualización a CONTEXT.md, no con múltiples archivos de resumen.
 8. Configuración de usuario (`terapiasDir`, `tesseractPath`, rutas Terapias, columnas, etc.) persiste solo en `settings.json` vía `db:saveSettings`. `electron-store` reserva flags de migración one-time.
 9. La modularización de PDFTools se documenta en CONTEXT.md y los hooks/componentes se crean bajo `src/app/pages/PDFTools/hooks/` y `src/app/pages/PDFTools/components/`.
+10. Separar la lógica de negocio de la UI: la lógica debe vivir en servicios, hooks o utilidades; los componentes páginas solo deben renderizar y orquestar.
 
 ## CONTRIBUTING.md (merged)
 # Contribuir a ControlHub

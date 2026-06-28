@@ -58,6 +58,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Slider } from "../../components/ui/slider";
 import { FileDropZone } from "../../components/shared/FileDropZone";
+import { PageThumbnails } from "./components/PageThumbnails";
+import { DocumentGrid } from "./components/DocumentGrid";
 import { 
   AlertDialog,
   AlertDialogAction,
@@ -106,36 +108,36 @@ interface ToolConfig {
 
 const TOOLS: ToolConfig[] = [
   // Organizar
-  { id: 'merge', category: 'Organizar', name: 'Unir PDFs', desc: 'Combina varios archivos en uno solo', icon: <Files className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf' },
-  { id: 'split', category: 'Organizar', name: 'Dividir PDF', desc: 'Separa un PDF en varios archivos', icon: <Split className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf', needsConfirm: true },
-  { id: 'extract', category: 'Organizar', name: 'Extraer Páginas', desc: 'Obtén solo las páginas que necesitas', icon: <Scissors className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf' },
-  { id: 'delete_pages', category: 'Organizar', name: 'Eliminar Páginas', desc: 'Quita páginas específicas del documento', icon: <Eraser className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf', needsConfirm: true },
-  { id: 'reorder_pages', category: 'Organizar', name: 'Ordenar Páginas', desc: 'Cambia el orden de las hojas', icon: <ListOrdered className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf' },
+  { id: 'merge', category: 'Organizar', name: 'Unir PDFs', desc: 'Combina varios archivos en uno solo', icon: <Files className="w-6 h-6" />, color: '', accept: '.pdf' },
+  { id: 'split', category: 'Organizar', name: 'Dividir PDF', desc: 'Separa un PDF en varios archivos', icon: <Split className="w-6 h-6" />, color: '', accept: '.pdf', needsConfirm: true },
+  { id: 'extract', category: 'Organizar', name: 'Extraer Páginas', desc: 'Obtén solo las páginas que necesitas', icon: <Scissors className="w-6 h-6" />, color: '', accept: '.pdf' },
+  { id: 'delete_pages', category: 'Organizar', name: 'Eliminar Páginas', desc: 'Quita páginas específicas del documento', icon: <Eraser className="w-6 h-6" />, color: '', accept: '.pdf', needsConfirm: true },
+  { id: 'reorder_pages', category: 'Organizar', name: 'Ordenar Páginas', desc: 'Cambia el orden de las hojas', icon: <ListOrdered className="w-6 h-6" />, color: '', accept: '.pdf' },
   
   // Optimizar
-  { id: 'compress', category: 'Optimizar', name: 'Comprimir', desc: 'Reduce el peso de tus archivos', icon: <Minimize2 className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf', needsConfirm: true },
-  { id: 'rotate', category: 'Optimizar', name: 'Rotar', desc: 'Gira las páginas de tus documentos', icon: <RotateCw className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf', needsConfirm: true },
-  { id: 'crop', category: 'Optimizar', name: 'Recortar', desc: 'Ajusta los márgenes del documento', icon: <Crop className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf' },
-  { id: 'repair', category: 'Optimizar', name: 'Reparar PDF', desc: 'Intenta recuperar archivos dañados', icon: <Wrench className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf' },
-  { id: 'add_page_numbers', category: 'Optimizar', name: 'Numerar Páginas', desc: 'Inserta números de página', icon: <Hash className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf' },
+  { id: 'compress', category: 'Optimizar', name: 'Comprimir', desc: 'Reduce el peso de tus archivos', icon: <Minimize2 className="w-6 h-6" />, color: '', accept: '.pdf', needsConfirm: true },
+  { id: 'rotate', category: 'Optimizar', name: 'Rotar', desc: 'Gira las páginas de tus documentos', icon: <RotateCw className="w-6 h-6" />, color: '', accept: '.pdf', needsConfirm: true },
+  { id: 'crop', category: 'Optimizar', name: 'Recortar', desc: 'Ajusta los márgenes del documento', icon: <Crop className="w-6 h-6" />, color: '', accept: '.pdf' },
+  { id: 'repair', category: 'Optimizar', name: 'Reparar PDF', desc: 'Intenta recuperar archivos dañados', icon: <Wrench className="w-6 h-6" />, color: '', accept: '.pdf' },
+  { id: 'add_page_numbers', category: 'Optimizar', name: 'Numerar Páginas', desc: 'Inserta números de página', icon: <Hash className="w-6 h-6" />, color: '', accept: '.pdf' },
 
   // Contenido
-  { id: 'watermark', category: 'Contenido', name: 'Marca de Agua Texto', desc: 'Añade texto de fondo', icon: <Type className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf' },
-  { id: 'watermark_image', category: 'Contenido', name: 'Marca de Agua Imagen', desc: 'Añade un logo de fondo', icon: <ImageIcon className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf' },
-  { id: 'jpg_to_pdf', category: 'Contenido', name: 'JPG a PDF', desc: 'Imágenes a documento PDF', icon: <ImagePlus className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.jpg,.jpeg,.png' },
-  { id: 'pdf_to_jpg', category: 'Contenido', name: 'PDF a JPG', desc: 'Páginas a imágenes individuales', icon: <FileImage className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf' },
-  { id: 'html_to_pdf', category: 'Contenido', name: 'HTML a PDF', desc: 'Web local a documento PDF', icon: <Globe className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.html' },
+  { id: 'watermark', category: 'Contenido', name: 'Marca de Agua Texto', desc: 'Añade texto de fondo', icon: <Type className="w-6 h-6" />, color: '', accept: '.pdf' },
+  { id: 'watermark_image', category: 'Contenido', name: 'Marca de Agua Imagen', desc: 'Añade un logo de fondo', icon: <ImageIcon className="w-6 h-6" />, color: '', accept: '.pdf' },
+  { id: 'jpg_to_pdf', category: 'Contenido', name: 'JPG a PDF', desc: 'Imágenes a documento PDF', icon: <ImagePlus className="w-6 h-6" />, color: '', accept: '.jpg,.jpeg,.png' },
+  { id: 'pdf_to_jpg', category: 'Contenido', name: 'PDF a JPG', desc: 'Páginas a imágenes individuales', icon: <FileImage className="w-6 h-6" />, color: '', accept: '.pdf' },
+  { id: 'html_to_pdf', category: 'Contenido', name: 'HTML a PDF', desc: 'Web local a documento PDF', icon: <Globe className="w-6 h-6" />, color: '', accept: '.html' },
 
   // Seguridad
-  { id: 'protect', category: 'Seguridad', name: 'Proteger PDF', desc: 'Cifra con contraseña', icon: <Lock className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf', needsConfirm: true },
-  { id: 'unlock', category: 'Seguridad', name: 'Desbloquear PDF', desc: 'Quita la contraseña', icon: <Unlock className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf', needsConfirm: true },
-  { id: 'ocr', category: 'Seguridad', name: 'OCR (Buscable)', desc: 'Reconocimiento de texto', icon: <Search className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf' },
+  { id: 'protect', category: 'Seguridad', name: 'Proteger PDF', desc: 'Cifra con contraseña', icon: <Lock className="w-6 h-6" />, color: '', accept: '.pdf', needsConfirm: true },
+  { id: 'unlock', category: 'Seguridad', name: 'Desbloquear PDF', desc: 'Quita la contraseña', icon: <Unlock className="w-6 h-6" />, color: '', accept: '.pdf', needsConfirm: true },
+  { id: 'ocr', category: 'Seguridad', name: 'OCR (Buscable)', desc: 'Reconocimiento de texto', icon: <Search className="w-6 h-6" />, color: '', accept: '.pdf' },
 
   // Convertir
-  { id: 'w2p', category: 'Convertir', name: 'Word a PDF', desc: 'Doc a PDF profesional', icon: <FileText className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.docx,.doc', newExt: '.pdf' },
-  { id: 'p2w', category: 'Convertir', name: 'PDF a Word', desc: 'PDF a Doc editable', icon: <FileType className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pdf', newExt: '.docx' },
-  { id: 'e2p', category: 'Convertir', name: 'Excel a PDF', desc: 'Xls a PDF', icon: <FileExcel className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.xlsx,.xls', newExt: '.pdf' },
-  { id: 'pp2p', category: 'Convertir', name: 'PPT a PDF', desc: 'Ppt a PDF', icon: <Presentation className="w-5 h-5" />, color: 'bg-muted text-muted-foreground', accept: '.pptx,.ppt', newExt: '.pdf' },
+  { id: 'w2p', category: 'Convertir', name: 'Word a PDF', desc: 'Doc a PDF profesional', icon: <FileText className="w-6 h-6" />, color: '', accept: '.docx,.doc', newExt: '.pdf' },
+  { id: 'p2w', category: 'Convertir', name: 'PDF a Word', desc: 'PDF a Doc editable', icon: <FileType className="w-6 h-6" />, color: '', accept: '.pdf', newExt: '.docx' },
+  { id: 'e2p', category: 'Convertir', name: 'Excel a PDF', desc: 'Xls a PDF', icon: <FileExcel className="w-6 h-6" />, color: '', accept: '.xlsx,.xls', newExt: '.pdf' },
+  { id: 'pp2p', category: 'Convertir', name: 'PPT a PDF', desc: 'Ppt a PDF', icon: <Presentation className="w-6 h-6" />, color: '', accept: '.pptx,.ppt', newExt: '.pdf' },
 ];
 
 export default function PDFTools() {
@@ -226,6 +228,9 @@ export default function PDFTools() {
             wmImage: wmImage ? { path: wmImage.path } : null,
             dpi,
             ocrLang,
+            preserveBookmarks,
+            renumberPages,
+            namingPattern,
           };
           const { res, successMsg } = await executeTool(api, activeTool, [qFile], finalOutput, execParams);
           if (res?.ok) {
@@ -495,6 +500,52 @@ export default function PDFTools() {
   const [compressLevel, setCompressLevel] = useState("ebook");
   const [rotateAngle, setRotateAngle] = useState("90");
   const [rotatePages, setRotatePages] = useState("");
+  const [preserveBookmarks, setPreserveBookmarks] = useState(true);
+  const [renumberPages, setRenumberPages] = useState(false);
+  const [namingPattern, setNamingPattern] = useState("part");
+  const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
+  const [documentThumbnails, setDocumentThumbnails] = useState<Record<string, string>>({});
+  const [documentMetadata, setDocumentMetadata] = useState<Record<string, { pageCount?: number }>>({});
+
+  // Cargar miniaturas de documentos para merge
+  useEffect(() => {
+    if (activeTool?.id === 'merge' && files.length > 0) {
+      const loadThumbnails = async () => {
+        for (const file of files) {
+          if (documentThumbnails[file.path]) continue;
+          try {
+            console.log('Loading thumbnail for:', file.path);
+            const res = await window.electronAPI.pdfTools.pdfThumbnail({
+              input: file.path,
+              dpi: 100,
+            });
+            console.log('Thumbnail response:', res);
+            if (res.ok && res.thumb_path) {
+              const thumbName = res.thumb_path?.split(/[\\/]/).pop();
+              console.log('Thumbnail name:', thumbName);
+              if (thumbName) {
+                const thumbUrl = `pdfthumb://${thumbName}`;
+                console.log('Thumbnail URL:', thumbUrl);
+                setDocumentThumbnails(prev => ({
+                  ...prev,
+                  [file.path]: thumbUrl,
+                }));
+                if (res.page_count) {
+                  setDocumentMetadata(prev => ({
+                    ...prev,
+                    [file.path]: { pageCount: res.page_count }
+                  }));
+                }
+              }
+            }
+          } catch (err) {
+            console.error('Error loading thumbnail for', file.path, err);
+          }
+        }
+      };
+      loadThumbnails();
+    }
+  }, [activeTool?.id, files]);
 
   // --- Helpers ---
   const getFileInfo = (path: string): FileInfo => ({
@@ -532,6 +583,7 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
       }
     }
     // Reset tool‑specific states
+    setSelectedPages(new Set());
     setSplitRanges('');
     setExtractPages('');
     setDeletePagesInput('');
@@ -640,6 +692,21 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
     // For tools that output a directory (split, pdf_to_jpg), select directory instead of file
     const isDir = activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg';
     if (isDir) {
+      // For split, allow selecting a file to use as base name, then extract directory
+      if (activeTool.id === 'split') {
+        const ext = (activeTool.newExt || "pdf").replace(/^\./, "");
+        const result = await window.electronAPI.selectSavePath({
+          defaultPath: suggested,
+          filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+        });
+        if (!result) {
+          return; // user cancelled save dialog
+        }
+        setFinalOutputPath(result);
+        executeAction(result);
+        return;
+      }
+      // For pdf_to_jpg, still select directory
       const dir = await window.electronAPI.selectDirectory();
       if (!dir) {
         return; // user cancelled
@@ -906,105 +973,348 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
           </CardHeader>
           
           <CardContent className="p-6 space-y-6">
-            {/* DropZone Unificada */}
-            <FileDropZone 
-              multiple={activeTool.id === 'merge' || activeTool.id === 'jpg_to_pdf'}
-              accept={activeTool.accept}
-              files={files}
-              onFiles={(newPaths: string[]) => {
-                  const newFiles = newPaths.filter(Boolean).map(p => getFileInfo(p));
-                  if (newFiles.length === 0) return;
-                  if (activeTool.id === 'merge' || activeTool.id === 'jpg_to_pdf') {
+            {/* DocumentGrid para merge, FileDropZone para otras herramientas */}
+            {activeTool.id === 'merge' ? (
+              <DocumentGrid
+                documents={files.map((f) => ({
+                  id: f.path,
+                  name: f.name,
+                  path: f.path,
+                  thumbnail: documentThumbnails[f.path],
+                  size: f.size,
+                  pageCount: documentMetadata[f.path]?.pageCount
+                }))}
+                onAdd={async () => {
+                  const filters = activeTool.accept ? [{ name: "Archivos", extensions: activeTool.accept.replace(/\./g, '').split(',') }] : [];
+                  const paths = await window.electronAPI.selectFiles({ filters });
+                  if (paths && paths.length > 0) {
+                    const newFiles = paths.filter(Boolean).map(p => getFileInfo(p));
                     setFiles(prev => [...prev, ...newFiles]);
-                    if (!output) {
-                      const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("\\"));
-                      setOutput(`${base}\\Resultado_${Date.now()}${activeTool.newExt || '.pdf'}`);
-                    }
-                  } else if (newFiles.length > 1) {
-                    // Multiple files for single-file tool: start sequential processing
-                    setQueueFiles(newFiles);
-                    const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("."));
-                    if (activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg') {
-                      setOutput(newPaths[0].substring(0, newPaths[0].lastIndexOf("\\")));
-                    } else {
-                      setOutput(`${base}${activeTool.newExt || (activeTool.id === 'extract' ? '_extraido.pdf' : activeTool.id === 'delete_pages' ? '_editado.pdf' : activeTool.id === 'compress' ? '_comprimido.pdf' : activeTool.id === 'ocr' ? '_ocr.pdf' : '_procesado.pdf')}`);
-                    }
-                    // Auto-start processing after a brief delay for UX
-                    setTimeout(() => processQueueSequentially(newFiles), 500);
-                  } else {
-                    setFiles([newFiles[0]]);
-                    const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("."));
-                    if (activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg') {
-                      setOutput(newPaths[0].substring(0, newPaths[0].lastIndexOf("\\")));
-                    } else {
-                      setOutput(`${base}${activeTool.newExt || (activeTool.id === 'extract' ? '_extraido.pdf' : activeTool.id === 'delete_pages' ? '_editado.pdf' : activeTool.id === 'compress' ? '_comprimido.pdf' : activeTool.id === 'ocr' ? '_ocr.pdf' : '_procesado.pdf')}`);
+                    if (!output && paths[0]) {
+                      const base = paths[0].substring(0, paths[0].lastIndexOf("\\"));
+                      setOutput(`${base}\\Resultado_${Date.now()}.pdf`);
                     }
                   }
                 }}
-              onRemove={(idx: number) => setFiles(prev => prev.filter((_, i) => i !== idx))}
-              onReorder={handleReorder}
-            />
+                onAddFiles={(paths) => {
+                  const newFiles = paths.filter(Boolean).map(p => getFileInfo(p));
+                  setFiles(prev => [...prev, ...newFiles]);
+                  if (!output && paths[0]) {
+                    const base = paths[0].substring(0, paths[0].lastIndexOf("\\"));
+                    setOutput(`${base}\\Resultado_${Date.now()}.pdf`);
+                  }
+                }}
+                onRemove={(id) => {
+                  setFiles(prev => prev.filter(f => f.path !== id));
+                }}
+                onReorder={(fromIndex, toIndex) => {
+                  console.log('onReorder called:', { fromIndex, toIndex });
+                  setFiles(prev => {
+                    const next = [...prev];
+                    const [moved] = next.splice(fromIndex, 1);
+                    next.splice(toIndex, 0, moved);
+                    console.log('Files reordered:', next.map(f => f.name));
+                    return next;
+                  });
+                }}
+                onSort={(direction) => {
+                  setFiles(prev => {
+                    const sorted = [...prev].sort((a, b) => {
+                      const cmp = a.name.localeCompare(b.name);
+                      return direction === 'asc' ? cmp : -cmp;
+                    });
+                    return sorted;
+                  });
+                }}
+              />
+            ) : (
+              <FileDropZone 
+                multiple={activeTool.id === 'jpg_to_pdf'}
+                accept={activeTool.accept}
+                files={files}
+                onFiles={(newPaths: string[]) => {
+                    const newFiles = newPaths.filter(Boolean).map(p => getFileInfo(p));
+                    if (newFiles.length === 0) return;
+                    if (activeTool.id === 'jpg_to_pdf') {
+                      setFiles(prev => [...prev, ...newFiles]);
+                      if (!output) {
+                        const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("\\"));
+                        setOutput(`${base}\\Resultado_${Date.now()}${activeTool.newExt || '.pdf'}`);
+                      }
+                    } else if (newFiles.length > 1) {
+                      // Multiple files for single-file tool: start sequential processing
+                      setQueueFiles(newFiles);
+                      const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("."));
+                      if (activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg') {
+                        setOutput(newPaths[0].substring(0, newPaths[0].lastIndexOf("\\")));
+                      } else {
+                        setOutput(`${base}${activeTool.newExt || (activeTool.id === 'extract' ? '_extraido.pdf' : activeTool.id === 'delete_pages' ? '_editado.pdf' : activeTool.id === 'compress' ? '_comprimido.pdf' : activeTool.id === 'ocr' ? '_ocr.pdf' : '_procesado.pdf')}`);
+                      }
+                      // Auto-start processing after a brief delay for UX
+                      setTimeout(() => processQueueSequentially(newFiles), 500);
+                    } else {
+                      setFiles([newFiles[0]]);
+                      const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("."));
+                      if (activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg') {
+                        setOutput(newPaths[0].substring(0, newPaths[0].lastIndexOf("\\")));
+                      } else {
+                        setOutput(`${base}${activeTool.newExt || (activeTool.id === 'extract' ? '_extraido.pdf' : activeTool.id === 'delete_pages' ? '_editado.pdf' : activeTool.id === 'compress' ? '_comprimido.pdf' : activeTool.id === 'ocr' ? '_ocr.pdf' : '_procesado.pdf')}`);
+                      }
+                    }
+                  }}
+                onRemove={(idx: number) => setFiles(prev => prev.filter((_, i) => i !== idx))}
+                onReorder={handleReorder}
+              />
+            )}
 
             {/* Controles Específicos */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-700">
+              {activeTool.id === 'merge' && (
+                <>
+                  <div className="flex items-center space-x-3 p-3 bg-muted/30 rounded-lg">
+                    <Switch 
+                      checked={preserveBookmarks} 
+                      onCheckedChange={setPreserveBookmarks}
+                      id="preserve-bookmarks"
+                    />
+                    <div className="space-y-0.5">
+                      <label htmlFor="preserve-bookmarks" className="text-sm font-medium cursor-pointer">Preservar marcadores</label>
+                      <p className="text-xs text-muted-foreground">Mantiene los bookmarks de los PDFs originales</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3 p-3 bg-muted/30 rounded-lg">
+                    <Switch 
+                      checked={renumberPages} 
+                      onCheckedChange={setRenumberPages}
+                      id="renumber-pages"
+                    />
+                    <div className="space-y-0.5">
+                      <label htmlFor="renumber-pages" className="text-sm font-medium cursor-pointer">Renumerar páginas</label>
+                      <p className="text-xs text-muted-foreground">Reinicia la numeración en cada archivo</p>
+                    </div>
+                  </div>
+                </>
+              )}
               {activeTool.id === 'split' && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Rangos (ej: 1-3, 4-z)</label>
-                  <Input value={splitRanges} onChange={e => setSplitRanges(e.target.value)} placeholder="Ej: 1-5, 6-10" className="h-10 rounded-md" />
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Rangos (ej: 1-3, 4-z)</label>
+                    <Input value={splitRanges} onChange={e => setSplitRanges(e.target.value)} placeholder="Ej: 1-5, 6-10" className="h-10 rounded-md" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Patrón de nombres</label>
+                    <Select value={namingPattern} onValueChange={setNamingPattern}>
+                      <SelectTrigger className="h-10 rounded-md font-medium text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="part" className="font-medium">Part (part_1_1-3.pdf)</SelectItem>
+                        <SelectItem value="range" className="font-medium">Range (split_1_to_3.pdf)</SelectItem>
+                        <SelectItem value="custom" className="font-medium">Custom (split_001.pdf)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {files.length > 0 && (
+                    <div className="space-y-3 col-span-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Selección visual de páginas</label>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedPages(new Set());
+                            setSplitRanges('');
+                          }}
+                          className="h-8 text-xs hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          Limpiar selección
+                        </Button>
+                      </div>
+                      <PageThumbnails
+                        filePath={files[0].path}
+                        selectedPages={selectedPages}
+                        onTogglePage={(pageNumber) => {
+                          setSelectedPages(prev => {
+                            const next = new Set(prev);
+                            if (next.has(pageNumber)) {
+                              next.delete(pageNumber);
+                            } else {
+                              next.add(pageNumber);
+                            }
+                            
+                            // Convertir selección a formato de rangos automáticamente
+                            const pages = Array.from(next).sort((a, b) => a - b);
+                            if (pages.length === 0) {
+                              setSplitRanges('');
+                            } else {
+                              const ranges: string[] = [];
+                              let start = pages[0];
+                              for (let i = 1; i < pages.length; i++) {
+                                if (pages[i] !== pages[i-1] + 1) {
+                                  ranges.push(start === pages[i-1] ? `${start}` : `${start}-${pages[i-1]}`);
+                                  start = pages[i];
+                                }
+                              }
+                              ranges.push(start === pages[pages.length-1] ? `${start}` : `${start}-${pages[pages.length-1]}`);
+                              setSplitRanges(ranges.join(', '));
+                            }
+                            return next;
+                          });
+                        }}
+                      />
+                    </div>
+                  )}
+                </>
               )}
               {activeTool.id === 'extract' && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Páginas a extraer</label>
-                  <Input value={extractPages} onChange={e => setExtractPages(e.target.value)} placeholder="Ej: 1, 3, 5-8" className="h-10 rounded-md" />
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Páginas a extraer</label>
+                    <Input value={extractPages} onChange={e => setExtractPages(e.target.value)} placeholder="Ej: 1, 3, 5-8" className="h-10 rounded-md" />
+                  </div>
+                  {files.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Selección visual</label>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const pages = Array.from(selectedPages).sort((a, b) => a - b);
+                            setExtractPages(pages.join(', '));
+                          }}
+                        >
+                          Aplicar selección
+                        </Button>
+                      </div>
+                      <PageThumbnails
+                        filePath={files[0].path}
+                        selectedPages={selectedPages}
+                        onTogglePage={(pageNumber) => {
+                          setSelectedPages(prev => {
+                            const next = new Set(prev);
+                            if (next.has(pageNumber)) {
+                              next.delete(pageNumber);
+                            } else {
+                              next.add(pageNumber);
+                            }
+                            return next;
+                          });
+                        }}
+                      />
+                    </div>
+                  )}
+                </>
               )}
               {activeTool.id === 'delete_pages' && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Páginas a eliminar</label>
-                  <Input value={deletePagesInput} onChange={e => setDeletePagesInput(e.target.value)} placeholder="Ej: 2, 5" className="h-10 rounded-md border-destructive/30" />
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Páginas a eliminar</label>
+                    <Input value={deletePagesInput} onChange={e => setDeletePagesInput(e.target.value)} placeholder="Ej: 2, 5" className="h-10 rounded-md border-destructive/30" />
+                  </div>
+                  {files.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Selección visual</label>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const pages = Array.from(selectedPages).sort((a, b) => a - b);
+                            setDeletePagesInput(pages.join(', '));
+                          }}
+                        >
+                          Aplicar selección
+                        </Button>
+                      </div>
+                      <PageThumbnails
+                        filePath={files[0].path}
+                        selectedPages={selectedPages}
+                        onTogglePage={(pageNumber) => {
+                          setSelectedPages(prev => {
+                            const next = new Set(prev);
+                            if (next.has(pageNumber)) {
+                              next.delete(pageNumber);
+                            } else {
+                              next.add(pageNumber);
+                            }
+                            return next;
+                          });
+                        }}
+                        onDeletePage={(pageNumber) => {
+                          const currentPages = deletePagesInput ? deletePagesInput.split(',').map(p => p.trim()) : [];
+                          if (!currentPages.includes(pageNumber.toString())) {
+                            currentPages.push(pageNumber.toString());
+                            setDeletePagesInput(currentPages.join(', '));
+                          }
+                        }}
+                        showActions={true}
+                      />
+                    </div>
+                  )}
+                </>
               )}
               {activeTool.id === 'reorder_pages' && pageOrder.length > 0 && (
                 <div className="md:col-span-2 space-y-3">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex justify-between">
                     Orden de páginas <span>{pageOrder.length} páginas detectadas</span>
                   </label>
-                  <ScrollArea className="h-40 rounded-md border border-border bg-muted/20 p-2">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {pageOrder.map((page, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-2 bg-card rounded border border-border group">
-                          <span className="text-xs font-medium text-foreground">Hoja {page}</span>
-                          <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0} onClick={() => {
-                              const next = [...pageOrder];
-                              [next[idx], next[idx-1]] = [next[idx-1], next[idx]];
-                              setPageOrder(next);
-                            }}><ArrowUp className="w-3 h-3" /></Button>
-                            <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === pageOrder.length - 1} onClick={() => {
-                              const next = [...pageOrder];
-                              [next[idx], next[idx+1]] = [next[idx+1], next[idx]];
-                              setPageOrder(next);
-                            }}><ArrowDown className="w-3 h-3" /></Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
+                  {files.length > 0 && (
+                    <PageThumbnails
+                      filePath={files[0].path}
+                      draggable={true}
+                      onReorder={(fromIndex, toIndex) => {
+                        const next = [...pageOrder];
+                        const [moved] = next.splice(fromIndex, 1);
+                        next.splice(toIndex, 0, moved);
+                        setPageOrder(next);
+                      }}
+                    />
+                  )}
                 </div>
               )}
               {activeTool.id === 'compress' && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Nivel de compresión</label>
-                  <Select value={compressLevel} onValueChange={setCompressLevel}>
-                    <SelectTrigger className="h-10 rounded-md font-medium text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="fast" className="font-medium">Máxima Velocidad (Limpieza)</SelectItem>
-                      <SelectItem value="screen" className="font-medium">Baja (72 DPI - Web)</SelectItem>
-                      <SelectItem value="ebook" className="font-medium">Media (150 DPI - Email)</SelectItem>
-                      <SelectItem value="printer" className="font-medium">Alta (300 DPI - Impresión)</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="grid grid-cols-3 gap-3">
+                    <button
+                      onClick={() => setCompressLevel('screen')}
+                      className={cn(
+                        "p-4 rounded-xl border-2 transition-all text-center",
+                        compressLevel === 'screen'
+                          ? "border-orange-500 bg-orange-50 text-orange-700"
+                          : "border-border hover:border-orange-300 bg-card"
+                      )}
+                    >
+                      <div className="text-2xl mb-1">🔥</div>
+                      <div className="font-bold text-sm">Máxima</div>
+                      <div className="text-xs text-muted-foreground mt-1">Para web</div>
+                    </button>
+                    <button
+                      onClick={() => setCompressLevel('ebook')}
+                      className={cn(
+                        "p-4 rounded-xl border-2 transition-all text-center",
+                        compressLevel === 'ebook'
+                          ? "border-orange-500 bg-orange-50 text-orange-700"
+                          : "border-border hover:border-orange-300 bg-card"
+                      )}
+                    >
+                      <div className="text-2xl mb-1">⚖️</div>
+                      <div className="font-bold text-sm">Recomendada</div>
+                      <div className="text-xs text-muted-foreground mt-1">Balance ideal</div>
+                    </button>
+                    <button
+                      onClick={() => setCompressLevel('printer')}
+                      className={cn(
+                        "p-4 rounded-xl border-2 transition-all text-center",
+                        compressLevel === 'printer'
+                          ? "border-orange-500 bg-orange-50 text-orange-700"
+                          : "border-border hover:border-orange-300 bg-card"
+                      )}
+                    >
+                      <div className="text-2xl mb-1">📄</div>
+                      <div className="font-bold text-sm">Baja</div>
+                      <div className="text-xs text-muted-foreground mt-1">Para imprimir</div>
+                    </button>
+                  </div>
                 </div>
               )}
               {activeTool.id === 'rotate' && (
@@ -1024,6 +1334,34 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                     <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Páginas</label>
                     <Input value={rotatePages} onChange={e => setRotatePages(e.target.value)} placeholder="Vacío = todas" className="h-10 rounded-md" />
                   </div>
+                  {files.length > 0 && (
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Rotación visual</label>
+                      <PageThumbnails
+                        filePath={files[0].path}
+                        selectedPages={selectedPages}
+                        onTogglePage={(pageNumber) => {
+                          setSelectedPages(prev => {
+                            const next = new Set(prev);
+                            if (next.has(pageNumber)) {
+                              next.delete(pageNumber);
+                            } else {
+                              next.add(pageNumber);
+                            }
+                            return next;
+                          });
+                        }}
+                        onRotatePage={(pageNumber) => {
+                          const currentPages = rotatePages ? rotatePages.split(',').map(p => p.trim()) : [];
+                          if (!currentPages.includes(pageNumber.toString())) {
+                            currentPages.push(pageNumber.toString());
+                            setRotatePages(currentPages.join(', '));
+                          }
+                        }}
+                        showActions={true}
+                      />
+                    </div>
+                  )}
                 </>
               )}
               {activeTool.id === 'crop' && (
@@ -1150,7 +1488,7 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
               {!askBeforeSave && (
                 <div className="md:col-span-2 space-y-2 mt-2">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    {['split', 'pdf_to_jpg'].includes(activeTool.id) ? 'Carpeta de destino' : 'Ruta de salida'}
+                    {activeTool.id === 'pdf_to_jpg' ? 'Carpeta de destino' : 'Ruta de salida'}
                   </label>
                   <div className="flex gap-2">
                     <Input
@@ -1163,9 +1501,19 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                       size="sm"
                       className="h-10 px-4 rounded-md font-bold"
                       onClick={async () => {
-                        const path = ['split', 'pdf_to_jpg'].includes(activeTool.id)
-                          ? await window.electronAPI.selectDirectory()
-                          : await window.electronAPI.selectFile();
+                        let path;
+                        if (activeTool.id === 'split') {
+                          const ext = (activeTool.newExt || "pdf").replace(/^\./, "");
+                          const suggested = files[0] ? smartOutputName(files[0], activeTool) : "resultado.pdf";
+                          path = await window.electronAPI.selectSavePath({
+                            defaultPath: suggested,
+                            filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+                          });
+                        } else if (activeTool.id === 'pdf_to_jpg') {
+                          path = await window.electronAPI.selectDirectory();
+                        } else {
+                          path = await window.electronAPI.selectFile();
+                        }
                         if (path) setOutput(path);
                       }}
                     >

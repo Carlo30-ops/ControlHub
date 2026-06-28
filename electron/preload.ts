@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('dialog-save-path', options),
   selectFile: (options?: { filters?: { name: string; extensions: string[] }[]; defaultPath?: string } | { name: string; extensions: string[] }[]) =>
     ipcRenderer.invoke('dialog:selectFile', options),
+  selectFiles: (options?: { filters?: { name: string; extensions: string[] }[]; defaultPath?: string } | { name: string; extensions: string[] }[]) =>
+    ipcRenderer.invoke('dialog:selectFiles', options),
 
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
 
@@ -160,6 +162,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     jpgToPdf: (data: any) => ipcRenderer.invoke('pdf:jpg_to_pdf', data),
     pdfToJpg: (data: any) => ipcRenderer.invoke('pdf:pdf_to_jpg', data),
     pdfThumbnail: (data: any) => ipcRenderer.invoke('pdf:pdf_thumbnail', data),
+    pageThumbnails: (data: any) => ipcRenderer.invoke('pdf:page_thumbnails', data),
     htmlToPdf: (data: any) => ipcRenderer.invoke('pdf:html_to_pdf', data),
     protect: (data: any) => ipcRenderer.invoke('pdf:protect', data),
     unlock: (data: any) => ipcRenderer.invoke('pdf:unlock', data),

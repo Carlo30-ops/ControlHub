@@ -10,3 +10,8 @@
 8. Configuración de usuario (`terapiasDir`, `tesseractPath`, rutas Terapias, columnas, etc.) persiste solo en `settings.json` vía `db:saveSettings`. `electron-store` reserva flags de migración one-time.
 9. La modularización de PDFTools se documenta en CONTEXT.md y los hooks/componentes se crean bajo `src/app/pages/PDFTools/hooks/` y `src/app/pages/PDFTools/components/`.
 10. Separar la lógica de negocio de la UI: la lógica debe vivir en servicios, hooks o utilidades; los componentes páginas solo deben renderizar y orquestar.
+11. Usar el sistema de logging centralizado (`electron/logger.ts` para main process, `src/app/utils/logger.ts` para renderer) en lugar de `console.log` disperso.
+12. Usar el sistema de manejo de errores centralizado (`src/app/utils/errorHandler.ts`) con tipos de error personalizados (`AppError`, `ErrorType`) en lugar de try/catch sin tipado.
+13. Usar constantes centralizadas (`src/app/constants/`) para colores, formatos de fecha, paginación y umbrales de moneda en lugar de valores hardcodeados.
+14. Usar formateadores centralizados (`src/app/utils/formatters.ts`) para moneda y fechas en lugar de funciones duplicadas en componentes.
+15. La modularización de localScanner se documenta en CONTEXT.md y los submódulos se crean bajo `src/app/utils/localScanner/` (cache.ts, extractors.ts, invoiceIdentifier.ts, pathResolver.ts).

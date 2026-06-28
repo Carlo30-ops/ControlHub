@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { Upload, Trash2, ArrowUp, ArrowDown, FileText, X } from "lucide-react";
+import { Upload, Trash2, ArrowUp, ArrowDown, FileText, X, GripVertical } from "lucide-react";
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { toast } from "sonner";
@@ -272,17 +272,50 @@ export function FileDropZone({
                     <div className="p-2 text-[10px] font-bold truncate text-foreground">
                       {file.name}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-1.5 right-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRemove?.(idx);
-                      }}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
+                    <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                      {onReorder && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 rounded bg-white/90 hover:bg-white"
+                            disabled={idx === 0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onReorder(idx, -1);
+                            }}
+                          >
+                            <ArrowUp className="w-3 h-3 text-gray-700" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 rounded bg-white/90 hover:bg-white"
+                            disabled={idx === files.length - 1}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onReorder(idx, 1);
+                            }}
+                          >
+                            <ArrowDown className="w-3 h-3 text-gray-700" />
+                          </Button>
+                        </>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 rounded bg-red-500/90 hover:bg-red-500"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemove?.(idx);
+                        }}
+                      >
+                        <X className="w-3 h-3 text-white" />
+                      </Button>
+                    </div>
+                    <div className="absolute top-1.5 left-1.5 w-6 h-6 rounded bg-black/50 text-white flex items-center justify-center text-[10px] font-bold">
+                      {idx + 1}
+                    </div>
                   </div>
                 ))}
               </div>

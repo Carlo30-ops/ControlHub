@@ -112,30 +112,176 @@ def parse_pages_param(pages_str, page_count):
 # --- Handlers ---
 
 def handle_merge(data):
+    pdf = None
     try:
         files = [os.path.abspath(f) for f in data.get("files", [])]
         output = os.path.abspath(data.get("output", "merged.pdf"))
-        if not files: return {"ok": False, "error": "No se proporcionaron archivos"}
-        pdf = pikepdf.new()
+        
+        # Validaciones mejoradas
+        if not files:
+            return {"ok": False, "error": "No se proporcionaron archivos para fusionar"}
+        
+        # Verificar que todos los archivos existan
+        missing_files = [f for f in files if not os.path.exists(f)]
+        if missing_files:
+            return {"ok": False, "error": f"Archivos no encontrados: {', '.join(missing_files)}"}
+        
+        # Verificar que no haya archivos duplicados
+        if len(files) != len(set(files)):
+            return {"ok": False, "error": "Se detectaron archivos duplicados en la lista"}
+        
+        # Verificar que el directorio de salida existe o se puede crear
+        output_dir = os.path.dirname(output)
+        if output_dir and not os.path.exists(output_dir):
+            try:
+                os.makedirs(output_dir)
+            except Exception as e:
+                return {"ok": False, "error": f"No se pudo crear el directorio de salida: {str(e)}"}
+        
+        # Verificar que todos los archivos sean PDFs válidos
+        invalid_pdfs = []
         for f in files:
-            with pikepdf.open(f) as src:
-                pdf.pages.extend(src.pages)
+            try:
+                with pikepdf.open(f) as test:
+                    pass
+            except Exception:
+                invalid_pdfs.append(f)
+        
+        if invalid_pdfs:
+            return {"ok": False, "error": f"Archivos PDF inválidos o corruptos: {', '.join(invalid_pdfs)}"}
+        
+        # Opciones de fusión
+        preserve_bookmarks = data.get("preserve_bookmarks", True)
+        renumber_pages = data.get("renumber_pages", False)
+        
+        total_pages = 0
+        pdf = pikepdf.new()
+        
+        for idx, f in enumerate(files):
+            try:
+                with pikepdf.open(f) as src:
+                    page_count = len(src.pages)
+                    total_pages += page_count
+                    pdf.pages.extend(src.pages)
+                    
+                    # Reportar progreso
+                    sys.stderr.write(f"MERGE_PROGRESS:{idx + 1}/{len(files)}|{page_count}\n")
+                    sys.stderr.flush()
+                    
+                    # Preservar bookmarks si se solicita
+                    if preserve_bookmarks and src.open_outline():
+                        try:
+                            if pdf.open_outline():
+                                pdf.outline.extend(src.outline)
+                            else:
+                                pdf.outline = src.outline
+                        except Exception:
+                            pass  # No crashear si falla la preservación de bookmarks
+            except Exception as e:
+                return {"ok": False, "error": f"Error al procesar archivo {os.path.basename(f)}: {str(e)}"}
+        
+        # Renumerar páginas si se solicita (tipo iLovePDF)
+        if renumber_pages:
+            try:
+                with pdf.open_outline() as outline:
+                    # Eliminar page labels existentes para renumerar desde 1
+                    if hasattr(pdf, 'Root') and hasattr(pdf.Root, 'PageLabels'):
+                        del pdf.Root.PageLabels
+                
+                # Crear nueva numeración consecutiva
+                page_labels = pikepdf.Dictionary()
+                page_labels.Nums = pikepdf.Array()
+                
+                # Agregar numeración desde la página 1
+                page_labels.Nums.append(0)  # Índice de página (0-based)
+                label_dict = pikepdf.Dictionary()
+                label_dict.S = pikepdf.Name('/D')  # Decimal (1, 2, 3...)
+                label_dict.St = 1  # Iniciar en 1
+                page_labels.Nums.append(label_dict)
+                
+                # Asignar page labels al documento
+                if not hasattr(pdf.Root, 'PageLabels'):
+                    pdf.Root.PageLabels = page_labels
+                else:
+                    pdf.Root.PageLabels = page_labels
+            except Exception as e:
+                # No fallar si la renumeración falla, solo loggear
+                sys.stderr.write(f"MERGE_WARNING:No se pudo renumerar páginas: {str(e)}\n")
+                sys.stderr.flush()
+        
         pdf.save(output)
-        pdf.close()
-        return {"ok": True, "output": output}
-    except Exception as e: return {"ok": False, "error": str(e)}
+        
+        # Validar que el output se creó correctamente
+        if not os.path.exists(output) or os.path.getsize(output) == 0:
+            return {"ok": False, "error": "El archivo de salida no se generó correctamente"}
+        
+        return {
+            "ok": True, 
+            "output": output,
+            "total_pages": total_pages,
+            "files_merged": len(files)
+        }
+    except Exception as e:
+        return {"ok": False, "error": f"Error en fusión de PDFs: {str(e)}"}
+    finally:
+        if pdf:
+            try:
+                pdf.close()
+            except Exception:
+                pass
 
 def handle_compress(data):
+    doc = None
     try:
         input_file = os.path.abspath(data.get("input", ""))
         output_file = os.path.abspath(data.get("output", "compressed.pdf"))
         level = data.get("level", "screen")
         ghostscript_path = data.get("ghostscript_path")
         
+        # Validaciones mejoradas
+        if not input_file:
+            return {"ok": False, "error": "No se proporcionó archivo de entrada"}
+        
+        if not os.path.exists(input_file):
+            return {"ok": False, "error": f"Archivo de entrada no encontrado: {input_file}"}
+        
+        # Verificar directorio de salida
+        output_dir = os.path.dirname(output_file)
+        if output_dir and not os.path.exists(output_dir):
+            try:
+                os.makedirs(output_dir)
+            except Exception as e:
+                return {"ok": False, "error": f"No se pudo crear el directorio de salida: {str(e)}"}
+        
+        # Validar que sea un PDF válido
+        try:
+            with pikepdf.open(input_file) as test_pdf:
+                pass
+        except Exception:
+            return {"ok": False, "error": "El archivo de entrada no es un PDF válido o está corrupto"}
+        
+        # Obtener tamaño original para comparación
+        original_size = os.path.getsize(input_file)
+        
         if level == "fast":
             with pikepdf.open(input_file) as pdf:
                 pdf.save(output_file, linearize=True)
-            return {"ok": True, "output": output_file, "engine": "pikepdf-fast"}
+            
+            # Validar output
+            if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+                return {"ok": False, "error": "El archivo comprimido no se generó correctamente"}
+            
+            compressed_size = os.path.getsize(output_file)
+            reduction = ((original_size - compressed_size) / original_size * 100) if original_size > 0 else 0
+            
+            return {
+                "ok": True, 
+                "output": output_file, 
+                "engine": "pikepdf-fast",
+                "original_size": original_size,
+                "compressed_size": compressed_size,
+                "reduction_percent": round(reduction, 2)
+            }
         
         gs_cmd = resolve_ghostscript_path(ghostscript_path)
         if not gs_cmd:
@@ -147,68 +293,211 @@ def handle_compress(data):
                          deflate=True,   # comprime streams
                          clean=True)     # limpia estructura
                 doc.close()
-                return {"ok": True, "output": output_file, 
-                        "engine": "fitz-fallback",
-                        "warning": "Ghostscript no encontrado. Compresión via PyMuPDF."}
+                doc = None
+                
+                if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+                    return {"ok": False, "error": "El archivo comprimido no se generó correctamente"}
+                
+                compressed_size = os.path.getsize(output_file)
+                reduction = ((original_size - compressed_size) / original_size * 100) if original_size > 0 else 0
+                
+                return {
+                    "ok": True, 
+                    "output": output_file, 
+                    "engine": "fitz-fallback",
+                    "warning": "Ghostscript no encontrado. Compresión via PyMuPDF.",
+                    "original_size": original_size,
+                    "compressed_size": compressed_size,
+                    "reduction_percent": round(reduction, 2)
+                }
             except Exception as e_fitz:
                 pass
+            
             # Fallback 2: pikepdf básico (último recurso)
-            with pikepdf.open(input_file) as pdf:
-                pdf.save(output_file, compress_streams=True, linearize=True)
-            return {"ok": True, "output": output_file, 
+            try:
+                with pikepdf.open(input_file) as pdf:
+                    pdf.save(output_file, compress_streams=True, linearize=True)
+                
+                if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+                    return {"ok": False, "error": "El archivo comprimido no se generó correctamente"}
+                
+                compressed_size = os.path.getsize(output_file)
+                reduction = ((original_size - compressed_size) / original_size * 100) if original_size > 0 else 0
+                
+                return {
+                    "ok": True, 
+                    "output": output_file, 
                     "engine": "pikepdf-fallback",
-                    "warning": "Ghostscript no encontrado. Compresión básica aplicada."}
+                    "warning": "Ghostscript no encontrado. Compresión básica aplicada.",
+                    "original_size": original_size,
+                    "compressed_size": compressed_size,
+                    "reduction_percent": round(reduction, 2)
+                }
+            except Exception as e_pikepdf:
+                return {"ok": False, "error": f"Todos los motores de compresión fallaron: {str(e_pikepdf)}"}
 
         settings = f"/{level}" if not level.startswith("/") else level
         cmd = [gs_cmd, "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4", f"-dPDFSETTINGS={settings}", 
                "-dNOPAUSE", "-dQUIET", "-dBATCH", f"-sOutputFile={output_file}", input_file]
         result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0: return {"ok": False, "error": result.stderr}
-        return {"ok": True, "output": output_file, "engine": "ghostscript"}
-    except Exception as e: return {"ok": False, "error": str(e)}
+        
+        if result.returncode != 0:
+            return {"ok": False, "error": f"Ghostscript falló: {result.stderr}"}
+        
+        if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+            return {"ok": False, "error": "El archivo comprimido no se generó correctamente"}
+        
+        compressed_size = os.path.getsize(output_file)
+        reduction = ((original_size - compressed_size) / original_size * 100) if original_size > 0 else 0
+        
+        return {
+            "ok": True, 
+            "output": output_file, 
+            "engine": "ghostscript",
+            "original_size": original_size,
+            "compressed_size": compressed_size,
+            "reduction_percent": round(reduction, 2)
+        }
+    except Exception as e:
+        return {"ok": False, "error": f"Error en compresión de PDF: {str(e)}"}
+    finally:
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
 
 def handle_split(data):
     doc = None
     try:
         input_file = os.path.abspath(data.get("input", ""))
+        # Soportar tanto output_dir (legacy) como output (nuevo con nombre base)
         output_dir = os.path.abspath(data.get("output_dir", "."))
+        output_path = data.get("output", "")
+        base_name = ""
+        
+        if output_path:
+            # Si se proporciona una ruta de archivo completa, extraer directorio y nombre base
+            output_path = os.path.abspath(output_path)
+            output_dir = os.path.dirname(output_path)
+            base_name = os.path.splitext(os.path.basename(output_path))[0]
+        else:
+            # Usar output_dir como antes (legacy)
+            output_dir = os.path.abspath(output_dir)
+        
         ranges = data.get("ranges", "")
+        naming_pattern = data.get("naming_pattern", "part") # 'part', 'range', 'custom'
+        
+        # Validaciones mejoradas
         if not input_file:
-            return {"ok": False, "error": "No se proporcionó archivo de entrada."}
+            return {"ok": False, "error": "No se proporcionó archivo de entrada"}
+        
+        if not os.path.exists(input_file):
+            return {"ok": False, "error": f"Archivo de entrada no encontrado: {input_file}"}
+        
         if not ranges or not ranges.strip():
-            return {"ok": False, "error": "No se especificaron rangos de páginas válidos."}
-        if not os.path.exists(output_dir): os.makedirs(output_dir)
-        doc = fitz.open(input_file)
+            return {"ok": False, "error": "No se especificaron rangos de páginas válidos"}
+        
+        # Crear directorio de salida si no existe
+        if not os.path.exists(output_dir):
+            try:
+                os.makedirs(output_dir)
+            except Exception as e:
+                return {"ok": False, "error": f"No se pudo crear el directorio de salida: {str(e)}"}
+        
+        # Validar que sea un PDF válido
+        try:
+            doc = fitz.open(input_file)
+        except Exception:
+            return {"ok": False, "error": "El archivo de entrada no es un PDF válido o está corrupto"}
+        
+        page_count = doc.page_count
         range_list = [r.strip() for r in ranges.split(",") if r.strip()]
+        
         if not range_list:
-            return {"ok": False, "error": "No se especificaron rangos de páginas válidos."}
+            return {"ok": False, "error": "No se especificaron rangos de páginas válidos"}
+        
+        # Validar rangos contra el número de páginas
+        invalid_ranges = []
+        for r in range_list:
+            try:
+                if "-" in r:
+                    s_s, e_s = r.split("-")
+                    start = int(s_s)
+                    end = page_count if e_s.lower() == 'z' else int(e_s)
+                    if start < 1 or start > page_count:
+                        invalid_ranges.append(f"{r} (página {start} fuera de rango)")
+                    if end != page_count and (end < 1 or end > page_count):
+                        invalid_ranges.append(f"{r} (página {end} fuera de rango)")
+                else:
+                    page_num = int(r)
+                    if page_num < 1 or page_num > page_count:
+                        invalid_ranges.append(f"{r} (página {page_num} fuera de rango)")
+            except ValueError:
+                invalid_ranges.append(f"{r} (formato inválido)")
+        
+        if invalid_ranges:
+            return {"ok": False, "error": f"Rangos inválidos: {', '.join(invalid_ranges)}. El PDF tiene {page_count} páginas."}
+        
         outputs = []
+        total_pages_split = 0
+        
         for idx, r in enumerate(range_list):
-            out_part = os.path.join(output_dir, f"part_{idx+1}_{r.replace('-', '_')}.pdf")
             new_doc = None
             try:
                 if "-" in r:
                     s_s, e_s = r.split("-")
                     start = int(s_s) - 1
-                    end = doc.page_count - 1 if e_s.lower() == 'z' else int(e_s) - 1
+                    end = page_count - 1 if e_s.lower() == 'z' else int(e_s) - 1
+                    range_pages = end - start + 1
                 else:
                     start = end = int(r) - 1
+                    range_pages = 1
+                
+                # Generar nombre de archivo según patrón
+                # Usar base_name si está disponible, sino usar prefijo por defecto
+                prefix = f"{base_name}_" if base_name else ""
+                
+                if naming_pattern == "range":
+                    safe_range = r.replace("-", "_to_").replace("/", "_")
+                    out_part = os.path.join(output_dir, f"{prefix}split_{safe_range}.pdf")
+                elif naming_pattern == "custom":
+                    out_part = os.path.join(output_dir, f"{prefix}split_{idx+1:03d}.pdf")
+                else: # part
+                    out_part = os.path.join(output_dir, f"{prefix}part_{idx+1}_{r.replace('-', '_')}.pdf")
+                
                 new_doc = fitz.open()
                 new_doc.insert_pdf(doc, from_page=start, to_page=end)
                 new_doc.save(out_part)
+                
                 if os.path.exists(out_part) and os.path.getsize(out_part) > 0:
                     outputs.append(out_part)
+                    total_pages_split += range_pages
+                    
+                    # Reportar progreso
+                    sys.stderr.write(f"SPLIT_PROGRESS:{idx + 1}/{len(range_list)}|{range_pages}\n")
+                    sys.stderr.flush()
+                else:
+                    return {"ok": False, "error": f"No se pudo generar el archivo para rango {r}"}
             finally:
                 if new_doc:
                     try:
                         new_doc.close()
                     except Exception:
                         pass
+        
         if not outputs:
-            return {"ok": False, "error": "No se generaron archivos de salida."}
-        return {"ok": True, "outputs": outputs}
+            return {"ok": False, "error": "No se generaron archivos de salida"}
+        
+        return {
+            "ok": True, 
+            "outputs": outputs,
+            "total_parts": len(outputs),
+            "total_pages_split": total_pages_split,
+            "original_page_count": page_count
+        }
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": f"Error en división de PDF: {str(e)}"}
     finally:
         if doc:
             try:
@@ -531,6 +820,7 @@ def handle_pdf_thumbnail(data):
     doc = None
     try:
         import tempfile
+        import hashlib
         input_file = os.path.abspath(data.get("input", ""))
         dpi = int(data.get("dpi", 100))
 
@@ -545,19 +835,86 @@ def handle_pdf_thumbnail(data):
         pix = page.get_pixmap(dpi=dpi)
 
         # Guardar en temp con nombre único basado en el path del PDF
-        import hashlib
         file_hash = hashlib.md5(input_file.encode()).hexdigest()[:8]
         thumb_name = f"pdfthumb_{file_hash}.png"
         thumb_path = os.path.join(tempfile.gettempdir(), thumb_name)
         pix.save(thumb_path)
 
-        return {"ok": True, "thumb_path": thumb_path}
+        return {"ok": True, "thumb_path": thumb_path, "page_count": doc.page_count}
     except Exception as e:
         return {"ok": False, "error": str(e)}
     finally:
         if doc:
-            try: doc.close()
-            except Exception: pass
+            try:
+                doc.close()
+            except Exception:
+                pass
+
+
+def handle_page_thumbnails(data):
+    """
+    Genera miniaturas de páginas individuales de un PDF.
+    Útil para UI visual estilo iLovePDF (organizar, split, etc).
+    Retorna array de rutas de miniaturas.
+    """
+    doc = None
+    try:
+        import tempfile
+        import hashlib
+        input_file = os.path.abspath(data.get("input", ""))
+        dpi = int(data.get("dpi", 72))  # DPI bajo para miniaturas rápidas
+        pages = data.get("pages", [])  # Array de índices de páginas (0-based), vacío = todas
+
+        if not input_file or not os.path.exists(input_file):
+            return {"ok": False, "error": "Archivo no encontrado."}
+
+        doc = fitz.open(input_file)
+        page_count = doc.page_count
+        
+        if page_count == 0:
+            return {"ok": False, "error": "El PDF no tiene páginas."}
+
+        # Determinar qué páginas generar
+        if pages and len(pages) > 0:
+            page_indices = [p for p in pages if 0 <= p < page_count]
+        else:
+            page_indices = list(range(page_count))
+
+        # Guardar miniaturas directamente en el directorio temp con prefijo pdfthumb_ para que
+        # el protocolo custom de electron pueda servirlos sin problemas.
+        file_hash = hashlib.md5(input_file.encode()).hexdigest()[:8]
+        thumbnails = []
+        
+        for idx in page_indices:
+            try:
+                page = doc[idx]
+                pix = page.get_pixmap(dpi=dpi)
+                thumb_name = f"pdfthumb_page_{file_hash}_{idx+1}.png"
+                thumb_path = os.path.join(tempfile.gettempdir(), thumb_name)
+                pix.save(thumb_path)
+                thumbnails.append({
+                    "page_index": idx,
+                    "page_number": idx + 1,
+                    "thumb_path": thumb_path
+                })
+            except Exception as e:
+                # Continuar con otras páginas si una falla
+                continue
+
+        return {
+            "ok": True, 
+            "thumbnails": thumbnails,
+            "total_pages": page_count,
+            "thumb_dir": tempfile.gettempdir()
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
 
 
 def handle_html_to_pdf(data):
@@ -1045,6 +1402,8 @@ def main():
             elif cmd == "excel_to_pdf": response = handle_excel_to_pdf(data)
             elif cmd == "ppt_to_pdf": response = handle_ppt_to_pdf(data)
             elif cmd == "get_page_info": response = handle_get_page_info(data)
+            elif cmd == "pdf_thumbnail": response = handle_pdf_thumbnail(data)
+            elif cmd == "page_thumbnails": response = handle_page_thumbnails(data)
             else: response = {"ok": False, "error": f"Comando desconocido: {cmd}"}
             send_response(response, request_id)
         except Exception as e: send_response({"ok": False, "error": str(e)}, request.get("id") if 'request' in locals() else None)

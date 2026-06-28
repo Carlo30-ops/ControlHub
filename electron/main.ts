@@ -28,6 +28,17 @@ const ALLOWED_EXTENSIONS = new Set(['.pdf', '.docx', '.doc', '.xls', '.xlsx', '.
 
 const store = new Store();
 
+// Registrar esquemas de protocolo custom como privilegiados antes de app.whenReady()
+try {
+  protocol.registerSchemesAsPrivileged([
+    { scheme: 'pdfthumb', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    { scheme: 'cotu', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
+  ]);
+} catch (e) {
+  // Ignorar si ya fueron registrados
+}
+
+
 function computeDefaultTerapiasDir(): string {
   const home = os.homedir();
   const defaultCandidates = [
@@ -243,6 +254,8 @@ const SIDECAR_COMMAND_TIMEOUTS: Record<string, number> = {
   // Operaciones rápidas / Metadatos (10s - 15s)
   'ping': 10000,
   'get_page_info': 15000,
+  'pdf_thumbnail': 15000,
+  'page_thumbnails': 30000,
   
   // Operaciones de carga estándar (30s)
   'merge': 30000,
@@ -637,7 +650,8 @@ ipcMain.handle('pdf:crop', (_, data) => validatePdfHandler('crop', data));
 ipcMain.handle('pdf:add_page_numbers', (_, data) => validatePdfHandler('add_page_numbers', data));
 ipcMain.handle('pdf:jpg_to_pdf', (_, data) => validatePdfHandler('jpg_to_pdf', data));
 ipcMain.handle('pdf:pdf_to_jpg', (_, data) => validatePdfHandler('pdf_to_jpg', data));
-ipcMain.handle('pdf:pdf_thumbnail', (_, data) => validatePdfHandler('pdf_thumbnail', data));
+ipcMain.handle('pdf:pdf_thumbnail', (_, data) => pdfSidecar.send({ cmd: 'pdf_thumbnail', data }));
+ipcMain.handle('pdf:page_thumbnails', (_, data) => pdfSidecar.send({ cmd: 'page_thumbnails', data }));
 ipcMain.handle('pdf:html_to_pdf', (_, data) => validatePdfHandler('html_to_pdf', data));
 ipcMain.handle('pdf:protect', (_, data) => validatePdfHandler('protect', data));
 ipcMain.handle('pdf:unlock', (_, data) => validatePdfHandler('unlock', data));
@@ -913,24 +927,23 @@ app?.whenReady()?.then(async () => {
   
   // Registrar protocolo pdfthumb:// para servir thumbnails
   protocol.handle('pdfthumb', async (request) => {
-    const { net } = require('electron');
     const os = require('os');
     const path = require('path');
     const fs = require('fs');
     
     try {
       const url = new URL(request.url);
-      const filename = url.hostname + url.pathname.replace(/\//g, '');
-      // Seguridad: solo archivos que empiecen con pdfthumb_
+      let rawName = url.hostname || '';
+      if (!rawName || rawName === 'localhost') {
+        rawName = url.pathname.replace(/^\//, '');
+      }
+      const filename = path.basename(rawName);
+      
+      // Seguridad: solo archivos que empiecen con pdfthumb_ y terminen en .png
       if (!filename.startsWith('pdfthumb_') || !filename.endsWith('.png')) {
         return new Response('Forbidden', { status: 403 });
       }
       const filePath = path.join(os.tmpdir(), filename);
-      // Seguridad: verificar que el path resuelto está dentro de temp
-      const tmpDir = os.tmpdir();
-      if (!filePath.startsWith(tmpDir)) {
-        return new Response('Forbidden', { status: 403 });
-      }
       if (!fs.existsSync(filePath)) {
         return new Response('Not Found', { status: 404 });
       }
@@ -981,6 +994,21 @@ ipcMain.handle('dialog:selectFile', async (_, options) => {
   // Register approved file path
   dialogApprovedPaths.add(path.resolve(filePath));
   return filePath;
+});
+
+ipcMain.handle('dialog:selectFiles', async (_, options) => {
+  if (!win) return null;
+  const filters = Array.isArray(options) ? options : options?.filters;
+  const defaultPath = options?.defaultPath;
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    properties: ['openFile', 'multiSelections'],
+    filters: filters || [],
+    defaultPath
+  });
+  if (canceled || filePaths.length === 0) return null;
+  // Register approved file paths
+  filePaths.forEach(fp => dialogApprovedPaths.add(path.resolve(fp)));
+  return filePaths;
 });
 
 // IPC handler for Save Dialog
