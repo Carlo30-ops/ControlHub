@@ -19,10 +19,9 @@ export async function split(api: any, files: FileInfo[], outputPath: string, par
    throw new Error('Formato de rangos inválido. Usa: "1-3, 5, 7-z"');
   }
   
-  return await api.split({ 
-    input, 
-    output: outputPath,  // Usar output en lugar de output_dir para permitir nombre base
-    output_dir: outputPath,  // Mantener output_dir para compatibilidad legacy
+  return await api.split({
+    input,
+    output_dir: outputPath,
     ranges: params.splitRanges,
     naming_pattern: params.namingPattern ?? 'part'
   });
