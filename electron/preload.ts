@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectSavePath: (options?: Electron.SaveDialogOptions) =>
     ipcRenderer.invoke('dialog-save-path', options),
   checkWriteAccess: (path: string) => ipcRenderer.invoke('fs:checkWriteAccess', path),
+  getTempPath: () => ipcRenderer.invoke('system:getTempPath'),
   selectFile: (options?: { filters?: { name: string; extensions: string[] }[]; defaultPath?: string } | { name: string; extensions: string[] }[]) =>
     ipcRenderer.invoke('dialog:selectFile', options),
   selectFiles: (options?: { filters?: { name: string; extensions: string[] }[]; defaultPath?: string } | { name: string; extensions: string[] }[]) =>
