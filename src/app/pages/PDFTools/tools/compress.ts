@@ -13,9 +13,9 @@ export async function compress(api: any, files: FileInfo[], outputPath: string, 
     throw new Error('No se especificó el nivel de compresión');
   }
   
-  const validLevels = ['screen', 'ebook', 'printer'];
+  const validLevels = ['screen', 'ebook', 'printer', 'prepress', 'default', 'fast'];
   if (!validLevels.includes(params.compressLevel)) {
-    throw new Error(`Nivel de compresión inválido: ${params.compressLevel}`);
+    throw new Error(`Nivel de compresión inválido: ${params.compressLevel}. Valores válidos: ${validLevels.join(', ')}`);
   }
   
   return await api.compress({ 

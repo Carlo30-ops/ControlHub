@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { cn } from "../../../components/ui/utils";
-import { Plus, SortAsc, SortDesc, X, RotateCw, Maximize2, GripVertical, FileText } from "lucide-react";
+import { Plus, SortAsc, SortDesc, X, RotateCw, Maximize2, GripVertical, FileText, Upload, Trash2 } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Badge } from "../../../components/ui/badge";
 
@@ -22,6 +22,7 @@ interface DocumentGridProps {
   onRotate?: (id: string) => void;
   onPreview?: (id: string) => void;
   onSort?: (direction: 'asc' | 'desc') => void;
+  onClear?: () => void;
   className?: string;
 }
 
@@ -34,12 +35,17 @@ export const DocumentGrid: React.FC<DocumentGridProps> = ({
   onRotate,
   onPreview,
   onSort,
+  onClear,
   className
 }) => {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [loadingThumbs, setLoadingThumbs] = useState<Set<string>>(new Set());
+  const [failedThumbs, setFailedThumbs] = useState<Set<string>>(new Set());
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
@@ -96,19 +102,26 @@ export const DocumentGrid: React.FC<DocumentGridProps> = ({
     if (!files || files.length === 0) return;
 
     const filePaths: string[] = [];
+    const TIMEOUT_MS = 5000;
     
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
-        const path = await window.electronAPI.getPathForFile(file);
+        const path = await Promise.race([
+          window.electronAPI.getPathForFile(file),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), TIMEOUT_MS))
+        ]);
         if (path) {
-          const validated = await window.electronAPI.security.validateAndRegisterDroppedFile(path);
+          const validated = await Promise.race([
+            window.electronAPI.security.validateAndRegisterDroppedFile(path),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), TIMEOUT_MS))
+          ]);
           if (validated) {
             filePaths.push(path);
           }
         }
       } catch (err) {
-        console.error('Error processing dropped file:', err);
+        // Silenciar errores de timeout y validación
       }
     }
 
@@ -132,11 +145,23 @@ export const DocumentGrid: React.FC<DocumentGridProps> = ({
 
   return (
     <div 
-      className={cn("relative p-4 rounded-xl border border-border bg-card/50", className)}
+      ref={containerRef}
+      className={cn("relative p-4 rounded-xl border-2 border-dashed border-border bg-card/50 transition-all duration-300", className, isDraggingFile && "border-primary bg-primary/10 scale-[1.01]")}
       onDragOver={handleContainerDragOver}
       onDragLeave={handleContainerDragLeave}
       onDrop={handleContainerDrop}
     >
+      {/* Indicador de drag-and-drop de archivos mejorado */}
+      {isDraggingFile && (
+        <div className="absolute inset-0 border-4 border-dashed border-primary bg-primary/10 rounded-xl flex items-center justify-center z-30 pointer-events-none animate-pulse">
+          <div className="text-center">
+            <Upload className="w-12 h-12 text-primary mx-auto mb-3" />
+            <p className="text-lg font-bold text-primary">Suelta los archivos aquí</p>
+            <p className="text-sm text-primary/80 mt-1">Se agregarán a la lista</p>
+          </div>
+        </div>
+      )}
+
       {/* Botón flotante de agregar y ordenar */}
       {onAdd && (
         <div className="flex items-center justify-between mb-4">
@@ -144,6 +169,17 @@ export const DocumentGrid: React.FC<DocumentGridProps> = ({
             <Badge variant="outline" className="text-xs font-medium">
               {documents.length} {documents.length === 1 ? 'archivo' : 'archivos'}
             </Badge>
+            {onClear && documents.length > 0 && (
+              <Button
+                onClick={onClear}
+                variant="ghost"
+                size="sm"
+                className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="w-4 h-4" />
+                Limpiar
+              </Button>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -164,13 +200,6 @@ export const DocumentGrid: React.FC<DocumentGridProps> = ({
               Agregar archivos
             </Button>
           </div>
-        </div>
-      )}
-
-      {/* Indicador de drag-and-drop de archivos */}
-      {isDraggingFile && (
-        <div className="absolute inset-0 border-2 border-dashed border-primary bg-primary/5 rounded-xl flex items-center justify-center z-30 pointer-events-none">
-          <p className="text-base font-semibold text-primary">Suelta los archivos aquí</p>
         </div>
       )}
 

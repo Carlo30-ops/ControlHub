@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { useData } from "../../contexts/DataContext";
 import { 
@@ -90,13 +90,22 @@ interface SearchResult {
   lastModified: number;
 }
 
+interface PrepareResult {
+  ok: boolean;
+  doc_path: string | null;
+  patient: string | null;
+  folder: string | null;
+  pdf_path?: string;
+  error?: string;
+}
+
 const getFinalPathPreview = (base: string, patient: string) => {
   const hoy = new Date();
   const meses = [
     "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
     "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
   ];
-  const mesNombre = `${(hoy.getMonth() + 1).toString().padStart(2, '0')}- ${meses[hoy.getMonth()]}`;
+  const mesNombre = `${(hoy.getMonth() + 1).toString().padStart(2, '0')}-${meses[hoy.getMonth()]}`;
   const diaNombre = `${hoy.getDate().toString().padStart(2, '0')} DE ${meses[hoy.getMonth()]}`;
   return `${base}\\${hoy.getFullYear()}\\${mesNombre}\\${diaNombre}\\${patient}`;
 };
@@ -131,7 +140,7 @@ export default function Terapias() {
     folder: null
   });
 
-  const [prepareResult, setPrepareResult] = useState<any>(null);
+  const [prepareResult, setPrepareResult] = useState<PrepareResult | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [pickerMode, setPickerMode] = useState<'select' | 'prepare'>('select');
   
@@ -156,11 +165,14 @@ export default function Terapias() {
   const inputNameRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // Optimizar renderizado de historial
+  const displayHistory = useMemo(() => history.slice(0, 20), [history]);
+
   const hasSourceDir = sourceDir.trim().length > 0;
   const engineReady = !status.loading && status.ping === true;
   const interactionsLocked = !hasSourceDir || !engineReady || isProcessing;
 
-  const handleAutoDetectWord = async () => {
+  const handleAutoDetectWord = useCallback(async () => {
     if (!sourceDir.trim()) {
       toast.error("Configura primero la carpeta origen");
       return;
@@ -184,9 +196,9 @@ export default function Terapias() {
     } finally {
       setIsListing(false);
     }
-  };
+  }, [sourceDir]);
 
-  const fetchDocs = async (dir: string = sourceDir) => {
+  const fetchDocs = useCallback(async (dir: string = sourceDir) => {
     if (!dir.trim()) {
       setAvailableDocs([]);
       return;
@@ -205,47 +217,45 @@ export default function Terapias() {
     } finally {
       setIsListing(false);
     }
-  };
+  }, [sourceDir, form.filename]);
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     try {
       const history = await terapiasService.loadHistory();
       setHistory(history);
     } catch (err) {
       logger.error("Error fetching history:", err);
     }
-  };
+  }, []);
 
-// Added function to handle prepare with skip SS, moved before useEffect to avoid TDZ
-async function handlePrepareWithSkipSS() {
-  setIsSSAlertOpen(false);
-  const patientName = getPatientFromInput(form.inputName); // Will be PACIENTE_DESCONOCIDO
+  const handlePrepareWithSkipSS = useCallback(async () => {
+    setIsSSAlertOpen(false);
+    const patientName = getPatientFromInput(form.inputName);
 
-  // Step 1: Find Word document using terapias:listDocs (consistent with rest of module)
-  let filename = form.filename;
-  if (!filename) {
-    const docs = await terapiasService.listDocuments(sourceDir);
-    if (docs.length === 0) {
-      toast.error("No se encontró ningún documento Word en la carpeta configurada.");
-      return;
+    let filename = form.filename;
+    if (!filename) {
+      const docs = await terapiasService.listDocuments(sourceDir);
+      if (docs.length === 0) {
+        toast.error("No se encontró ningún documento Word en la carpeta configurada.");
+        return;
+      }
+      if (docs.length > 1) {
+        setAvailableDocs(docs);
+        setPickerMode('prepare');
+        setIsPickerOpen(true);
+        return;
+      }
+      filename = docs[0].name;
     }
-    if (docs.length > 1) {
-      setAvailableDocs(docs);
-      setPickerMode('prepare');
-      setIsPickerOpen(true);
-      return;
-    }
-    filename = docs[0].name;
-  }
 
-  setConfirmData({
-    filename,
-    inputName: form.inputName,
-    patient: patientName,
-    destination: getFinalPathPreview(form.baseDest, patientName)
-  });
-  setIsConfirmOpen(true);
-}
+    setConfirmData({
+      filename,
+      inputName: form.inputName,
+      patient: patientName,
+      destination: getFinalPathPreview(form.baseDest, patientName)
+    });
+    setIsConfirmOpen(true);
+  }, [form.inputName, form.filename, form.baseDest, sourceDir]);
 
   useEffect(() => {
     if (location.pathname !== "/terapias") return;
@@ -271,6 +281,41 @@ async function handlePrepareWithSkipSS() {
       if (e.ctrlKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
         searchInputRef.current?.focus();
+      }
+
+      // --- Esc para cerrar diálogos ---
+      if (e.key === "Escape") {
+        if (isSSAlertOpen) {
+          e.preventDefault();
+          setIsSSAlertOpen(false);
+          setTimeout(() => inputNameRef.current?.focus(), 100);
+          return;
+        }
+
+        if (isConfirmOpen) {
+          e.preventDefault();
+          setIsConfirmOpen(false);
+          return;
+        }
+
+        if (isPickerOpen) {
+          e.preventDefault();
+          setIsPickerOpen(false);
+          return;
+        }
+
+        if (isFinalizeConfirmOpen) {
+          e.preventDefault();
+          setIsFinalizeConfirmOpen(false);
+          return;
+        }
+
+        // Cancelar operación actual en Paso 2
+        if (step.current === 2 && !isInputFocused && !isProcessing) {
+          e.preventDefault();
+          setStep({ current: 1, docPath: null, patient: null, folder: null });
+          return;
+        }
       }
 
       // --- Gestión de velocidad: Aceptar con Enter en todos los diálogos ---
@@ -392,6 +437,22 @@ async function handlePrepareWithSkipSS() {
     return "PACIENTE_DESCONOCIDO";
   };
 
+  const selectDocument = useCallback((doc: FileMetadata, mode: 'select' | 'prepare') => {
+    setForm(prev => ({ ...prev, filename: doc.name }));
+    setIsPickerOpen(false);
+    
+    if (mode === 'prepare') {
+      const patientName = getPatientFromInput(form.inputName);
+      setConfirmData({
+        filename: doc.name,
+        inputName: form.inputName,
+        patient: patientName,
+        destination: getFinalPathPreview(form.baseDest, patientName)
+      });
+      setIsConfirmOpen(true);
+    }
+  }, [form.inputName, form.baseDest]);
+
   const checkStatus = async (activeSource: string) => {
     setStatus((prev: SidecarStatus) => ({ ...prev, loading: true, error: null }));
     try {
@@ -419,8 +480,7 @@ async function handlePrepareWithSkipSS() {
     }
   };
 
-  const handleSearch = async (query: string) => {
-    setSearchQuery(query);
+  const handleSearch = useCallback(async (query: string) => {
     if (query.length < 3 || !engineReady) {
       setSearchResults([]);
       return;
@@ -430,12 +490,31 @@ async function handlePrepareWithSkipSS() {
     try {
       const results = await terapiasService.searchPatients(query, sourceDir, form.baseDest);
       setSearchResults(results);
+      if (results.length === 0) {
+        toast.info("No se encontraron pacientes con ese nombre");
+      }
     } catch (err) {
       logger.error("Error searching patient:", err);
+      toast.error("Error al buscar pacientes");
     } finally {
       setIsSearching(false);
     }
-  };
+  }, [sourceDir, form.baseDest, engineReady]);
+
+  // Debounce para búsqueda de pacientes
+  const debouncedSearch = useMemo(
+    () => {
+      let timeoutId: NodeJS.Timeout;
+      return (query: string) => {
+        setSearchQuery(query);
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          handleSearch(query);
+        }, 300);
+      };
+    },
+    [handleSearch]
+  );
 
   useEffect(() => {
     const activeSource = settings.terapiasDir || "";
@@ -478,7 +557,7 @@ async function handlePrepareWithSkipSS() {
     }
   }, [sidecarStatus.Terapias, sourceDir]);
 
-  const handleSelectFolder = (field: "baseDest" | "backup" | "sourceDir") => async () => {
+  const handleSelectFolder = useCallback((field: "baseDest" | "backup" | "sourceDir") => async () => {
     const path = await window.electronAPI.selectDirectory();
     if (path) {
       if (field === "sourceDir") {
@@ -493,9 +572,9 @@ async function handlePrepareWithSkipSS() {
         updateSettings({ terapiasBackup: path });
       }
     }
-  };
+  }, [updateSettings, fetchDocs]);
 
-  const handlePrepare = async () => {
+  const handlePrepare = useCallback(async () => {
     if (!engineReady) {
       toast.error("El motor de Terapias debe estar disponible");
       return;
@@ -516,6 +595,12 @@ async function handlePrepareWithSkipSS() {
       return;
     }
 
+    // Validar que baseDest sea una ruta válida
+    if (!form.baseDest.trim()) {
+      toast.error("La ruta de destino no puede estar vacía");
+      return;
+    }
+
     // Validación de SS (Seguridad Social)
     if (!hasSSCode(form.inputName)) {
       setIsSSAlertOpen(true);
@@ -524,7 +609,6 @@ async function handlePrepareWithSkipSS() {
 
     const patientName = getPatientFromInput(form.inputName);
 
-    // Paso 1: Buscar archivo Word usando terapias:listDocs (consistente con el resto del módulo)
     let filename = form.filename;
     
     if (!filename) {
@@ -541,7 +625,6 @@ async function handlePrepareWithSkipSS() {
       }
       filename = docs[0].name;
     } else {
-      // Validar que el archivo seleccionado exista en la carpeta origen
       const docs = await terapiasService.listDocuments(sourceDir);
       const exists = docs.some(doc => doc.name === filename);
       if (!exists) {
@@ -550,7 +633,6 @@ async function handlePrepareWithSkipSS() {
       }
     }
 
-    // Preparar datos para confirmación con ruta completa
     setConfirmData({
       filename,
       inputName: form.inputName,
@@ -558,7 +640,7 @@ async function handlePrepareWithSkipSS() {
       destination: getFinalPathPreview(form.baseDest, patientName)
     });
     setIsConfirmOpen(true);
-  };
+  }, [engineReady, status.word, form.inputName, form.baseDest, form.filename, sourceDir]);
 
 
   async function executePrepare() {
@@ -663,7 +745,9 @@ async function handlePrepareWithSkipSS() {
     if (mins < 60) return `hace ${mins} min`;
     const hours = Math.floor(mins / 60);
     if (hours < 24) return `hace ${hours} h`;
-    return new Date(timestamp * 1000).toLocaleDateString();
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `hace ${days} días`;
+    return new Date(timestamp * 1000).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
   const formatSize = (bytes: number) => {
@@ -695,7 +779,7 @@ async function handlePrepareWithSkipSS() {
               ref={searchInputRef}
               placeholder="Buscar paciente antiguo..." 
               value={searchQuery}
-              onChange={e => handleSearch(e.target.value)}
+              onChange={e => debouncedSearch(e.target.value)}
               disabled={!engineReady}
               className="pl-10 h-10 rounded-xl bg-card border-border font-bold focus:ring-2 focus:ring-primary/20"
             />
@@ -723,6 +807,12 @@ async function handlePrepareWithSkipSS() {
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+          
+          {searchQuery.length > 0 && searchQuery.length < 3 && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-card border-border rounded-2xl shadow-md z-50 p-3 animate-in fade-in duration-200">
+              <p className="text-xs font-bold text-muted-foreground text-center">Mínimo 3 caracteres para buscar</p>
             </div>
           )}
         </div>
@@ -961,19 +1051,7 @@ async function handlePrepareWithSkipSS() {
                         if (e.key === 'Enter' && availableDocs.length > 0) {
                           e.preventDefault();
                           e.stopPropagation();
-                          const doc = availableDocs[0];
-                          setForm(prev => ({ ...prev, filename: doc.name }));
-                          setIsPickerOpen(false);
-                          if (pickerMode === 'prepare') {
-                            const patientName = getPatientFromInput(form.inputName);
-                            setConfirmData({
-                              filename: doc.name,
-                              inputName: form.inputName,
-                              patient: patientName,
-                              destination: getFinalPathPreview(form.baseDest, patientName)
-                            });
-                            setIsConfirmOpen(true);
-                          }
+                          selectDocument(availableDocs[0], pickerMode);
                         }
                       }}
                     >
@@ -985,24 +1063,14 @@ async function handlePrepareWithSkipSS() {
                       </AlertDialogHeader>
                       <div className="max-h-[400px] overflow-y-auto pr-2 py-4">
                         <div className="grid grid-cols-1 gap-3">
-                          {availableDocs.map((doc) => (
+                          {availableDocs.map((doc, index) => (
                             <button
                               key={doc.name}
-                              onClick={() => {
-                                setForm(prev => ({ ...prev, filename: doc.name }));
-                                setIsPickerOpen(false);
-                                if (pickerMode === 'prepare') {
-                                  const patientName = getPatientFromInput(form.inputName);
-                                  setConfirmData({
-                                    filename: doc.name,
-                                    inputName: form.inputName,
-                                    patient: patientName,
-                                    destination: getFinalPathPreview(form.baseDest, patientName)
-                                  });
-                                  setIsConfirmOpen(true);
-                                }
-                              }}
-                              className="flex items-center gap-4 p-4 rounded-xl border border-border hover:border-primary hover:bg-primary/5 transition-all text-left group"
+                              onClick={() => selectDocument(doc, pickerMode)}
+                              className={cn(
+                                "flex items-center gap-4 p-4 rounded-xl border transition-all text-left group",
+                                index === 0 ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-border hover:border-primary hover:bg-primary/5"
+                              )}
                             >
                               <div className="p-3 rounded-xl bg-muted group-hover:bg-primary/10 group-hover:text-primary transition-colors">
                                 <FileText className="w-5 h-5" />
@@ -1014,6 +1082,9 @@ async function handlePrepareWithSkipSS() {
                                   <span className="flex items-center gap-1"><Download className="w-3 h-3" /> {formatSize(doc.size)}</span>
                                 </div>
                               </div>
+                              {index === 0 && (
+                                <Badge variant="secondary" className="text-[10px] font-bold">Enter para seleccionar</Badge>
+                              )}
                               <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                             </button>
                           ))}
@@ -1130,7 +1201,7 @@ async function handlePrepareWithSkipSS() {
             </CollapsibleTrigger>
             <CollapsibleContent className="animate-in slide-in-from-top-4 duration-300">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {history.slice(0, 10).map((entry, i) => (
+                {displayHistory.map((entry, i) => (
                   <Card key={i} className="bg-card border-border rounded-2xl overflow-hidden group hover:border-primary/50 transition-all">
                     <CardContent className="p-4 flex items-center gap-4">
                       <div className="p-3 rounded-xl bg-muted dark:bg-slate-900 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
@@ -1138,7 +1209,7 @@ async function handlePrepareWithSkipSS() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-foreground truncate">{entry.patient}</p>
-                        <p className="text-xs font-bold text-muted-foreground uppercase">{new Date(entry.date).toLocaleString()}</p>
+                        <p className="text-xs font-bold text-muted-foreground">{formatRelativeDate(new Date(entry.date).getTime() / 1000)}</p>
                       </div>
                       <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl hover:bg-primary/10 hover:text-primary" onClick={() => window.electronAPI.shell.openPath(entry.pdfPath)}>
                         <ExternalLink className="w-4 h-4" />
@@ -1150,6 +1221,11 @@ async function handlePrepareWithSkipSS() {
                   <div className="col-span-full py-10 text-center space-y-3">
                     <HistoryIcon className="w-10 h-10 text-muted-foreground mx-auto" />
                     <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Sin registros recientes</p>
+                  </div>
+                )}
+                {history.length > 20 && (
+                  <div className="col-span-full text-center py-2">
+                    <p className="text-xs font-bold text-muted-foreground">Mostrando 20 de {history.length} registros</p>
                   </div>
                 )}
               </div>
@@ -1179,10 +1255,12 @@ async function handlePrepareWithSkipSS() {
                   <ShortcutRow combo="Ctrl+O" description="Buscar Word en la carpeta origen" />
                   <ShortcutRow combo="F5" description="Refrescar la lista de documentos disponibles" />
                   <ShortcutRow combo="Ctrl+F" description="Enfocar el buscador de pacientes" />
+                  <ShortcutRow combo="Esc" description="Cerrar diálogos o cancelar operación" />
+                  <ShortcutRow combo="Enter" description="Confirmar acción en diálogos" />
                 </div>
               </div>
               
-              {prepareResult && prepareResult.ok && (
+              {prepareResult && prepareResult.ok && prepareResult.folder && (
                 <div className="p-5 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 space-y-4 animate-in slide-in-from-right-4 duration-500">
                   <div>
                     <p className="text-xs font-bold uppercase text-muted-foreground mb-1 tracking-widest">CARPETA CREADA</p>
@@ -1191,7 +1269,7 @@ async function handlePrepareWithSkipSS() {
                   <Button 
                     variant="outline" 
                     className="w-full h-11 rounded-xl font-bold border-border hover:bg-accent text-foreground transition-all gap-2"
-                    onClick={() => window.electronAPI.shell?.openPath(prepareResult.folder)}
+                    onClick={() => prepareResult.folder && window.electronAPI.shell?.openPath(prepareResult.folder)}
                   >
                     <FolderOpen className="w-4 h-4" /> Abrir en Explorador
                   </Button>
@@ -1277,69 +1355,3 @@ function GuideStep({ num, text }: { num: string, text: string }) {
   );
 }
 
-interface DropZoneSimpleProps {
-  file: { name: string; path: string } | null;
-  onFiles: (paths: string[]) => void;
-  accept?: string;
-  disabled?: boolean;
-  onClear?: () => void;
-  defaultPath?: string;
-}
-
-function DropZoneSimple({ file, onFiles, accept, disabled, onClear, defaultPath }: DropZoneSimpleProps) {
-  const [isOver, setIsOver] = useState(false);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    if (disabled) return;
-    setIsOver(false);
-    const paths = Array.from(e.dataTransfer.files).map(f =>
-      window.electronAPI.getPathForFile(f)
-    );
-    if (paths.length > 0) onFiles(paths);
-  }, [onFiles, disabled]);
-
-  return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); if (!disabled) setIsOver(true); }}
-      onDragLeave={() => setIsOver(false)}
-      onDrop={handleDrop}
-      className={cn(
-        "relative border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center transition-all duration-300 cursor-pointer min-h-[120px]",
-        isOver ? "border-primary bg-primary/5" : "border-border hover:border-slate-300 dark:hover:border-slate-700",
-        file && "border-primary bg-primary/5",
-        disabled && "opacity-50 cursor-not-allowed border-slate-100 dark:border-slate-900"
-      )}
-      onClick={async () => {
-        if (disabled) return;
-        const filters = accept ? [{ name: "Documentos", extensions: accept.replace(/\./g, '').split(',') }] : [];
-        const path = await window.electronAPI.selectFile({ filters, defaultPath });
-        if (path) onFiles([path]);
-      }}
-    >
-      {file ? (
-        <div className="flex items-center gap-4 w-full px-2">
-          <div className="p-2.5 rounded-xl bg-muted text-muted-foreground shrink-0">
-             <FileText className="w-5 h-5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-foreground truncate uppercase tracking-tight">{file.name}</p>
-            <p className="text-xs font-bold text-primary uppercase">Listo para organizar</p>
-          </div>
-          {!disabled && (
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:text-red-500 hover:bg-red-500/10" onClick={(e) => { e.stopPropagation(); onClear?.(); }}>
-              <X className="w-4 h-4" />
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center gap-2">
-          <Upload className={cn("w-6 h-6", isOver ? "text-primary" : "text-muted-foreground")} />
-          <p className="text-xs font-bold text-muted-foreground text-center">
-             {isOver ? "¡Suéltalo!" : <>Arrastra el Word o <span className="text-primary underline decoration-2 underline-offset-2">selecciona</span></>}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}

@@ -34,12 +34,18 @@ except Exception as e:
 
 # Configuración de Logging (para historial)
 LOG_FILE = os.path.join(os.path.expanduser("~"), "Documents", "TERAPIAS", "organizar_log.txt")
+LOG_MAX_BYTES = 1024 * 1024  # 1MB
+LOG_BACKUP_COUNT = 1
+HISTORY_MAX_ENTRIES = 50
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
 try:
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-except:
-    pass
+except (OSError, PermissionError) as e:
+    sys.stderr.write(f"Warning: No se pudo crear directorio de log: {e}\n")
+    sys.stderr.flush()
 
-handler = RotatingFileHandler(LOG_FILE, maxBytes=1024 * 1024, backupCount=1, encoding="utf-8")
+handler = RotatingFileHandler(LOG_FILE, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT, encoding="utf-8")
 handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
 logger = logging.getLogger("terapias")
 logger.setLevel(logging.INFO)
@@ -286,6 +292,11 @@ def handle_prepare(data):
         if not os.path.exists(source_path):
             return {"ok": False, "error": f"Archivo no encontrado: {source_path}"}
 
+        # Validar tamaño de archivo
+        file_size = os.path.getsize(source_path)
+        if file_size > MAX_FILE_SIZE:
+            return {"ok": False, "error": f"Archivo demasiado grande: {file_size / 1024 / 1024:.1f}MB (máximo {MAX_FILE_SIZE / 1024 / 1024:.0f}MB)"}
+
         # 1. Extraer paciente y limpiar nombre
         patient = patient_from_user_input(input_name)
         # Requisito: Sanitizar el nombre del paciente para evitar traversal en la creación de carpetas
@@ -320,8 +331,8 @@ def handle_prepare(data):
                 return {"ok": False, "error": "Acceso no autorizado: la ruta de la carpeta del paciente está fuera del directorio destino."}
             if os.path.commonpath([base_dest_abs, dest_doc_path_abs]) != base_dest_abs:
                 return {"ok": False, "error": "Acceso no autorizado: la ruta del documento de destino está fuera del directorio destino."}
-        except ValueError:
-            return {"ok": False, "error": "Acceso no autorizado: rutas en diferentes unidades de disco."}
+        except ValueError as e:
+            return {"ok": False, "error": f"Acceso no autorizado: rutas en diferentes unidades de disco: {e}"}
 
         # Crear el directorio destino solo después de validar la seguridad del path
         os.makedirs(patient_folder, exist_ok=True)
@@ -342,6 +353,7 @@ def handle_prepare(data):
 
 def handle_finalize(data):
     """Paso 2: Convertir a PDF y mover a backup (One-Click)."""
+    doc = None
     try:
         doc_path = os.path.abspath(data.get("doc_path", ""))
         backup_dir = os.path.abspath(data.get("backup", ""))
@@ -364,6 +376,12 @@ def handle_finalize(data):
             # NO llamar a word.Quit() para mantenerlo "caliente"
         except Exception as e:
             return {"ok": False, "error": f"Error en conversión PDF: {str(e)}"}
+        finally:
+            if doc:
+                try:
+                    doc.Close(SaveChanges=False)
+                except Exception:
+                    pass
 
         if not os.path.exists(pdf_path):
             return {"ok": False, "error": "El PDF no se generó correctamente."}
@@ -408,7 +426,7 @@ def handle_get_history():
                     try:
                         data_str = line.split("HISTORY|")[1].strip()
                         history.append(json.loads(data_str))
-                        if len(history) >= 50:
+                        if len(history) >= HISTORY_MAX_ENTRIES:
                             break
                     except:
                         continue

@@ -1,6 +1,11 @@
 import { FileInfo } from '../../../types';
 
-export async function merge(api: any, files: FileInfo[], outputPath: string, params: any = {}) {
+interface MergeParams {
+  preserveBookmarks?: boolean;
+  renumberPages?: boolean;
+}
+
+export async function merge(api: any, files: FileInfo[], outputPath: string, params: MergeParams = {}) {
   const inputs = files.map(f => f.path);
   
   // Validaciones frontend
@@ -10,6 +15,15 @@ export async function merge(api: any, files: FileInfo[], outputPath: string, par
   
   if (inputs.length === 1) {
     throw new Error('Se requieren al menos 2 archivos para fusionar');
+  }
+  
+  // Validar outputPath
+  if (!outputPath) {
+    throw new Error('Se requiere una ruta de salida');
+  }
+  
+  if (!outputPath.toLowerCase().endsWith('.pdf')) {
+    throw new Error('El archivo de salida debe tener extensión .pdf');
   }
   
   // Verificar duplicados

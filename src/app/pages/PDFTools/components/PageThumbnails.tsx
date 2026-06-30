@@ -51,7 +51,8 @@ export const PageThumbnails: React.FC<PageThumbnailsProps> = ({
           setError(res.error || "Error al cargar miniaturas");
         }
       } catch (e) {
-        setError("Error al cargar miniaturas");
+        const errorMessage = e instanceof Error ? e.message : "Error desconocido";
+        setError(`Error al cargar miniaturas: ${errorMessage}`);
         console.error("Thumbnails error", e);
       } finally {
         setLoading(false);
@@ -99,6 +100,12 @@ export const PageThumbnails: React.FC<PageThumbnailsProps> = ({
         <div className="text-center text-muted-foreground">
           <ImageIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-sm">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-2 text-xs text-primary underline hover:text-primary/80"
+          >
+            Reintentar
+          </button>
         </div>
       </div>
     );

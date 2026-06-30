@@ -15,3 +15,19 @@
 13. Usar constantes centralizadas (`src/app/constants/`) para colores, formatos de fecha, paginación y umbrales de moneda en lugar de valores hardcodeados.
 14. Usar formateadores centralizados (`src/app/utils/formatters.ts`) para moneda y fechas en lugar de funciones duplicadas en componentes.
 15. La modularización de localScanner se documenta en CONTEXT.md y los submódulos se crean bajo `src/app/utils/localScanner/` (cache.ts, extractors.ts, invoiceIdentifier.ts, pathResolver.ts).
+
+## Reglas de organización y modularización
+
+16. **Modularización de sidecars Python:** Los sidecars Python monolíticos deben modularizarse cuando superen ~500 líneas. Extraer funciones a archivos individuales en subdirectorios temáticos (ej: `engines/`) y utilidades compartidas a archivos de utilidades (ej: `pdf_utils.py`).
+17. **Dependencias de módulos Python:** Al crear nuevos módulos Python, siempre agregar `sys.path.insert(0, ...)` al inicio del archivo para permitir importaciones cuando el sidecar se ejecuta directamente. Las utilidades compartidas deben importarse desde un archivo centralizado (ej: `pdf_utils.py`).
+18. **Validación de imports Python:** Antes de declarar una migración de motores Python como completada, verificar que todas las importaciones funcionan correctamente. Un error de importación en un módulo causará que todos los motores se seteen a `None` y el router reportará "motor no disponible".
+19. **Reporte de progreso en sidecars:** Los motores Python deben reportar progreso vía stderr con formato estandarizado (ej: `COMPRESS_PROGRESS:start|{level}|{size}`) para que el frontend pueda mostrar indicadores visuales al usuario.
+20. **Validación de inputs en sidecars:** Todo motor Python debe validar inputs (existencia de archivo, directorio de salida, extensiones válidas) antes de procesar. Retornar error descriptivo si la validación falla.
+21. **Validación de outputs en sidecars:** Todo motor Python debe validar outputs (existencia de archivo generado, tamaño mínimo) antes de retornar éxito. Retornar error si el output es inválido.
+22. **Manejo de recursos en sidecars:** Todo motor Python debe usar bloques `try/finally` para asegurar limpieza de recursos (cerrar documentos, eliminar archivos temporales, desinicializar COM) incluso si ocurre un error.
+23. **Frontend validation:** Las herramientas del frontend (`src/app/pages/PDFTools/tools/*.ts`) deben validar inputs antes de enviar al backend. Esto incluye validación de parámetros, extensiones de archivo y rutas.
+24. **Correlación frontend-backend:** Al agregar un nuevo parámetro en el frontend, verificar que el backend lo espera con el mismo nombre de clave. Los nombres de parámetros deben ser consistentes entre frontend y backend.
+25. **Fallbacks en motores:** Los motores Python deben implementar fallbacks cuando dependen de herramientas externas (ej: Ghostscript, Tesseract). Si la herramienta principal no está disponible, intentar con alternativas y reportar warning al usuario.
+26. **Eliminación de código duplicado:** Al modularizar, eliminar código duplicado del archivo original. No dejar funciones huérfanas o código muerto en el archivo principal después de la migración.
+27. **Actualización de dispatcher:** Al migrar funciones a módulos separados, actualizar el dispatcher en el archivo principal para importar y llamar a las funciones migradas. Usar fallbacks con mensajes de error claros si la importación falla.
+28. **Bytecode Python:** Los archivos Python del proyecto se compilarán automáticamente a bytecode y se guardarán en `__pycache__/` cuando se importen. No es necesario gestionar manualmente este directorio.

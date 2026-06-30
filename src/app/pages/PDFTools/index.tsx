@@ -45,7 +45,8 @@ import {
   AlertTriangle,
   Cpu,
   Heart,
-  Circle
+  Circle,
+  Download
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -140,6 +141,21 @@ const TOOLS: ToolConfig[] = [
   { id: 'pp2p', category: 'Convertir', name: 'PPT a PDF', desc: 'Ppt a PDF', icon: <Presentation className="w-6 h-6" />, color: '', accept: '.pptx,.ppt', newExt: '.pdf' },
 ];
 
+// Mapa de coherencia: qué herramientas pueden seguir a qué tipo de archivo
+// Orden priorizado: conversión primero, luego organización, optimización, seguridad
+const NEXT_ACTION_MAP: Record<string, ToolId[]> = {
+  '.pdf': ['p2w', 'pdf_to_jpg', 'split', 'extract', 'compress', 'rotate', 'crop', 'protect', 'unlock', 'ocr', 'watermark', 'watermark_image', 'add_page_numbers', 'delete_pages', 'reorder_pages', 'repair'],
+  '.docx': ['w2p'],
+  '.doc': ['w2p'],
+  '.xlsx': ['e2p'],
+  '.xls': ['e2p'],
+  '.pptx': ['pp2p'],
+  '.ppt': ['pp2p'],
+  '.jpg': ['jpg_to_pdf'],
+  '.jpeg': ['jpg_to_pdf'],
+  '.png': ['jpg_to_pdf'],
+};
+
 export default function PDFTools() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -147,7 +163,9 @@ export default function PDFTools() {
   const [activeTool, setActiveTool] = useState<ToolConfig | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [lastCompletedOutput, setLastCompletedOutput] = useState<string | null>(null);
   const [finalOutputPath, setFinalOutputPath] = useState("");
+  const [operationCompleted, setOperationCompleted] = useState(false);
 
   // --- Common States ---
   const [files, setFiles] = useState<FileInfo[]>([]);
@@ -216,7 +234,7 @@ export default function PDFTools() {
             extractPages,
             deletePagesInput,
             pageOrder,
-            compressLevel: parseInt(compressLevel) || 1,
+            compressLevel,
             rotateAngle,
             rotatePages,
             cropRect,
@@ -276,10 +294,20 @@ export default function PDFTools() {
   };
 
   useEffect(() => {
-    // syncActiveFiles no existe en window.electronAPI, se elimina la llamada para evitar crash.
-    // window.electronAPI.security.syncActiveFiles(files.map(f => f.path));
+    // Sincronizar archivos activos con el main process para validación de rutas
+    window.electronAPI.security.syncActiveFiles(files.map(f => f.path));
+    
+    // Registrar directorios de los archivos como approved para permitir salida en mismo directorio
+    const uniqueDirs = new Set(files.map(f => {
+      const lastBackslash = f.path.lastIndexOf('\\');
+      return lastBackslash !== -1 ? f.path.substring(0, lastBackslash) : f.path;
+    }));
+    uniqueDirs.forEach(dir => {
+      window.electronAPI.security.registerApprovedDirectory(dir);
+    });
+    
     return () => {
-      // window.electronAPI.security.syncActiveFiles([]);
+      window.electronAPI.security.syncActiveFiles([]);
     };
   }, [files]);
 
@@ -506,10 +534,11 @@ export default function PDFTools() {
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [documentThumbnails, setDocumentThumbnails] = useState<Record<string, string>>({});
   const [documentMetadata, setDocumentMetadata] = useState<Record<string, { pageCount?: number }>>({});
+  const [mergeProgress, setMergeProgress] = useState<{ current: number; total: number; pages: number } | null>(null);
 
-  // Cargar miniaturas de documentos para merge
+  // Cargar miniaturas de documentos para merge y PDF a Word
   useEffect(() => {
-    if (activeTool?.id === 'merge' && files.length > 0) {
+    if ((activeTool?.id === 'merge' || activeTool?.id === 'p2w') && files.length > 0) {
       const loadThumbnails = async () => {
         for (const file of files) {
           if (documentThumbnails[file.path]) continue;
@@ -546,6 +575,23 @@ export default function PDFTools() {
       loadThumbnails();
     }
   }, [activeTool?.id, files]);
+
+  // Escuchar eventos de progreso de merge
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.pdfTools.onProgress?.((data) => {
+      setMergeProgress(data);
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
+  // Limpiar progreso cuando cambia la herramienta o se completa
+  useEffect(() => {
+    if (!isProcessing) {
+      setMergeProgress(null);
+    }
+  }, [isProcessing, activeTool?.id]);
 
   // --- Helpers ---
   const getFileInfo = (path: string): FileInfo => ({
@@ -623,7 +669,7 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
       extractPages,
       deletePagesInput,
       pageOrder,
-      compressLevel: parseInt(compressLevel) || 1,
+      compressLevel,
       rotateAngle,
       rotatePages,
       cropRect,
@@ -638,12 +684,17 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
     };
 
     await execute(activeTool, files, providedOutput || finalOutputPath, extraParams);
-    if (result?.ok) {
-      setView('result');
-    }
     setShowConfirm(false);
     setFinalOutputPath("");
   };
+
+  // Escuchar cambios en result para establecer operationCompleted
+  useEffect(() => {
+    if (result?.ok && result.path) {
+      setLastCompletedOutput(result.path);
+      setOperationCompleted(true);
+    }
+  }, [result]);
 
   // Cargar info del PDF para herramientas que lo necesiten
   useEffect(() => {
@@ -685,60 +736,43 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
     }
   }
   
-  // If askBeforeSave is enabled, prompt for destination before any confirmation modal
-  if (askBeforeSave) {
+  // Nuevo flujo estilo iLovePDF: ejecutar primero, preguntar después
+  // Generar ruta de salida automáticamente si no existe
+  let outputPath = output;
+  if (!outputPath && files.length > 0) {
     const srcFile = files[0];
-    const suggested = srcFile ? smartOutputName(srcFile, activeTool) : "resultado.pdf";
-    // For tools that output a directory (split, pdf_to_jpg), select directory instead of file
-    const isDir = activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg';
-    if (isDir) {
-      // For split, allow selecting a file to use as base name, then extract directory
-      if (activeTool.id === 'split') {
-        const ext = (activeTool.newExt || "pdf").replace(/^\./, "");
-        const result = await window.electronAPI.selectSavePath({
-          defaultPath: suggested,
-          filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
-        });
-        if (!result) {
-          return; // user cancelled save dialog
-        }
-        setFinalOutputPath(result);
-        executeAction(result);
-        return;
-      }
-      // For pdf_to_jpg, still select directory
-      const dir = await window.electronAPI.selectDirectory();
-      if (!dir) {
-        return; // user cancelled
-      }
-      setFinalOutputPath(dir);
-      executeAction(dir);
-      return;
+    const suggested = smartOutputName(srcFile, activeTool);
+    const srcDir = srcFile.path.substring(0, srcFile.path.lastIndexOf("\\"));
+    
+    // Para herramientas que output directorio
+    if (activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg') {
+      outputPath = srcDir;
+    } else {
+      outputPath = suggested;
     }
-    // Otherwise, select a file with appropriate extension
-    const ext = (activeTool.newExt || "pdf").replace(/^\./, "");
-    const result = await window.electronAPI.selectSavePath({
-      defaultPath: suggested,
-      filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
-    });
-    if (!result) {
-      return; // user cancelled save dialog
-    }
-    setFinalOutputPath(result);
-    // Directly execute without confirmation modal
-    executeAction(result);
-    return;
+    setOutput(outputPath);
   }
-  // askBeforeSave is false: output holds only filename (or path if previously set)
-  if (output && files[0]) {
+  
+  // Convertir a ruta completa si es solo nombre de archivo
+  let finalPath = outputPath;
+  if (outputPath && files[0] && !outputPath.includes("\\")) {
     const srcDir = files[0].path.substring(0, files[0].path.lastIndexOf("\\"));
-    const fullPath = `${srcDir}\\${output}`;
-    setFinalOutputPath(fullPath);
+    finalPath = `${srcDir}\\${outputPath}`;
   }
+  
+  // Si askBeforeSave está activo, usar directorio temporal para evitar guardado automático
+  if (askBeforeSave) {
+    const tempDir = `${process.env.TEMP || process.env.TMP || 'C:\\Temp'}\\controlhub-pdftools`;
+    const fileName = finalPath.substring(finalPath.lastIndexOf('\\') + 1);
+    finalPath = `${tempDir}\\${fileName}`;
+  }
+  
+  setFinalOutputPath(finalPath);
+  
   if (activeTool?.needsConfirm) {
     setShowConfirm(true);
   } else {
-    executeAction(finalOutputPath);
+    executeAction(finalPath);
   }
 };
 
@@ -973,15 +1007,15 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
           </CardHeader>
           
           <CardContent className="p-6 space-y-6">
-            {/* DocumentGrid para merge, FileDropZone para otras herramientas */}
-            {activeTool.id === 'merge' ? (
+            {/* DocumentGrid para merge y PDF a Word, FileDropZone para otras herramientas */}
+            {activeTool.id === 'merge' || activeTool.id === 'p2w' ? (
               <DocumentGrid
                 documents={files.map((f) => ({
                   id: f.path,
                   name: f.name,
                   path: f.path,
                   thumbnail: documentThumbnails[f.path],
-                  size: f.size,
+                  size: f.size ? parseInt(f.size) : undefined,
                   pageCount: documentMetadata[f.path]?.pageCount
                 }))}
                 onAdd={async () => {
@@ -992,7 +1026,8 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                     setFiles(prev => [...prev, ...newFiles]);
                     if (!output && paths[0]) {
                       const base = paths[0].substring(0, paths[0].lastIndexOf("\\"));
-                      setOutput(`${base}\\Resultado_${Date.now()}.pdf`);
+                      const ext = activeTool.newExt || ".pdf";
+                      setOutput(`${base}\\Resultado_${Date.now()}${ext}`);
                     }
                   }
                 }}
@@ -1001,13 +1036,14 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                   setFiles(prev => [...prev, ...newFiles]);
                   if (!output && paths[0]) {
                     const base = paths[0].substring(0, paths[0].lastIndexOf("\\"));
-                    setOutput(`${base}\\Resultado_${Date.now()}.pdf`);
+                    const ext = activeTool.newExt || ".pdf";
+                    setOutput(`${base}\\Resultado_${Date.now()}${ext}`);
                   }
                 }}
                 onRemove={(id) => {
                   setFiles(prev => prev.filter(f => f.path !== id));
                 }}
-                onReorder={(fromIndex, toIndex) => {
+                onReorder={activeTool.id === 'merge' ? (fromIndex, toIndex) => {
                   console.log('onReorder called:', { fromIndex, toIndex });
                   setFiles(prev => {
                     const next = [...prev];
@@ -1016,8 +1052,8 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                     console.log('Files reordered:', next.map(f => f.name));
                     return next;
                   });
-                }}
-                onSort={(direction) => {
+                } : undefined}
+                onSort={activeTool.id === 'merge' ? (direction) => {
                   setFiles(prev => {
                     const sorted = [...prev].sort((a, b) => {
                       const cmp = a.name.localeCompare(b.name);
@@ -1025,6 +1061,11 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                     });
                     return sorted;
                   });
+                } : undefined}
+                onClear={() => {
+                  setFiles([]);
+                  setDocumentThumbnails({});
+                  setDocumentMetadata({});
                 }}
               />
             ) : (
@@ -1071,6 +1112,24 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-700">
               {activeTool.id === 'merge' && (
                 <>
+                  {/* Barra de progreso de merge */}
+                  {isProcessing && mergeProgress && (
+                    <div className="col-span-1 md:col-span-2 space-y-2 p-4 bg-primary/5 rounded-lg border border-primary/20">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="font-medium text-primary">Procesando archivos...</span>
+                        <span className="text-muted-foreground">{mergeProgress.current} de {mergeProgress.total}</span>
+                      </div>
+                      <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-primary transition-all duration-300"
+                          style={{ width: `${(mergeProgress.current / mergeProgress.total) * 100}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Archivo actual: {mergeProgress.pages} páginas
+                      </p>
+                    </div>
+                  )}
                   <div className="flex items-center space-x-3 p-3 bg-muted/30 rounded-lg">
                     <Switch 
                       checked={preserveBookmarks} 
@@ -1525,12 +1584,40 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
             </div>
 
             <Button 
-              className={cn("w-full h-14 rounded-lg text-lg font-bold transition-all active:scale-[0.98] group mt-4 bg-primary text-primary-foreground hover:opacity-90")} 
+              className={cn("w-full h-14 rounded-lg text-lg font-bold transition-all active:scale-[0.98] group mt-4", operationCompleted ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-primary text-primary-foreground hover:opacity-90")} 
               disabled={isProcessing || files.length === 0 || !output}
-              onClick={handleActionRequest}
+              onClick={async () => {
+                if (operationCompleted) {
+                  if (askBeforeSave && lastCompletedOutput) {
+                    // Abrir explorador para guardar como
+                    const fileName = lastCompletedOutput.substring(lastCompletedOutput.lastIndexOf('\\') + 1);
+                    const ext = fileName.substring(fileName.lastIndexOf('.')).replace('.', '');
+                    const result = await window.electronAPI.selectSavePath({
+                      defaultPath: fileName,
+                      filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+                    });
+                    if (result) {
+                      // Usar IPC para copiar archivo desde temporal a nueva ubicación
+                      await window.electronAPI.pdfTools.copyOutputFile(lastCompletedOutput, result);
+                      toast.success('Archivo guardado exitosamente');
+                      setLastCompletedOutput(result); // Actualizar ruta a la nueva ubicación
+                    }
+                  } else {
+                    // Solo abrir carpeta si askBeforeSave está desactivado
+                    handleOpenFolder(lastCompletedOutput!);
+                  }
+                } else {
+                  handleActionRequest();
+                }
+              }}
             >
               {isProcessing ? (
                 <RefreshCw className="w-6 h-6 animate-spin" />
+              ) : operationCompleted ? (
+                <div className="flex items-center gap-3">
+                  <Download className="w-6 h-6" />
+                  <span className="uppercase tracking-wide">GUARDAR ARCHIVO</span>
+                </div>
               ) : (
                 <div className="flex items-center gap-3">
                   <span className="group-hover:scale-110 transition-transform">{activeTool.icon}</span>
@@ -1538,6 +1625,63 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                 </div>
               )}
             </Button>
+
+            {/* Sección de continuación estilo iLovePDF */}
+            {operationCompleted && lastCompletedOutput && (
+              <div className="mt-6 space-y-4 animate-in slide-in-from-bottom-4 duration-500">
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-foreground mb-1">¿Qué deseas hacer ahora?</p>
+                  <p className="text-xs text-muted-foreground">Continúa con otra acción sobre este archivo</p>
+                </div>
+                {(() => {
+                  const ext = lastCompletedOutput.substring(lastCompletedOutput.lastIndexOf('.')).toLowerCase();
+                  const nextTools = NEXT_ACTION_MAP[ext] || [];
+                  // Mantener el orden de NEXT_ACTION_MAP, no el orden de TOOLS
+                  const validTools = nextTools.map(id => TOOLS.find(t => t.id === id)).filter(Boolean);
+                  
+                  if (validTools.length === 0) return null;
+                  
+                  const toolsToRender = validTools.slice(0, 4);
+                  
+                  return (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {toolsToRender.map(tool => (
+                        <Button
+                          key={tool.id}
+                          variant="outline"
+                          size="sm"
+                          className="flex flex-col items-center gap-2 h-auto py-4 hover:border-primary/50 hover:bg-primary/5"
+                          onClick={() => {
+                            const newFile = getFileInfo(lastCompletedOutput!);
+                            setActiveTool(tool);
+                            setFiles([newFile]);
+                            setOutput(lastCompletedOutput!);
+                            setOperationCompleted(false);
+                            setLastCompletedOutput(null);
+                          }}
+                        >
+                          <div className="text-2xl">{tool.icon}</div>
+                          <span className="text-xs font-medium text-center">{tool.name}</span>
+                        </Button>
+                      ))}
+                    </div>
+                  );
+                })()}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    setOperationCompleted(false);
+                    setLastCompletedOutput(null);
+                    setFiles([]);
+                    setOutput('');
+                  }}
+                >
+                  Empezar con nuevo archivo
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 

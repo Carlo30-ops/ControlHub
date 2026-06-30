@@ -209,12 +209,21 @@ function validateOperationPath(candidatePath: string, isOutput: boolean): boolea
       }
       return false;
     } else {
-      // Output: subpath of an approved dialog directory or the exclusive temp folder
+      // Output: subpath of an approved dialog directory OR subpath of input file directories
       for (const approved of dialogApprovedPaths) {
         const approvedNorm = normalize(approved);
         const rel = path.relative(approvedNorm, normResolved);
         if (!rel.startsWith('..') && !path.isAbsolute(rel)) return true;
       }
+      
+      // Allow output in same directory as input files (for auto-generated output paths)
+      for (const allowedFile of sessionAllowedFiles) {
+        const allowedDir = path.dirname(allowedFile);
+        const allowedDirNorm = normalize(allowedDir);
+        const rel = path.relative(allowedDirNorm, normResolved);
+        if (!rel.startsWith('..') && !path.isAbsolute(rel)) return true;
+      }
+      
       const tempNorm = normalize(CONTROLHUB_TEMP_DIR);
       const relTemp = path.relative(tempNorm, normResolved);
       if (!relTemp.startsWith('..') && !path.isAbsolute(relTemp)) return true;
@@ -414,6 +423,43 @@ class SidecarManager {
       const errMsg = data.toString();
       this.stderrBuffer += errMsg;
       logger.error(`[Sidecar] ${this.name} STDERR:`, errMsg);
+      
+      // Parsear mensajes de progreso de stderr
+      const lines = errMsg.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('MERGE_PROGRESS:')) {
+          try {
+            const progressData = trimmed.replace('MERGE_PROGRESS:', '');
+            const parts = progressData.split('|');
+            if (parts.length !== 2) continue;
+            
+            const [current, pages] = parts;
+            const currentParts = current.split('/');
+            if (currentParts.length !== 2) continue;
+            
+            const [currentIdx, total] = currentParts;
+            const currentNum = parseInt(currentIdx);
+            const totalNum = parseInt(total);
+            const pagesNum = parseInt(pages);
+            
+            // Validar que sean números válidos
+            if (isNaN(currentNum) || isNaN(totalNum) || isNaN(pagesNum)) continue;
+            if (currentNum < 0 || totalNum < 0 || pagesNum < 0) continue;
+            
+            // Enviar evento de progreso al renderer
+            if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
+              win.webContents.send('pdf:progress', {
+                current: currentNum,
+                total: totalNum,
+                pages: pagesNum
+              });
+            }
+          } catch (err) {
+            logger.warn(`[Sidecar] Error parseando progreso:`, err);
+          }
+        }
+      }
     });
 
     this.process.on("error", (err) => {
@@ -670,6 +716,20 @@ ipcMain.handle('pdf:ocr', async (_, data) => {
   return validatePdfHandler('ocr', extended);
 });
 ipcMain.handle('pdf:get_page_info', (_, data) => validatePdfHandler('get_page_info', data));
+
+// IPC Handler para copiar archivos (usado por askBeforeSave)
+ipcMain.handle('pdf:copyOutputFile', async (_, source: string, destination: string) => {
+  try {
+    fs.promises.copyFile(source, destination);
+    // Eliminar archivo temporal después de copiar
+    fs.promises.unlink(source).catch(() => {
+      // Ignorar error si no se puede eliminar el temporal
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: (error as Error).message };
+  }
+});
 
 // IPC Handler para OCR Fallback (Main Process)
 ipcMain.handle('ocr:extractText', async (_, pdfPath: string) => {

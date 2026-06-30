@@ -169,6 +169,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     repair: (data: any) => ipcRenderer.invoke('pdf:repair', data),
     ocr: (data: any) => ipcRenderer.invoke('pdf:ocr', data),
     getPageInfo: (data: any) => ipcRenderer.invoke('pdf:get_page_info', data),
+    copyOutputFile: (source: string, destination: string) => ipcRenderer.invoke('pdf:copyOutputFile', source, destination),
     // (security moved to root level)
+    onProgress: (callback: (data: { current: number; total: number; pages: number }) => void) => {
+      const listener = (_event: any, data: { current: number; total: number; pages: number }) => {
+        callback(data);
+      };
+      ipcRenderer.on('pdf:progress', listener);
+      return () => ipcRenderer.removeListener('pdf:progress', listener);
+    },
   },
 });

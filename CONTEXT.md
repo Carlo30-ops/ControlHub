@@ -169,6 +169,38 @@ PDFTools UI → IPC pdf:* (22 handlers)
   → respuesta JSON al renderer
 ```
 
+**Arquitectura modularizada (2026-06-29):**
+```text
+PDFTools UI → IPC pdf:* (22 handlers)
+  → pdf_bridge.py (router/dispatcher - 250 líneas)
+  → engines/*.py (motores individuales)
+  → pdf_utils.py (utilidades compartidas)
+  → respuesta JSON al renderer
+```
+
+**Estado de migración (completada):**
+- `pdf_bridge.py` reducido de ~1500 líneas a 250 líneas (solo router/dispatcher)
+- **10/10 motores** migrados limpiamente a `electron/sidecar/engines/`
+- **0 duplicados** restantes en `pdf_bridge.py`
+- Todas las utilidades consolidadas en `pdf_utils.py`
+
+**Motores migrados a `electron/sidecar/engines/`:**
+- `compress.py` - Compresión de PDFs (Ghostscript, pikepdf, PyMuPDF) ✅
+- `merge.py` - Fusión de múltiples PDFs ✅
+- `split.py` - División de PDFs por rangos ✅
+- `p2w.py` - PDF a Word con OCR integrado y detección de firmas ✅
+- `ocr.py` - OCR de PDFs escaneados ✅
+- `office_to_pdf.py` - Word/Excel/PPT a PDF (COM) ✅
+- `simple_ops.py` - Operaciones simples (rotate, crop, delete, extract, reorder, page_numbers) ✅
+- `image_ops.py` - Operaciones de imagen (jpg_to_pdf, pdf_to_jpg, thumbnails, html_to_pdf) ✅
+- `security.py` - Operaciones de seguridad (protect, unlock, repair) ✅
+- `watermark.py` - Marca de agua (texto, imagen) ✅
+
+**Utilidades compartidas en `electron/sidecar/pdf_utils.py`:**
+- `resolve_ghostscript_path()` - Búsqueda dinámica de Ghostscript (usado por compress.py)
+- `resolve_tesseract_path()` - Búsqueda dinámica de Tesseract OCR (usado por ocr.py, p2w.py)
+- `parse_pages_param()` - Parseo de rangos de páginas (usado por simple_ops.py)
+
 ### Protocolo custom
 
 - `cotu://pdf?path=...` — sirve PDFs locales para preview en `<iframe>` sin abrir explorador.
@@ -327,6 +359,29 @@ ControlHub/
 | P60 | `config.getAll`/`setAll`/`delete` expuestos en preload sin handlers en main | **Confirmado** | ✅ RESUELTO — eliminados del preload |
 | P61 | 11 de 13 dependencias `@radix-ui` en package.json apuntaban a `^1.0.3`, versión nunca publicada por el mantenedor (causa raíz ETARGET) | **Confirmado** | ✅ RESUELTO — Actualizadas a versión `latest` real vigente; verificado sin breaking changes aplicables en código actual; build/typecheck/test limpios |
 | P62 | El aislamiento de módulos Terapias y PDFTools con archivos tsconfig dedicados fallaba debido a dependencias no declaradas y referencias incorrectas. | **Confirmado** | ✅ RESUELTO — Corregidos los archivos de configuración de TypeScript `tsconfig.terapias.json` y `tsconfig.pdftools.json`, corregida la firma de `listDocs()` en `electron.d.ts`, actualizados los mocks/spies en los tests y re-organizada la declaración de variables del renderizado para permitir la compilación limpia e independiente de ambos módulos. |
+| P63 | Herramienta split solo permitía seleccionar carpeta de destino, sin opción de especificar nombre base para archivos generados. | **Confirmado** | ✅ RESUELTO — Modificado para usar `selectSavePath` en lugar de `selectDirectory`, permitiendo al usuario especificar un nombre base (ej: "mi_documento.pdf"). El sidecar Python (`pdf_bridge.py`) extrae el nombre base de la ruta y lo usa como prefijo para los archivos generados según el patrón de nombres seleccionado (part/range/custom). |
+| P64 | Conversión PDF a Word sin detección de marcas de agua y configuración subóptima para preservación de formato, imágenes y logos. | **Confirmado** | ✅ RESUELTO — Mejorado el clasificador PDF (`_classify_pdf`) para detectar marcas de agua (texto en zona central, mayúsculas cortas). Agregado nuevo perfil "watermarked" que prioriza Word COM. Mejorada configuración de Word COM: usar `wdFormatXMLDocument` (12) en lugar de `wdFormatDocumentDefault` (16), con opciones de preservación (`EmbedTrueTypeFonts`, `SaveNativePictureFormat`, `SaveFormsData`). Configuración adaptativa de pdf2docx según perfil: escaneados (tolerancia 0.3, preservar imágenes), mixtos/watermarked (tolerancia 0.2, preservar layout), estándar (configuración original). |
+| P65 | Herramientas merge y split sin detección de PDFs protegidos con contraseña. | **Confirmado** | ✅ RESUELTO — Agregada detección de PDFs protegidos en `handle_merge` usando `pikepdf.PasswordError` y verificación de `is_encrypted`. Agregada detección en `handle_split` usando `doc.needs_pass` de fitz. Ambos handlers ahora retornan error claro indicando usar la herramienta 'Desbloquear PDF' primero cuando detectan archivos protegidos. |
+| P66 | Feedback visual de drag and drop en DocumentGrid básico, sin animaciones ni indicadores claros. | **Confirmado** | ✅ RESUELTO — Mejorado feedback visual en `DocumentGrid.tsx`: borde más grueso (4px), animación pulse, icono Upload centrado, mensaje descriptivo de dos líneas, escala sutil del contenedor (scale-[1.01]), y fondo con tinte primario (bg-primary/10) al arrastrar archivos. |
+| P67 | Manejo de errores en PageThumbnails genérico sin opción de reintentar. | **Confirmado** | ✅ RESUELTO — Mejorado manejo de errores en `PageThumbnails.tsx`: mensaje de error más descriptivo con detalles del error, agregado botón "Reintentar" para recargar la página, mejor captura de errores con verificación de instancia de Error. |
+| P68 | Conversión PDF a Word sin reporte de progreso ni contexto detallado del resultado. | **Confirmado** | ✅ RESUELTO — Aplicado estilo de ejecución de merge (iLovePDF) a `handle_pdf_to_word`: validaciones mejoradas (existencia archivo, directorio salida, PDF protegido), reporte de progreso vía stderr (starting, strategy, opened, saving), resultado enriquecido con `page_count`, `strategy_used`, `input_size`, `output_size` para dar contexto completo de la conversión. |
+| P69 | Herramienta PDF a Word usa FileDropZone antiguo en lugar de DocumentGrid, mostrando ruta completa y sin miniaturas visuales. | **Confirmado** | ✅ RESUELTO — Migrado `p2w` (PDF a Word) a usar DocumentGrid en `index.tsx`: ahora muestra miniaturas visuales del PDF, oculta la ruta completa del archivo (solo nombre truncado), usa tarjeta con borde redondeado y sombra suave, y mantiene consistencia visual con merge. Funciones de reordenar y ordenar deshabilitadas para p2w (solo aplicables a merge). |
+| P70 | Error "too many values to unpack (expected 7, got 8)" en _classify_pdf de PyMuPDF. | **Confirmado** | ✅ RESUELTO — Corregido desempaquetado en línea 1204 de `pdf_bridge.py`: `page.get_text("words")` ahora devuelve 8 valores (incluyendo `direction`) en versiones recientes de PyMuPDF. Agregado `direction` al desempaquetado. |
+| P71 | PDF a Word usa dos motores en cascada (Word COM + pdf2docx) causando diálogo de Word. | **Confirmado** | ✅ RESUELTO — Eliminado motor Word COM que causaba diálogos de confirmación. Ahora usa solo pdf2docx con configuración adaptativa según perfil: escaneados (tolerancia 0.3 para OCR), mixtos/watermarked (tolerancia 0.2), estándar. La detección de tablas e imágenes es automática en pdf2docx (no requiere parámetros explícitos). |
+| P73 | Perfil "scanned" en PDF a Word no aplicaba OCR real, solo cambiaba parámetros de pdf2docx. | **Confirmado** | ✅ RESUELTO — Implementado OCR real usando pytesseract en `handle_pdf_to_word`: agregada función `_apply_ocr_to_pdf` que usa Tesseract para extraer texto de cada página como imagen y genera PDF con texto. Cuando el perfil es "scanned", se aplica OCR antes de pdf2docx. Si OCR falla, continúa con conversión sin OCR (con warning). Reporte de progreso de OCR vía stderr (ocr_start, ocr_complete). |
+| P72 | Previsualización de documentos en PDF a Word no carga miniaturas. | **Confirmado** | ✅ RESUELTO — Agregado `activeTool?.id === 'p2w'` al useEffect de carga de miniaturas en `index.tsx`. Ahora las miniaturas se cargan correctamente para PDF a Word además de merge. |
+| P74 | Sidecar Python pdf_bridge.py monolítico con ~1400 líneas, difícil de mantener y escalar. | **Confirmado** | ✅ RESUELTO — Modularización completa: extracción de utilidades a `pdf_utils.py` y migración de 22 handlers a archivos individuales en `electron/sidecar/engines/`. |
+| P75 | Error "motor compress no disponible" tras migración por falta de `pdf_utils.py`. | **Confirmado** | ✅ RESUELTO — Creado `electron/sidecar/pdf_utils.py` con funciones compartidas (`resolve_ghostscript_path`, `resolve_tesseract_path`, `parse_pages_param`). |
+| P76 | Nivel de compresión invalido por `parseInt` en frontend. | **Confirmado** | ✅ RESUELTO — Eliminado `parseInt` en `index.tsx` líneas 219 y 626 para pasar string directamente al backend. |
+| P77 | Motor compress sin validación de niveles ni reporte de progreso. | **Confirmado** | ✅ RESUELTO — Validación de niveles (screen, ebook, printer, prepress, default, fast), reporte de progreso vía stderr (COMPRESS_PROGRESS). |
+| P78 | Motor pdf_to_word sin validación de extensión .docx ni reporte de progreso detallado. | **Confirmado** | ✅ RESUELTO — Validación de extensión .docx, reporte de progreso vía stderr (CLASSIFY_PROGRESS, OCR_PROGRESS, PDF2WORD_PROGRESS). |
+| P79 | Detección de firmas en PDF a Word dependía de palabras clave en español y correlación de texto con DOCX. | **Confirmado** | ✅ RESUELTO — Sistema de puntuación estructural independiente de idioma: posición (tercio inferior), tamaño relativo, proporción de aspecto, densidad de píxeles no blancos. Umbral score >= 7. Inserción al final del DOCX agrupadas por página como imágenes inline seleccionables. |
+| P80 | Parámetros de pdf2docx subóptimos para preservación de imágenes pequeñas (firmas). | **Confirmado** | ✅ RESUELTO — Ajuste de image_overlap_threshold=0.5 y float_image_ignorable_gap=20.0 en todos los perfiles (scanned, mixed, watermarked, estándar). |
+| P81 | Motor OCR duplicado en pdf_bridge.py con resolve_tesseract_path también duplicado. | **Confirmado** | ✅ RESUELTO — Migrado a engines/ocr.py, resolve_tesseract_path unificado en pdf_utils.py con check de pytesseract, eliminado código duplicado de pdf_bridge.py. |
+| P82 | Imports de motores en pdf_bridge.py no explícitos (from X import Y vs from engines.X import Y). | **Confirmado** | ✅ RESUELTO — Todos los imports cambiados a forma explícita from engines.X import handle_X. |
+| P83 | Motor security.py duplicado en pdf_bridge.py (handle_protect, handle_unlock, handle_repair). | **Confirmado** | ✅ RESUELTO — Eliminado código duplicado de pdf_bridge.py, versión en engines/security.py idéntica con sus propios imports. |
+| P84 | Flujo de herramienta Unir PDFs: `operationCompleted` no se establecía en primera ejecución, herramientas de continuación no mostraban orden correcto (PDF a Word no aparecía primero), y archivo se guardaba automáticamente con `askBeforeSave` activo. | **Confirmado** | 🔄 EN PROGRESO — Corregido `operationCompleted` vía useEffect, orden de herramientas respetando NEXT_ACTION_MAP (PDF a Word primero), uso de directorio temporal cuando `askBeforeSave` activo para evitar guardado automático. Error Dynamic require of os corregido usando process.env.TEMP. |
+| P84 | Mejoras de calidad en módulo Terapias: finally defensivo faltante en handle_finalize, tipado débil en prepareResult, excepciones genéricas en validaciones, búsqueda sin debounce, duplicación de lógica de selección, constantes mágicas, optimización de renderizado. | **Confirmado** | ✅ RESUELTO — Implementadas 9 mejoras: (1) finally defensivo en handle_finalize para prevenir locks de Word, (2) interface PrepareResult con tipado fuerte, (3) excepción específica ValueError con mensaje descriptivo, (4) bare except reemplazado por (OSError, PermissionError), (5) debounce 300ms en búsqueda de pacientes, (6) validación de tamaño máximo 50MB en archivos, (7) función selectDocument extraída para eliminar duplicación, (8) constantes LOG_MAX_BYTES, LOG_BACKUP_COUNT, HISTORY_MAX_ENTRIES, MAX_FILE_SIZE, (9) useMemo para optimizar renderizado de historial. |
 
 ---
 
