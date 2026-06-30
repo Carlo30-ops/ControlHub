@@ -1,4 +1,6 @@
 import { FileInfo } from '../../../types';
+import { z } from 'zod';
+import { AppError, ErrorType } from '../../utils/errorHandler';
 
 interface MergeParams {
   preserveBookmarks?: boolean;

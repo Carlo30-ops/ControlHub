@@ -34,6 +34,10 @@ export enum ErrorType {
   CONFIG_ERROR = 'CONFIG_ERROR',
   SETTINGS_ERROR = 'SETTINGS_ERROR',
   
+  // Errores específicos de PDFTools Merge
+  MERGE_INPUT = 'MERGE_INPUT',
+  MERGE_RUNTIME = 'MERGE_RUNTIME',
+  
   // Errores generales
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
