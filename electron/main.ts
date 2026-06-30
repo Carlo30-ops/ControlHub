@@ -1217,6 +1217,17 @@ ipcMain.handle('fs:checkPath', async (_, targetPath: string) => {
   }
 });
 
+// IPC: Check write access for a path (used by renderer via preload)
+ipcMain.handle('fs:checkWriteAccess', async (_, targetPath: string) => {
+  try {
+    // Attempt to access with write permission flag
+    await fs.promises.access(targetPath, fs.constants.W_OK);
+    return { writable: true };
+  } catch {
+    return { writable: false };
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // IPC: Cancelar escaneo en curso
 // Fix #3: Al eliminar el scanId, la traversal se detiene en el próximo await
