@@ -13,7 +13,7 @@ import { logger } from './logger';
 
 // Suppress known Node deprecation warnings from legacy punycode usage in transitive dependencies.
 // The warning is noisy and does not affect app behavior.
-process.on('warning', (warning) => {
+process.on('warning', (warning: any) => {
   if (warning.code === 'DEP0040' || /punycode/i.test(warning.message)) {
     return;
   }
@@ -171,6 +171,57 @@ async function migrateElectronStoreToSettings(): Promise<void> {
   store.delete('terapias.baseDest');
   store.delete('terapias.backup');
   store.set(migrationKey, true);
+}
+
+/** Carga configuración inicial del instalador si existe (one-time). */
+async function loadInitialConfig(): Promise<void> {
+  const loadKey = 'migration.initialConfig';
+  if (store.get(loadKey)) return;
+
+  // Buscar archivo initial-config.json en el directorio de instalación
+  const installDir = app.getAppPath();
+  const initialConfigPath = path.join(installDir, '..', 'initial-config.json');
+  
+  if (!fs.existsSync(initialConfigPath)) {
+    store.set(loadKey, true);
+    return;
+  }
+
+  try {
+    const initialConfig = JSON.parse(fs.readFileSync(initialConfigPath, 'utf-8'));
+    const settings = await dbOptions.getSettings();
+    const updated = { ...settings };
+    let changed = false;
+
+    if (initialConfig.terapiasDir && !updated.terapiasDir) {
+      updated.terapiasDir = initialConfig.terapiasDir;
+      changed = true;
+    }
+    if (initialConfig.terapiasBackup && !updated.terapiasBackup) {
+      updated.terapiasBackup = initialConfig.terapiasBackup;
+      changed = true;
+    }
+    if (initialConfig.terapiasProcessed && !updated.terapiasProcessed) {
+      updated.terapiasProcessed = initialConfig.terapiasProcessed;
+      changed = true;
+    }
+    if (initialConfig.tesseractPath && !updated.tesseractPath) {
+      updated.tesseractPath = initialConfig.tesseractPath;
+      changed = true;
+    }
+
+    if (changed) {
+      await dbOptions.saveSettings(updated);
+      logger.info('[MAIN] Configuración inicial cargada desde initial-config.json');
+    }
+
+    // Eliminar archivo de configuración inicial después de cargarlo
+    fs.unlinkSync(initialConfigPath);
+  } catch (err) {
+    logger.error('[MAIN] Error cargando configuración inicial:', err);
+  }
+
+  store.set(loadKey, true);
 }
 
 process.env.DIST = path.join(__dirname, '../dist');
@@ -1017,6 +1068,9 @@ app?.whenReady()?.then(async () => {
   });
   
   await migrateElectronStoreToSettings();
+  
+  // Leer configuración inicial del instalador si existe
+  await loadInitialConfig();
 
   terapiasSidecar.start();
   pdfSidecar.start();
@@ -1226,6 +1280,11 @@ ipcMain.handle('fs:checkWriteAccess', async (_, targetPath: string) => {
   } catch {
     return { writable: false };
   }
+});
+
+// IPC: Get system temp path (used by renderer for temporary files)
+ipcMain.handle('system:getTempPath', async () => {
+  return os.tmpdir();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

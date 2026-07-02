@@ -401,8 +401,24 @@ export default function Terapias() {
       if (location.state?.preloadedDoc) {
         const path = location.state.preloadedDoc;
         const name = path.split(/[\\/]/).pop() || "";
-        setForm(prev => ({ ...prev, filename: name }));
-        toast.success(`Documento precargado: ${name}`);
+        
+        // Verificar si el documento existe en la carpeta de origen configurada
+        if (sourceDir && availableDocs.length > 0) {
+          const matchingDoc = availableDocs.find(doc => doc.name === name);
+          if (matchingDoc) {
+            // Seleccionar automáticamente el documento de la lista
+            selectDocument(matchingDoc, 'select');
+            toast.success(`Documento seleccionado: ${name}`);
+          } else {
+            // Documento no encontrado en carpeta de origen, pero establecer nombre
+            setForm(prev => ({ ...prev, filename: name }));
+            toast.warning(`Documento "${name}" no encontrado en carpeta de origen. Verifica la ruta.`);
+          }
+        } else {
+          // No hay carpeta configurada o no hay documentos disponibles, solo establecer nombre
+          setForm(prev => ({ ...prev, filename: name }));
+          toast.success(`Documento precargado: ${name}`);
+        }
       }
 
       if (location.state?.autoSearch || location.state?.preloadedDoc) {

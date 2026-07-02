@@ -32,12 +32,19 @@ const defaultSettings: Settings = {
     onlyCotuFolders: true,
     ignoreSystemFolders: true,
     maxDepth: 10,
+    enableOcrCache: true,
+    ocrCacheRetentionDays: 30,
+    fastScanMode: false,
+    amountMaxDistance: 500,
+    amountMaxValue: 5000000,
+    minFileSizeForOcr: 1024, // 1KB
+    maxFileSizeForOcr: 10485760, // 10MB
   },
   display: {
     rowsPerPage: 100,
     compactMode: false,
   },
-  customInsurers: [],
+  customInsurers: [], // { name: string; aliases: string[]; amountLabels?: string[] }[]
   operatorName: "Usuario Admin",
   operatorEmail: "admin@cotu.com",
   terapiasDir: "",

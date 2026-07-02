@@ -68,9 +68,16 @@ import { StatCard } from "../../components/shared/StatCard";
 import { ExportButtons } from "./ExportButtons";
 import { FiltersPanel } from "./FiltersPanel";
 import { generateReportHTML, getDayFromDate } from "./utils";
-
-type SortKey = "invoiceNumber" | "company" | "month" | "year" | "amount" | "day";
-type SortDir = "asc" | "desc";
+import { 
+  filterInvoices, 
+  sortInvoices, 
+  getUniqueInvoices, 
+  calculateTotalAmount, 
+  hasActiveFilters,
+  type InvoiceFilterOptions,
+  type SortKey,
+  type SortDir
+} from "../../utils/invoiceFilters";
 
 function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey | null; sortDir: SortDir }) {
   if (sortKey !== col) return <ChevronsUpDown className="w-3 h-3 ml-1 text-muted-foreground opacity-30" />;
@@ -156,7 +163,7 @@ export function Reports() {
       const dateStr = formatDate(new Date(), "dd/MM/yyyy HH:mm:ss");
       const html = generateReportHTML(filteredInvoices, totalAmount, dateStr);
 
-      const res = await (window.electronAPI.pdfTools as any).htmlToPdf({ html });
+      const res = await window.electronAPI.pdfTools.htmlToPdf({ input: "", html });
 
       if (!res || !res.ok) {
         toast.error(`Error al generar PDF: ${res?.error || 'sidecar failure'}`);
@@ -211,40 +218,35 @@ export function Reports() {
 
   const filteredInvoices = useMemo(() => {
     if (!activeScan) return [];
-    const min = minAmount ? parseFloat(minAmount) : null;
-    const max = maxAmount ? parseFloat(maxAmount) : null;
-
-    return activeScan.invoices.filter((invoice) => {
-      const matchesSearch = invoice.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) || invoice.company.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCompany = companyFilter === "all" || invoice.company === companyFilter;
-      const matchesYear = yearFilter === "all" || invoice.year === yearFilter;
-      const matchesMonth = monthFilter === "all" || invoice.month === monthFilter;
-      const matchesMin = min === null || invoice.amount >= min;
-      const matchesMax = max === null || invoice.amount <= max;
-      return matchesSearch && matchesCompany && matchesYear && matchesMonth && matchesMin && matchesMax;
+    return filterInvoices(activeScan.invoices, {
+      searchQuery,
+      companyFilter,
+      yearFilter,
+      monthFilter,
+      minAmount,
+      maxAmount
     });
   }, [activeScan, searchQuery, companyFilter, yearFilter, monthFilter, minAmount, maxAmount]);
 
   const sortedInvoices = useMemo(() => {
-    if (!sortKey) return filteredInvoices;
-    return [...filteredInvoices].sort((a, b) => {
-      let aVal = a[sortKey as keyof Invoice] ?? "";
-      let bVal = b[sortKey as keyof Invoice] ?? "";
-      if (sortKey === "amount") { aVal = Number(aVal); bVal = Number(bVal); }
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    });
+    return sortInvoices(filteredInvoices, sortKey, sortDir);
   }, [filteredInvoices, sortKey, sortDir]);
 
   const totalPages = Math.ceil(sortedInvoices.length / rowsPerPage);
   const paginatedInvoices = sortedInvoices.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
   // REGLA 2: No contar duplicados en los totales del reporte
-  const uniqueInvoices = useMemo(() => filteredInvoices.filter(inv => !inv.isDuplicate), [filteredInvoices]);
-  const totalAmount = uniqueInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+  const uniqueInvoices = useMemo(() => getUniqueInvoices(filteredInvoices), [filteredInvoices]);
+  const totalAmount = useMemo(() => calculateTotalAmount(uniqueInvoices), [uniqueInvoices]);
   
-  const hasFilters = Boolean(searchQuery || companyFilter !== "all" || yearFilter !== "all" || monthFilter !== "all" || minAmount || maxAmount || sortKey !== null);
+  const hasFilters = hasActiveFilters({
+    searchQuery,
+    companyFilter,
+    yearFilter,
+    monthFilter,
+    minAmount,
+    maxAmount
+  }, sortKey);
 
   if (!activeScan || activeScan.invoices.length === 0) {
     return (

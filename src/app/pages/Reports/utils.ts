@@ -6,7 +6,15 @@ export function getDayFromDate(date: string): number {
   return parts.length === 3 ? parseInt(parts[0], 10) || 0 : 0;
 }
 
-export function buildCSV(invoices: Invoice[], columns: any): string {
+export interface CsvColumnOptions {
+  invoiceNumber?: boolean;
+  company?: boolean;
+  detail?: boolean;
+  amount?: boolean;
+  filePath?: boolean;
+}
+
+export function buildCSV(invoices: Invoice[], columns: CsvColumnOptions): string {
   const headers = [];
   if (columns.invoiceNumber) headers.push("N° Factura");
   if (columns.company) headers.push("Compañía");

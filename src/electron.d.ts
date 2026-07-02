@@ -98,8 +98,10 @@ interface ElectronAPI {
   // â”€â”€ DiÃ¡logos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   selectDirectory(): Promise<string | null>;
   selectFile(options?: SelectFileOptions | FileFilter[]): Promise<string | null>;
+  selectFiles(options?: SelectFileOptions | FileFilter[]): Promise<string[] | null>;
   selectSavePath(options?: SelectFileOptions | FileFilter[]): Promise<string | null>;
   getPathForFile(file: File): string;
+  getTempPath(): Promise<string>;
   security: {
     validateAndRegisterDroppedFile(path: string): Promise<{ ok: boolean; error?: string }>;
     syncActiveFiles(paths: string[]): Promise<{ ok: boolean; accepted?: number }>;
@@ -203,7 +205,7 @@ interface ElectronAPI {
     addPageNumbers(data: PdfOperationData): Promise<PdfOperationResult>;
     jpgToPdf(data: PdfOperationData): Promise<PdfOperationResult>;
     pdfToJpg(data: PdfOperationData): Promise<PdfOperationResult>;
-    pdfThumbnail(data: { input: string; dpi?: number }): Promise<{ ok: boolean; thumb_path?: string; error?: string }>;
+    pdfThumbnail(data: { input: string; dpi?: number }): Promise<{ ok: boolean; thumb_path?: string; error?: string; page_count?: number }>;
     htmlToPdf(data: PdfOperationData): Promise<PdfOperationResult>;
     protect(data: PdfOperationData): Promise<PdfOperationResult>;
     unlock(data: PdfOperationData): Promise<PdfOperationResult>;

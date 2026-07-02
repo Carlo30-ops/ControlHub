@@ -197,7 +197,14 @@ export function Scanner() {
             applyDateFilter: true,
             targetDate: scanType === 'day' ? (startDate ?? dateRange.start) : undefined,
             targetDateRange: scanType === 'custom' && startDate && endDate ? { start: startDate, end: endDate } : undefined,
-          }
+          },
+          settings.scanning.enableOcrCache,
+          settings.scanning.fastScanMode,
+          settings.scanning.amountMaxDistance,
+          settings.scanning.amountMaxValue,
+          settings.customInsurers,
+          settings.scanning.minFileSizeForOcr,
+          settings.scanning.maxFileSizeForOcr
         );
 
         if (result.preProbeFallback) {

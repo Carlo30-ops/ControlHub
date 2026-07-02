@@ -69,6 +69,13 @@ export interface ScanningSettings {
   onlyCotuFolders: boolean;
   ignoreSystemFolders: boolean;
   maxDepth: number;
+  enableOcrCache: boolean;
+  ocrCacheRetentionDays: number;
+  fastScanMode: boolean;
+  amountMaxDistance: number;
+  amountMaxValue: number;
+  minFileSizeForOcr: number;
+  maxFileSizeForOcr: number;
 }
 
 export interface DisplaySettings {
@@ -84,7 +91,7 @@ export interface AppSettings {
   columns: ColumnSettings;
   scanning: ScanningSettings;
   display: DisplaySettings;
-  customInsurers: { name: string; aliases: string }[];
+  customInsurers: { name: string; aliases: string[]; amountLabels?: string[] }[];
 
   // Campos de Operador y Módulos extra
   operatorName?: string;
@@ -111,7 +118,7 @@ export interface ScanOptions {
   maxDepth?: number;
   onlyCotuFolders?: boolean;
   ignoreSystemFolders?: boolean;
-  customInsurers?: { name: string; aliases: string }[];
+  customInsurers?: { name: string; aliases: string[]; amountLabels?: string[] }[];
   signal?: AbortSignal;
   scanId?: string;
   applyDateFilter?: boolean;

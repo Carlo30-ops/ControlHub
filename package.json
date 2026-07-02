@@ -43,6 +43,10 @@
           "!**/share/**",
           "!**/LICENSE.txt"
         ]
+      },
+      {
+        "from": "install_tesseract.bat",
+        "to": "install_tesseract.bat"
       }
     ],
     "nsis": {
@@ -50,7 +54,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "ControlHub"
+      "shortcutName": "ControlHub",
+      "include": "installer.nsh",
+      "perMachine": true,
+      "runAfterFinish": true
     }
   },
   "scripts": {

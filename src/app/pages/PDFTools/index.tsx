@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
+import { useData } from "../../contexts/DataContext";
 import { executeTool } from "./tools/executeTool";
 import { usePdfTool } from "./hooks/usePdfTool";
 import { useFileQueue, FileInfo } from "./hooks/useFileQueue";
@@ -159,6 +160,7 @@ const NEXT_ACTION_MAP: Record<string, ToolId[]> = {
 export default function PDFTools() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { settings } = useData();
   const [view, setView] = useState<'selector' | 'active' | 'queue' | 'processing' | 'result'>('selector');
   const [activeTool, setActiveTool] = useState<ToolConfig | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -536,25 +538,21 @@ export default function PDFTools() {
   const [documentMetadata, setDocumentMetadata] = useState<Record<string, { pageCount?: number }>>({});
   const [mergeProgress, setMergeProgress] = useState<{ current: number; total: number; pages: number } | null>(null);
 
-  // Cargar miniaturas de documentos para merge y PDF a Word
+  // Cargar miniaturas de documentos para todas las herramientas
   useEffect(() => {
-    if ((activeTool?.id === 'merge' || activeTool?.id === 'p2w') && files.length > 0) {
+    if (files.length > 0) {
       const loadThumbnails = async () => {
         for (const file of files) {
           if (documentThumbnails[file.path]) continue;
           try {
-            console.log('Loading thumbnail for:', file.path);
             const res = await window.electronAPI.pdfTools.pdfThumbnail({
               input: file.path,
               dpi: 100,
             });
-            console.log('Thumbnail response:', res);
             if (res.ok && res.thumb_path) {
               const thumbName = res.thumb_path?.split(/[\\/]/).pop();
-              console.log('Thumbnail name:', thumbName);
               if (thumbName) {
                 const thumbUrl = `pdfthumb://${thumbName}`;
-                console.log('Thumbnail URL:', thumbUrl);
                 setDocumentThumbnails(prev => ({
                   ...prev,
                   [file.path]: thumbUrl,
@@ -762,7 +760,8 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
   
   // Si askBeforeSave está activo, usar directorio temporal para evitar guardado automático
   if (askBeforeSave) {
-    const tempDir = `${process.env.TEMP || process.env.TMP || 'C:\\Temp'}\\controlhub-pdftools`;
+    const systemTempDir = await window.electronAPI.getTempPath();
+    const tempDir = `${systemTempDir}\\controlhub-pdftools`;
     const fileName = finalPath.substring(finalPath.lastIndexOf('\\') + 1);
     finalPath = `${tempDir}\\${fileName}`;
   }
@@ -1007,19 +1006,21 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
           </CardHeader>
           
           <CardContent className="p-6 space-y-6">
-            {/* DocumentGrid para merge y PDF a Word, FileDropZone para otras herramientas */}
-            {activeTool.id === 'merge' || activeTool.id === 'p2w' ? (
-              <DocumentGrid
-                documents={files.map((f) => ({
-                  id: f.path,
-                  name: f.name,
-                  path: f.path,
-                  thumbnail: documentThumbnails[f.path],
-                  size: f.size ? parseInt(f.size) : undefined,
-                  pageCount: documentMetadata[f.path]?.pageCount
-                }))}
-                onAdd={async () => {
-                  const filters = activeTool.accept ? [{ name: "Archivos", extensions: activeTool.accept.replace(/\./g, '').split(',') }] : [];
+            {/* DocumentGrid para todas las herramientas */}
+            <DocumentGrid
+              documents={files.map((f) => ({
+                id: f.path,
+                name: f.name,
+                path: f.path,
+                thumbnail: documentThumbnails[f.path],
+                size: f.size ? parseInt(f.size) : undefined,
+                pageCount: documentMetadata[f.path]?.pageCount
+              }))}
+              onAdd={async () => {
+                const filters = activeTool.accept ? [{ name: "Archivos", extensions: activeTool.accept.replace(/\./g, '').split(',') }] : [];
+                
+                // Multi-file tools: merge, jpg_to_pdf, p2w
+                if (activeTool.id === 'merge' || activeTool.id === 'jpg_to_pdf' || activeTool.id === 'p2w') {
                   const paths = await window.electronAPI.selectFiles({ filters });
                   if (paths && paths.length > 0) {
                     const newFiles = paths.filter(Boolean).map(p => getFileInfo(p));
@@ -1030,83 +1031,79 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                       setOutput(`${base}\\Resultado_${Date.now()}${ext}`);
                     }
                   }
-                }}
-                onAddFiles={(paths) => {
-                  const newFiles = paths.filter(Boolean).map(p => getFileInfo(p));
+                } else {
+                  // Single-file tools: select one file
+                  const path = await window.electronAPI.selectFile({ filters });
+                  if (path) {
+                    const newFiles = [getFileInfo(path)];
+                    setFiles(newFiles);
+                    const base = path.substring(0, path.lastIndexOf("."));
+                    if (activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg') {
+                      setOutput(path.substring(0, path.lastIndexOf("\\")));
+                    } else {
+                      setOutput(`${base}${activeTool.newExt || (activeTool.id === 'extract' ? '_extraido.pdf' : activeTool.id === 'delete_pages' ? '_editado.pdf' : activeTool.id === 'compress' ? '_comprimido.pdf' : activeTool.id === 'ocr' ? '_ocr.pdf' : '_procesado.pdf')}`);
+                    }
+                  }
+                }
+              }}
+              onAddFiles={(paths) => {
+                const newFiles = paths.filter(Boolean).map(p => getFileInfo(p));
+                
+                // Multi-file tools: merge, jpg_to_pdf, p2w - add to existing files
+                if (activeTool.id === 'merge' || activeTool.id === 'jpg_to_pdf' || activeTool.id === 'p2w') {
                   setFiles(prev => [...prev, ...newFiles]);
                   if (!output && paths[0]) {
                     const base = paths[0].substring(0, paths[0].lastIndexOf("\\"));
                     const ext = activeTool.newExt || ".pdf";
                     setOutput(`${base}\\Resultado_${Date.now()}${ext}`);
                   }
-                }}
-                onRemove={(id) => {
-                  setFiles(prev => prev.filter(f => f.path !== id));
-                }}
-                onReorder={activeTool.id === 'merge' ? (fromIndex, toIndex) => {
-                  console.log('onReorder called:', { fromIndex, toIndex });
-                  setFiles(prev => {
-                    const next = [...prev];
-                    const [moved] = next.splice(fromIndex, 1);
-                    next.splice(toIndex, 0, moved);
-                    console.log('Files reordered:', next.map(f => f.name));
-                    return next;
+                } else if (newFiles.length > 1) {
+                  // Single-file tools with multiple files dropped: start sequential processing
+                  setQueueFiles(newFiles);
+                  const base = paths[0].substring(0, paths[0].lastIndexOf("."));
+                  if (activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg') {
+                    setOutput(paths[0].substring(0, paths[0].lastIndexOf("\\")));
+                  } else {
+                    setOutput(`${base}${activeTool.newExt || (activeTool.id === 'extract' ? '_extraido.pdf' : activeTool.id === 'delete_pages' ? '_editado.pdf' : activeTool.id === 'compress' ? '_comprimido.pdf' : activeTool.id === 'ocr' ? '_ocr.pdf' : '_procesado.pdf')}`);
+                  }
+                  setTimeout(() => processQueueSequentially(newFiles), 500);
+                } else {
+                  // Single-file tools with one file: set as current file
+                  setFiles([newFiles[0]]);
+                  const base = paths[0].substring(0, paths[0].lastIndexOf("."));
+                  if (activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg') {
+                    setOutput(paths[0].substring(0, paths[0].lastIndexOf("\\")));
+                  } else {
+                    setOutput(`${base}${activeTool.newExt || (activeTool.id === 'extract' ? '_extraido.pdf' : activeTool.id === 'delete_pages' ? '_editado.pdf' : activeTool.id === 'compress' ? '_comprimido.pdf' : activeTool.id === 'ocr' ? '_ocr.pdf' : '_procesado.pdf')}`);
+                  }
+                }
+              }}
+              onRemove={(id) => {
+                setFiles(prev => prev.filter(f => f.path !== id));
+              }}
+              onReorder={(fromIndex, toIndex) => {
+                setFiles(prev => {
+                  const next = [...prev];
+                  const [moved] = next.splice(fromIndex, 1);
+                  next.splice(toIndex, 0, moved);
+                  return next;
+                });
+              }}
+              onSort={(direction) => {
+                setFiles(prev => {
+                  const sorted = [...prev].sort((a, b) => {
+                    const cmp = a.name.localeCompare(b.name);
+                    return direction === 'asc' ? cmp : -cmp;
                   });
-                } : undefined}
-                onSort={activeTool.id === 'merge' ? (direction) => {
-                  setFiles(prev => {
-                    const sorted = [...prev].sort((a, b) => {
-                      const cmp = a.name.localeCompare(b.name);
-                      return direction === 'asc' ? cmp : -cmp;
-                    });
-                    return sorted;
-                  });
-                } : undefined}
-                onClear={() => {
-                  setFiles([]);
-                  setDocumentThumbnails({});
-                  setDocumentMetadata({});
-                }}
-              />
-            ) : (
-              <FileDropZone 
-                multiple={activeTool.id === 'jpg_to_pdf'}
-                accept={activeTool.accept}
-                files={files}
-                onFiles={(newPaths: string[]) => {
-                    const newFiles = newPaths.filter(Boolean).map(p => getFileInfo(p));
-                    if (newFiles.length === 0) return;
-                    if (activeTool.id === 'jpg_to_pdf') {
-                      setFiles(prev => [...prev, ...newFiles]);
-                      if (!output) {
-                        const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("\\"));
-                        setOutput(`${base}\\Resultado_${Date.now()}${activeTool.newExt || '.pdf'}`);
-                      }
-                    } else if (newFiles.length > 1) {
-                      // Multiple files for single-file tool: start sequential processing
-                      setQueueFiles(newFiles);
-                      const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("."));
-                      if (activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg') {
-                        setOutput(newPaths[0].substring(0, newPaths[0].lastIndexOf("\\")));
-                      } else {
-                        setOutput(`${base}${activeTool.newExt || (activeTool.id === 'extract' ? '_extraido.pdf' : activeTool.id === 'delete_pages' ? '_editado.pdf' : activeTool.id === 'compress' ? '_comprimido.pdf' : activeTool.id === 'ocr' ? '_ocr.pdf' : '_procesado.pdf')}`);
-                      }
-                      // Auto-start processing after a brief delay for UX
-                      setTimeout(() => processQueueSequentially(newFiles), 500);
-                    } else {
-                      setFiles([newFiles[0]]);
-                      const base = newPaths[0].substring(0, newPaths[0].lastIndexOf("."));
-                      if (activeTool.id === 'split' || activeTool.id === 'pdf_to_jpg') {
-                        setOutput(newPaths[0].substring(0, newPaths[0].lastIndexOf("\\")));
-                      } else {
-                        setOutput(`${base}${activeTool.newExt || (activeTool.id === 'extract' ? '_extraido.pdf' : activeTool.id === 'delete_pages' ? '_editado.pdf' : activeTool.id === 'compress' ? '_comprimido.pdf' : activeTool.id === 'ocr' ? '_ocr.pdf' : '_procesado.pdf')}`);
-                      }
-                    }
-                  }}
-                onRemove={(idx: number) => setFiles(prev => prev.filter((_, i) => i !== idx))}
-                onReorder={handleReorder}
-              />
-            )}
+                  return sorted;
+                });
+              }}
+              onClear={() => {
+                setFiles([]);
+                setDocumentThumbnails({});
+                setDocumentMetadata({});
+              }}
+            />
 
             {/* Controles Específicos */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-2 duration-700">
@@ -1592,8 +1589,16 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                     // Abrir explorador para guardar como
                     const fileName = lastCompletedOutput.substring(lastCompletedOutput.lastIndexOf('\\') + 1);
                     const ext = fileName.substring(fileName.lastIndexOf('.')).replace('.', '');
+                    
+                    // Usar ruta de origen de los archivos procesados como ruta preestablecida
+                    let defaultPath = fileName;
+                    if (files.length > 0 && files[0].path) {
+                      const srcDir = files[0].path.substring(0, files[0].path.lastIndexOf('\\'));
+                      defaultPath = `${srcDir}\\${fileName}`;
+                    }
+                    
                     const result = await window.electronAPI.selectSavePath({
-                      defaultPath: fileName,
+                      defaultPath: defaultPath,
                       filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
                     });
                     if (result) {
@@ -1645,25 +1650,30 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                   
                   return (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {toolsToRender.map(tool => (
-                        <Button
-                          key={tool.id}
-                          variant="outline"
-                          size="sm"
-                          className="flex flex-col items-center gap-2 h-auto py-4 hover:border-primary/50 hover:bg-primary/5"
-                          onClick={() => {
-                            const newFile = getFileInfo(lastCompletedOutput!);
-                            setActiveTool(tool);
-                            setFiles([newFile]);
-                            setOutput(lastCompletedOutput!);
-                            setOperationCompleted(false);
-                            setLastCompletedOutput(null);
-                          }}
-                        >
-                          <div className="text-2xl">{tool.icon}</div>
-                          <span className="text-xs font-medium text-center">{tool.name}</span>
-                        </Button>
-                      ))}
+                      {toolsToRender.map(tool => {
+                        if (!tool) return null;
+                        return (
+                          <Button
+                            key={tool.id}
+                            variant="outline"
+                            size="sm"
+                            className="flex flex-col items-center gap-2 h-auto py-4 hover:border-primary/50 hover:bg-primary/5"
+                            onClick={() => {
+                              const newFile = getFileInfo(lastCompletedOutput!);
+                              setActiveTool(tool);
+                              setFiles([newFile]);
+                              // Generate output path with correct extension for the target tool
+                              const base = lastCompletedOutput!.substring(0, lastCompletedOutput!.lastIndexOf("."));
+                              setOutput(`${base}${tool.newExt || '_procesado.pdf'}`);
+                              setOperationCompleted(false);
+                              setLastCompletedOutput(null);
+                            }}
+                          >
+                            <div className="text-2xl">{tool.icon}</div>
+                            <span className="text-xs font-medium text-center">{tool.name}</span>
+                          </Button>
+                        );
+                      })}
                     </div>
                   );
                 })()}
@@ -1680,6 +1690,49 @@ const smartOutputName = (srcFile: FileInfo, tool: ToolConfig): string => {
                 >
                   Empezar con nuevo archivo
                 </Button>
+                {/* Botón especial para enviar a Terapias cuando es PDF a Word */}
+                {activeTool.id === 'p2w' && lastCompletedOutput?.toLowerCase().endsWith('.docx') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10"
+                    onClick={async () => {
+                      // Copiar el archivo a la carpeta configurada en Terapias
+                      const sourcePath = lastCompletedOutput;
+                      const fileName = sourcePath.substring(sourcePath.lastIndexOf("\\") + 1);
+                      
+                      // Usar carpeta configurada en settings.terapiasDir
+                      const targetDir = settings.terapiasDir;
+                      
+                      if (!targetDir) {
+                        toast.error('No hay carpeta de origen configurada en Terapias');
+                        return;
+                      }
+                      
+                      const targetPath = `${targetDir}\\${fileName}`;
+                      
+                      try {
+                        const copyResult = await window.electronAPI.pdfTools.copyOutputFile(sourcePath, targetPath);
+                        if (copyResult.ok) {
+                          toast.success(`Archivo copiado a carpeta de Terapias`);
+                          navigate('/terapias', { state: { preloadedDoc: targetPath } });
+                        } else {
+                          toast.error(`Error al copiar archivo: ${copyResult.error}`);
+                          // Si falla la copia, navegar con el archivo original
+                          navigate('/terapias', { state: { preloadedDoc: sourcePath } });
+                        }
+                      } catch (error) {
+                        console.error('Error copiando archivo:', error);
+                        toast.error('Error al copiar archivo');
+                        // Si falla la copia, navegar con el archivo original
+                        navigate('/terapias', { state: { preloadedDoc: sourcePath } });
+                      }
+                    }}
+                  >
+                    <Heart className="w-4 h-4" />
+                    Enviar a Terapias
+                  </Button>
+                )}
               </div>
             )}
           </CardContent>

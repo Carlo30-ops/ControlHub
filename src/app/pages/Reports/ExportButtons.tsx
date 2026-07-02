@@ -1,7 +1,7 @@
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Invoice } from "../../../shared/types";
-import { buildCSV } from "./utils";
+import { buildCSV, CsvColumnOptions } from "./utils";
 import * as XLSX from "xlsx";
 import { format as formatDate } from "date-fns";
 import { toast } from "sonner";
@@ -9,7 +9,9 @@ import { toast } from "sonner";
 interface ExportButtonsProps {
   filteredInvoices: Invoice[];
   totalAmount: number;
-  settings: any;
+  settings: {
+    columns: CsvColumnOptions;
+  };
 }
 
 export function ExportButtons({ filteredInvoices, totalAmount, settings }: ExportButtonsProps) {

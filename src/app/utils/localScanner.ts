@@ -6,6 +6,8 @@ import pLimit from "p-limit";
 import { Invoice, ScanStats, ScanOptions, ScanLocalResult } from "../../shared/types";
 import { logger } from "./logger";
 import { handleError, ErrorType, createError } from "./errorHandler";
+import { getOcrFromCache, saveOcrToCache } from "./ocrCache";
+import { createFuzzyEngine, KNOWN_INSURERS } from "./fuzzyMatcher";
 
 function simpleHash(str: string): string {
   let hash = 0;
@@ -19,11 +21,57 @@ function simpleHash(str: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 // OCR Fallback con Tesseract.js (Vía IPC al Main Process)
 // ─────────────────────────────────────────────────────────────────────────────
-async function performOCR(pdfPath: string, ocrCache?: Map<string, string>): Promise<string> {
+async function performOCR(
+  pdfPath: string, 
+  ocrCache?: Map<string, string>,
+  fileMtime?: number,
+  enableOcrCache?: boolean,
+  fileSize?: number,
+  minFileSizeForOcr?: number,
+  maxFileSizeForOcr?: number
+): Promise<string> {
+  // Primero verificar caché en memoria (sesión actual)
   if (ocrCache?.has(pdfPath)) return ocrCache.get(pdfPath)!;
+  
+  // Verificar caché persistente (IndexedDB) si está habilitado
+  if (enableOcrCache && fileMtime !== undefined) {
+    const cachedText = await getOcrFromCache(pdfPath, undefined, fileMtime);
+    if (cachedText) {
+      logger.debug('[OCR] Texto recuperado del caché persistente:', pdfPath);
+      if (ocrCache) ocrCache.set(pdfPath, cachedText);
+      return cachedText;
+    }
+  }
+  
+  // Verificar tamaño del archivo antes de intentar OCR
+  if (fileSize !== undefined) {
+    const minSize = minFileSizeForOcr ?? 1024; // 1KB default
+    const maxSize = maxFileSizeForOcr ?? 10485760; // 10MB default
+    
+    if (fileSize < minSize) {
+      logger.debug('[OCR] Archivo demasiado pequeño para OCR:', pdfPath, fileSize);
+      return "";
+    }
+    
+    if (fileSize > maxSize) {
+      logger.debug('[OCR] Archivo demasiado grande para OCR:', pdfPath, fileSize);
+      return "";
+    }
+  }
+  
+  // Si no está en caché, realizar OCR
   if (!window.electronAPI?.ocrExtractText) return "";
   const text = await window.electronAPI.ocrExtractText(pdfPath);
+  
+  // Guardar en caché de memoria
   if (ocrCache) ocrCache.set(pdfPath, text);
+  
+  // Guardar en caché persistente si está habilitado y tenemos metadatos del archivo
+  if (enableOcrCache && fileMtime !== undefined && text) {
+    await saveOcrToCache(pdfPath, text, 0, fileMtime);
+    logger.debug('[OCR] Texto guardado en caché persistente:', pdfPath);
+  }
+  
   return text;
 }
 
@@ -57,6 +105,8 @@ interface ScanProgress {
   stage?: 'exploring' | 'processing' | 'finalizing';
   scannedCount?: number;
   foundCount?: number;
+  currentFolder?: string;
+  folderProgress?: { current: number; total: number };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,31 +118,6 @@ const DEFAULT_IGNORED_FOLDERS = [
   'Windows', 'Program Files', 'Program Files (x86)', 'ProgramData',
   '.vscode', '.idea', '__pycache__', '.cache', 'temp', 'tmp', 'RIPS'
 ];
-
-export const KNOWN_INSURERS: Record<string, string[]> = {
-  'ALFA': ['alfa'],
-  'ALLIANZ': ['allianz'],
-  'AURORA': ['aurora'],
-  'AXXA COLPATRIA': ['axa', 'colpatria', 'axxa', 'axxa colpatria'],
-  'BOLIVAR': ['bolivar', 'seguros bolivar'],
-  'CENFAR': ['cenfar'],
-  'COLMENA': ['colmena'],
-  'COLSANITAS': ['colsanitas', 'sanitas'],
-  'EQUIDAD': ['equidad'],
-  'ESTADO': ['seguros del estado', 'estado', 'seg estado'],
-  'ESTADO SOAT': ['estado soat', 'soat estado'],
-  'HDI': ['hdi'],
-  'IPS WTA LATAM S.A.S': ['wta', 'ips wta', 'latam'],
-  'LIBERTY': ['liberty'],
-  'MAPFRE': ['mapfre'],
-  'MEDIPORT': ['mediport'],
-  'MUNDIAL': ['mundial'],
-  'POSITIVA': ['positiva'],
-  'PREVISORA': ['previsora'],
-  'SOAT SURA': ['soat sura', 'sura soat'],
-  'SOLIDARIA': ['solidaria'],
-  'SURA': ['sura', 'suramericana'],
-};
 
 const MONTH_NAMES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -432,7 +457,7 @@ interface PdfCandidate {
   mtimeMs: number;
 }
 
-export async function identifyInvoicePdf(folderPath: string, ocrCache?: Map<string, string>): Promise<{ invoicePath: string; confidence: 'high' | 'medium' | 'low'; layer: 1 | 2; mtimeMs: number } | null> {
+export async function identifyInvoicePdf(folderPath: string, ocrCache?: Map<string, string>, enableOcrCache?: boolean, fastScanMode?: boolean, minFileSizeForOcr?: number, maxFileSizeForOcr?: number): Promise<{ invoicePath: string; confidence: 'high' | 'medium' | 'low'; layer: 1 | 2; mtimeMs: number } | null> {
   if (!window.electronAPI?.readDirectory || !window.electronAPI?.parsePdf) return null;
 
   let pdfFiles: { filePath: string; mtimeMs: number }[] = [];
@@ -489,9 +514,12 @@ export async function identifyInvoicePdf(folderPath: string, ocrCache?: Map<stri
     try {
       let text = await parsePdfCached(candidate.filePath, 1, candidate.mtimeMs);
 
-      // Fallback OCR si el texto es insuficiente (PDF escaneado)
-      if (!text || text.trim().length < 50) {
-        text = await performOCR(candidate.filePath, ocrCache);
+      // En modo rápido, saltar OCR y usar solo scoring por nombre de archivo
+      if (!fastScanMode) {
+        // Fallback OCR si el texto es insuficiente (PDF escaneado)
+        if (!text || text.trim().length < 50) {
+          text = await performOCR(candidate.filePath, ocrCache, candidate.mtimeMs, enableOcrCache, undefined, minFileSizeForOcr, maxFileSizeForOcr);
+        }
       }
 
       if (text) {
@@ -537,7 +565,10 @@ export function parseCOPNumber(raw: string): number {
 // ─────────────────────────────────────────────────────────────────────────────
 // Extraer monto de texto PDF — Motor por Proximidad (v3.3.0)
 // ─────────────────────────────────────────────────────────────────────────────
-export function extractAmountFromText(text: string): number {
+export function extractAmountFromText(text: string, options?: { maxDistance?: number; maxAmount?: number; customLabels?: string[] }): number {
+  const maxDistance = options?.maxDistance ?? 500;
+  const maxAmount = options?.maxAmount ?? 5000000;
+  const customLabels = options?.customLabels ?? [];
   // 1. Normalizar etiquetas espaciadas: "T O T A L" -> "TOTAL"
   const normalized = text.replace(/([A-Z])\s+(?=[A-Z]\b)/g, '$1');
   
@@ -551,15 +582,16 @@ export function extractAmountFromText(text: string): number {
     value: parseCOPNumber(m[1]),
     index: m.index || 0,
     raw: m[1]
-  })).filter(a => a.value >= 1000 && a.value <= 5000000); // Límite máximo de 5M
+  })).filter(a => a.value >= 1000 && a.value <= maxAmount); // Límite máximo configurable
 
   if (foundAmounts.length === 0) return 0;
 
-  // 3. Buscar etiquetas clave y su posición
+  // 3. Buscar etiquetas clave y su posición (incluyendo etiquetas personalizadas)
   const keys = [
     'TOTAL VENTA', 'SUBTOTAL', 'COPAGO', 'RETE FUENTE', 
     'RETENCION DE IVA', 'RETENCION DE ICA', 'VALOR TOTAL',
-    'TOTAL A PAGAR', 'NETO A PAGAR'
+    'TOTAL A PAGAR', 'NETO A PAGAR',
+    ...customLabels
   ];
 
   let bestAmount = 0;
@@ -570,7 +602,7 @@ export function extractAmountFromText(text: string): number {
     if (keyIndex !== -1) {
       foundAmounts.forEach(amt => {
         const dist = amt.index - keyIndex;
-        if (dist > 0 && dist < 500 && dist < minDistance) {
+        if (dist > 0 && dist < maxDistance && dist < minDistance) {
           minDistance = dist;
           bestAmount = amt.value;
         }
@@ -581,7 +613,7 @@ export function extractAmountFromText(text: string): number {
   if (bestAmount > 0) return bestAmount;
 
   const filtered = foundAmounts
-    .filter(a => a.value <= 5000000) // Re-validación del límite
+    .filter(a => a.value <= maxAmount) // Re-validación del límite configurable
     .sort((a, b) => b.value - a.value);
   
   return filtered.length > 0 ? filtered[0].value : 0;
@@ -625,30 +657,6 @@ function extractExtendedMetadata(text: string, invoice: Invoice) {
     const bigNumbers = text.match(/\b\d{9,10}\b/g);
     if (bigNumbers) invoice.nit = bigNumbers[bigNumbers.length - 1];
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Crear motor Fuse para matching de aseguradoras (una instancia por escaneo)
-// ─────────────────────────────────────────────────────────────────────────────
-export function createFuzzyEngine(
-  customInsurers?: { name: string; aliases: string }[]
-): Fuse<{ name: string; alias: string }> {
-  const list: { name: string; alias: string }[] = [];
-
-  if (customInsurers) {
-    customInsurers.forEach(ci => {
-      ci.aliases.split(',').forEach(al => {
-        if (al.trim()) list.push({ name: ci.name, alias: al.trim().toLowerCase() });
-      });
-      list.push({ name: ci.name, alias: ci.name.toLowerCase() });
-    });
-  }
-
-  Object.entries(KNOWN_INSURERS).forEach(([canon, aliases]) => {
-    aliases.forEach(al => list.push({ name: canon, alias: al }));
-  });
-
-  return new Fuse(list, { keys: ['alias'], threshold: 0.25, ignoreLocation: true });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -811,7 +819,14 @@ export async function scanLocalDirectory(
   dirPath: string,
   dateRange: { start: Date; end: Date },
   onProgress?: (progress: ScanProgress) => void,
-  options?: ScanOptions
+  options?: ScanOptions,
+  enableOcrCache?: boolean,
+  fastScanMode?: boolean,
+  amountMaxDistance?: number,
+  amountMaxValue?: number,
+  customInsurers?: { name: string; aliases: string[]; amountLabels?: string[] }[],
+  minFileSizeForOcr?: number,
+  maxFileSizeForOcr?: number
 ): Promise<ScanLocalResult> {
   const startTime = performance.now();
   
@@ -963,7 +978,7 @@ export async function scanLocalDirectory(
         let pdfPath = sampleFile;
 
         try {
-          const identified = await identifyInvoicePdf(folderPath, ocrCache);
+          const identified = await identifyInvoicePdf(folderPath, ocrCache, enableOcrCache, fastScanMode, minFileSizeForOcr, maxFileSizeForOcr);
           if (!identified) {
             return { isSkipped: true, fileName };
           }
@@ -979,13 +994,24 @@ export async function scanLocalDirectory(
           logger.debug('[SCAN] Leyendo PDF (página 1):', identified.invoicePath);
           let text = await parsePdfCached(identified.invoicePath, 1, identified.mtimeMs);
           if (!text || text.trim().length < 100) {
-            text = await performOCR(identified.invoicePath, ocrCache);
+            text = await performOCR(identified.invoicePath, ocrCache, identified.mtimeMs, enableOcrCache, undefined, minFileSizeForOcr, maxFileSizeForOcr);
           }
 
           logger.debug('[SCAN] Texto extraído:', text ? text.substring(0, 200) : 'VACÍO');
 
-          if (text) {
-            const extracted = extractAmountFromText(text);
+          if (text && invoice) {
+            // Buscar etiquetas personalizadas para la aseguradora detectada
+            const companyName = invoice.company;
+            const insurerConfig = customInsurers?.find(ins => 
+              ins.name === companyName || (Array.isArray(ins.aliases) && ins.aliases.some((alias: string) => companyName.includes(alias)))
+            );
+            const customLabels = insurerConfig?.amountLabels ?? [];
+
+            const extracted = extractAmountFromText(text, {
+              maxDistance: amountMaxDistance,
+              maxAmount: amountMaxValue,
+              customLabels
+            });
             if (extracted > 0) {
               invoice.amount = extracted;
               amountExtractionSuccess = true;
