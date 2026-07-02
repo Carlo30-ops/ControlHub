@@ -22,21 +22,26 @@ taskkill /F /IM "ControlHub.exe" /T >nul 2>&1
 echo.
 
 echo [2/7] Verificando Node.js y npm...
-where node >nul 2>&1
-if %errorlevel% neq 0 (
+where node >nul 2>nul
+if errorlevel 1 goto node_missing
+where npm >nul 2>nul
+if errorlevel 1 goto npm_missing
+echo.
+goto node_check_done
+
+:node_missing
     echo [ERROR] No se encontró Node.js en PATH.
     echo Instala Node.js y vuelve a ejecutar este script.
     pause
     exit /b 1
-)
-where npm >nul 2>&1
-if %errorlevel% neq 0 (
+
+:npm_missing
     echo [ERROR] No se encontró npm en PATH.
     echo Instala Node.js (incluye npm) y vuelve a ejecutar este script.
     pause
     exit /b 1
-)
-echo.
+
+:node_check_done
 
 echo [3/7] Verificando recursos necesarios...
 if not exist "python-embed\python.exe" (
