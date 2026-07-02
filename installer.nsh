@@ -54,7 +54,13 @@
   ${ElseIf} ${FileExists} "$PROGRAMFILES\TESSERACT-OCR\tesseract.exe"
     StrCpy $R0 "$PROGRAMFILES\Tesseract-OCR\tesseract.exe"
   ${Else}
-    StrCpy $R0 ""
+    ; Intentar detectar Tesseract en PATH si la instalación silenciosa no dejó el binario en las rutas esperadas
+    SearchPath "tesseract.exe" $R1
+    ${If} $R1 != ""
+      StrCpy $R0 "$R1"
+    ${Else}
+      StrCpy $R0 ""
+    ${EndIf}
   ${EndIf}
   
   ; Crear archivo de configuración inicial con rutas por defecto
@@ -69,7 +75,7 @@
   FileWrite $0 '$\r$\n'
   
   ${If} $R0 != ""
-    FileWrite $0 ",$\r$\n"
+    FileWrite $0 ', $\r$\n'
     FileWrite $0 '  "tesseractPath": "$R0"$\r$\n'
   ${EndIf}
   
@@ -81,7 +87,7 @@
   ${If} $R0 != ""
     MessageBox MB_OK|MB_ICONINFORMATION "ControlHub se ha instalado correctamente.$\n$\nCarpetas creadas:$\n- Documentos\TERAPIAS$\n- OneDrive\Documentos\TERAPIAS (si disponible)$\n$\nTesseract OCR instalado y configurado.$\n$\nLa aplicación está lista para usar."
   ${Else}
-    MessageBox MB_OK|MB_ICONINFORMATION "ControlHub se ha instalado correctamente.$\n$\nCarpetas creadas:$\n- Documentos\TERAPIAS$\n- OneDrive\Documentos\TERAPIAS (si disponible)$\n$\nADVERTENCIA: Tesseract OCR no se pudo instalar. La función OCR no estará disponible. Ejecuta install_tesseract.bat manualmente si lo necesitas."
+    MessageBox MB_OK|MB_ICONINFORMATION "ControlHub se ha instalado correctamente.$\n$\nCarpetas creadas:$\n- Documentos\TERAPIAS$\n- OneDrive\Documentos\TERAPIAS (si disponible)$\n$\nADVERTENCIA: Tesseract OCR no se pudo instalar. La función OCR no estará disponible.$\n$\nPuedes ejecutar install_tesseract.bat manualmente desde la carpeta de instalación o desde release\install_tesseract.bat para intentar instalarlo de nuevo."
   ${EndIf}
 !macroend
 
