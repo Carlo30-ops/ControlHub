@@ -55,7 +55,7 @@
     StrCpy $R0 "$PROGRAMFILES\Tesseract-OCR\tesseract.exe"
   ${Else}
     ; Intentar detectar Tesseract en PATH si la instalación silenciosa no dejó el binario en las rutas esperadas
-    SearchPath "tesseract.exe" $R1
+    SearchPath $R1 "tesseract.exe"
     ${If} $R1 != ""
       StrCpy $R0 "$R1"
     ${Else}
@@ -63,19 +63,12 @@
     ${EndIf}
   ${EndIf}
   
-  ; Crear archivo de configuración inicial con rutas por defecto
-  FileOpen $0 "$INSTDIR\initial-config.json" w
-  FileWrite $0 "{\r\n"
-  FileWrite $0 "  \"terapiasDir\": \"$DOCUMENTS\\TERAPIAS\\DOCUMENTOS PARA ARMAR\",\r\n"
-  FileWrite $0 "  \"terapiasBackup\": \"$DOCUMENTS\\TERAPIAS\\BACKUP\",\r\n"
-  FileWrite $0 "  \"terapiasProcessed\": \"$DOCUMENTS\\TERAPIAS\\PROCESADOS\"\r\n"
-  
-  ${If} $R0 != ""
-    FileWrite $0 ",\r\n"
-    FileWrite $0 "  \"tesseractPath\": \"$R0\"\r\n"
-  ${EndIf}
-  FileWrite $0 "}\r\n"
-  FileClose $0
+  ; Crear archivo de configuración inicial con rutas por defecto usando PowerShell (genera JSON válido)
+  StrCpy $R2 "$DOCUMENTS\\TERAPIAS\\DOCUMENTOS PARA ARMAR"
+  StrCpy $R3 "$DOCUMENTS\\TERAPIAS\\BACKUP"
+  StrCpy $R4 "$DOCUMENTS\\TERAPIAS\\PROCESADOS"
+  ; Generar JSON válido usando PowerShell (evita problemas de escape)
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$o = @{ terapiasDir = ''$DOCUMENTS\TERAPIAS\DOCUMENTOS PARA ARMAR''; terapiasBackup = ''$DOCUMENTS\TERAPIAS\BACKUP''; terapiasProcessed = ''$DOCUMENTS\TERAPIAS\PROCESADOS'' }; if (''$R0'' -ne '''') { $o.tesseractPath = ''$R0'' }; $o | ConvertTo-Json | Out-File -FilePath ''$INSTDIR\initial-config.json'' -Encoding UTF8"'
   
   ; Mostrar mensaje final
   ${If} $R0 != ""

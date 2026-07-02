@@ -235,13 +235,6 @@ const getDistPath = (): string => {
 process.env.DIST = getDistPath();
 process.env.VITE_PUBLIC = app?.isPackaged
   ? process.env.DIST
-  : path.join(getDistPath()
-  return path.join(__dirname, '../dist');
-};
-
-process.env.DIST = getDistPath();
-process.env.VITE_PUBLIC = app?.isPackaged
-  ? process.env.DIST
   : path.join(getDistPath(), '../public');
 
 let win: BrowserWindowType | null;

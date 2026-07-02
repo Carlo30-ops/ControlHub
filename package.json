@@ -56,7 +56,7 @@
       "createStartMenuShortcut": true,
       "shortcutName": "ControlHub",
       "include": "installer.nsh",
-      "perMachine": true,
+      "perMachine": false,
       "runAfterFinish": true
     }
   },
