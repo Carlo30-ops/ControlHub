@@ -427,6 +427,12 @@ class SidecarManager {
   start() {
     logger.debug(`[Sidecar] proceso ${this.name} activo`);
     const pythonExe = getPythonExecutable();
+    if (!pythonExe) {
+      logger.error(`[${this.name}] No se pudo iniciar porque no se encontró el runtime Python embebido.`);
+      this.setStatus('failed');
+      return;
+    }
+
     this.process = spawn(pythonExe, [this.scriptPath], {
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -653,14 +659,23 @@ const getSidecarPath = (fileName: string) => {
   return path.join(__dirname, `../electron/sidecar/${fileName}`);
 };
 
-const getPythonExecutable = () => {
+const getPythonExecutable = (): string | null => {
   const embeddedPython = path.join(
     app.isPackaged ? process.resourcesPath : process.cwd(),
     'python-embed',
     'python.exe'
   );
 
-  return fs.existsSync(embeddedPython) ? embeddedPython : 'python';
+  if (fs.existsSync(embeddedPython)) {
+    return embeddedPython;
+  }
+
+  if (!app.isPackaged) {
+    return 'python';
+  }
+
+  logger.error(`[Sidecar] Python embebido no encontrado en ${embeddedPython}`);
+  return null;
 };
 
 const terapiasSidecar = new SidecarManager(
