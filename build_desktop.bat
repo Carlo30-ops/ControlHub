@@ -60,6 +60,18 @@ if not exist "release\win-unpacked\resources\sidecar\terapias_bridge.py" (
     exit /b 1
 )
 
+echo [5/5] Copiando utilitario de instalación de Tesseract a release...
+if exist "install_tesseract.bat" (
+    copy /Y "install_tesseract.bat" "release\" >nul
+    if errorlevel 1 (
+        echo [WARNING] No se pudo copiar install_tesseract.bat a release\.
+    ) else (
+        echo [OK] install_tesseract.bat copiado a release\.
+    )
+) else (
+    echo [WARNING] No se encontró install_tesseract.bat para copiar a release\.
+)
+
 echo [EXITO] Instalador generado en la carpeta release.
 explorer "%~dp0release"
 pause
