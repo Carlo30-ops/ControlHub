@@ -106,7 +106,16 @@ Al primer inicio, ControlHub:
 
 El instalador incluye Python embebido, por lo que no debería haber errores. Si ocurren:
 1. Verificar que la carpeta `python-embed` exista en el directorio de instalación
-2. Reinstalar ControlHub
+2. Verificar que el instalador copió `resources\python-embed\python.exe`
+3. Reinstalar ControlHub
+
+### Generar instalador completo
+
+Para generar el instalador con todos los módulos (`Scanner`, `PDF Tools`, `Terapias`), usa `build_desktop.bat` desde la carpeta `ControlHub`.
+Este script ahora valida que:
+- `python-embed\python.exe` exista antes de compilar
+- `electron\sidecar\pdf_bridge.py` y `electron\sidecar\terapias_bridge.py` existan
+- el instalador generado contenga `resources\python-embed\python.exe` y los sidecars
 
 ## Archivos del Instalador
 

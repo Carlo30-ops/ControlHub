@@ -1,0 +1,26 @@
+Usage:
+  makensis [ option | script.nsi | - ] [...]
+
+Options:
+  /CMDHELP [item] prints out help for 'item', or lists all commands
+  /HDRINFO prints information about what options makensis was compiled with
+  /LICENSE prints the makensis software license
+  /VERSION prints the makensis version and exits
+  /Px sets the compiler process priority, where x is 5=realtime,4=high,
+    3=above normal,2=normal,1=below normal,0=idle
+  /Vx verbosity where x is 4=all,3=no script,2=no info,1=no warnings,0=none
+  /WX treat warnings as errors
+  /Ofile specifies a text file to log compiler output (default is stdout)
+  /PAUSE pauses after execution
+  /NOCONFIG disables inclusion of <path to makensis.exe>\nsisconf.nsh
+  /NOCD disables the current directory change to that of the .nsi file
+  /INPUTCHARSET <ACP|OEM|CP#|UTF8|UTF16<LE|BE>>
+  /OUTPUTCHARSET <ACP|OEM|CP#|UTF8[SIG]|UTF16<LE|BE>[BOM]>
+  /[SAFE]PPO preprocess to stdout/file
+  /Ddefine[=value] defines the symbol "define" for the script [to value]
+  /Xscriptcmd executes scriptcmd in script (i.e. "/XOutFile inst.exe")
+    parameters are processed by order (/Ddef ins.nsi != ins.nsi /Ddef)
+
+For script file name, you can use - to read from the standard input
+You can also use - as an option character: -PAUSE as well as /PAUSE
+You can use a double-dash to end options processing: makensis -- -ins.nsi

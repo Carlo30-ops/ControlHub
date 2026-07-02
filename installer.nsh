@@ -2,6 +2,7 @@
 ; Crea carpetas necesarias para terapias, instala Tesseract OCR y configura rutas por defecto
 
 !macro customInstall
+  StrCpy $R0 ""
   ; Crear carpetas para terapias en Documentos del usuario
   CreateDirectory "$DOCUMENTS\TERAPIAS"
   CreateDirectory "$DOCUMENTS\TERAPIAS\DOCUMENTOS PARA ARMAR"
@@ -49,30 +50,30 @@
   
   ; Determinar ruta de Tesseract para configuración
   ${If} ${FileExists} "$PROGRAMFILES64\TESSERACT-OCR\tesseract.exe"
-    StrCpy $TESSERACT_PATH "$PROGRAMFILES64\Tesseract-OCR\tesseract.exe"
+    StrCpy $R0 "$PROGRAMFILES64\Tesseract-OCR\tesseract.exe"
   ${ElseIf} ${FileExists} "$PROGRAMFILES\TESSERACT-OCR\tesseract.exe"
-    StrCpy $TESSERACT_PATH "$PROGRAMFILES\Tesseract-OCR\tesseract.exe"
+    StrCpy $R0 "$PROGRAMFILES\Tesseract-OCR\tesseract.exe"
   ${Else}
-    StrCpy $TESSERACT_PATH ""
+    StrCpy $R0 ""
   ${EndIf}
   
   ; Crear archivo de configuración inicial con rutas por defecto
   FileOpen $0 "$INSTDIR\initial-config.json" w
-  FileWrite $0 '{'
-  FileWrite $0 '$n  "terapiasDir": "$DOCUMENTS\\TERAPIAS\\DOCUMENTOS PARA ARMAR",'
-  FileWrite $0 '$n  "terapiasBackup": "$DOCUMENTS\\TERAPIAS\\BACKUP",'
-  FileWrite $0 '$n  "terapiasProcessed": "$DOCUMENTS\\TERAPIAS\\PROCESADOS"'
+  FileWrite $0 "{$\r$\n"
+  FileWrite $0 "  \"terapiasDir\": \"$DOCUMENTS\\TERAPIAS\\DOCUMENTOS PARA ARMAR\",$\r$\n"
+  FileWrite $0 "  \"terapiasBackup\": \"$DOCUMENTS\\TERAPIAS\\BACKUP\",$\r$\n"
+  FileWrite $0 "  \"terapiasProcessed\": \"$DOCUMENTS\\TERAPIAS\\PROCESADOS\"$\r$\n"
   
-  ${If} $TESSERACT_PATH != ""
-    FileWrite $0 ','
-    FileWrite $0 '$n  "tesseractPath": "$TESSERACT_PATH"'
+  ${If} $R0 != ""
+    FileWrite $0 ",$\r$\n"
+    FileWrite $0 "  \"tesseractPath\": \"$R0\"$\r$\n"
   ${EndIf}
   
-  FileWrite $0 '$n}'
+  FileWrite $0 "}$\r$\n"
   FileClose $0
   
   ; Mostrar mensaje final
-  ${If} $TESSERACT_PATH != ""
+  ${If} $R0 != ""
     MessageBox MB_OK|MB_ICONINFORMATION "ControlHub se ha instalado correctamente.$\n$\nCarpetas creadas:$\n- Documentos\TERAPIAS$\n- OneDrive\Documentos\TERAPIAS (si disponible)$\n$\nTesseract OCR instalado y configurado.$\n$\nLa aplicación está lista para usar."
   ${Else}
     MessageBox MB_OK|MB_ICONINFORMATION "ControlHub se ha instalado correctamente.$\n$\nCarpetas creadas:$\n- Documentos\TERAPIAS$\n- OneDrive\Documentos\TERAPIAS (si disponible)$\n$\nADVERTENCIA: Tesseract OCR no se pudo instalar. La función OCR no estará disponible. Ejecuta install_tesseract.bat manualmente si lo necesitas."
