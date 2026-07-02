@@ -1,0 +1,45 @@
+(node:17664) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `ControlHub --trace-deprecation ...` to show where the warning was created)
+[ERROR] [Sidecar] PDF STDERR: <frozen site>:101: RuntimeWarning: Unexpected value in sys.prefix, expected C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources, got C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources\python-embed
+<frozen site>:101: RuntimeWarning: Unexpected value in sys.exec_prefix, expected C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources, got C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources\python-embed
+
+[ERROR] [Sidecar] Terapias STDERR: <frozen site>:101: RuntimeWarning: Unexpected value in sys.prefix, expected C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources, got C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources\python-embed
+<frozen site>:101: RuntimeWarning: Unexpected value in sys.exec_prefix, expected C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources, got C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources\python-embed
+
+[17664:0702/140412.953:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Acceso denegado. (0x5)
+[17664:0702/140412.953:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Acceso denegado. (0x5)
+[17664:0702/140412.958:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Acceso denegado. (0x5)
+[17664:0702/140412.973:ERROR:net\disk_cache\disk_cache.cc:236] Unable to create cache
+[17664:0702/140412.973:ERROR:gpu\ipc\host\gpu_disk_cache.cc:724] Gpu Cache Creation failed: -2
+[17664:0702/140412.973:ERROR:net\disk_cache\disk_cache.cc:236] Unable to create cache
+[17664:0702/140412.973:ERROR:gpu\ipc\host\gpu_disk_cache.cc:724] Gpu Cache Creation failed: -2
+[17664:0702/140412.978:ERROR:net\disk_cache\disk_cache.cc:236] Unable to create cache
+[17664:0702/140412.978:ERROR:gpu\ipc\host\gpu_disk_cache.cc:724] Gpu Cache Creation failed: -2
+[ERROR] [Sidecar] Terapias STDERR: [list_docs] source_dir recibido: C:\Users\factu\OneDrive\Documentos 1\TERAPIAS\DOCUMENTOS PARA ARMAR
+[list_docs] existe: True
+[list_docs] buscando patr�n: C:\Users\factu\OneDrive\Documentos 1\TERAPIAS\DOCUMENTOS PARA ARMAR\*.docx
+[list_docs] archivos encontrados con *.docx: 0
+[list_docs] buscando patr�n: C:\Users\factu\OneDrive\Documentos 1\TERAPIAS\DOCUMENTOS PARA ARMAR\*.doc
+
+[ERROR] [Sidecar] Terapias STDERR: [list_docs] archivos encontrados con *.doc: 0
+[list_docs] total archivos Word encontrados: 0
+
+[ERROR] [Terapias] STDERR BUFFER:
+<frozen site>:101: RuntimeWarning: Unexpected value in sys.prefix, expected C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources, got C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources\python-embed
+<frozen site>:101: RuntimeWarning: Unexpected value in sys.exec_prefix, expected C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources, got C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources\python-embed
+[list_docs] source_dir recibido: C:\Users\factu\OneDrive\Documentos 1\TERAPIAS\DOCUMENTOS PARA ARMAR
+[list_docs] existe: True
+[list_docs] buscando patr�n: C:\Users\factu\OneDrive\Documentos 1\TERAPIAS\DOCUMENTOS PARA ARMAR\*.docx
+[list_docs] archivos encontrados con *.docx: 0
+[list_docs] buscando patr�n: C:\Users\factu\OneDrive\Documentos 1\TERAPIAS\DOCUMENTOS PARA ARMAR\*.doc
+[list_docs] archivos encontrados con *.doc: 0
+[list_docs] total archivos Word encontrados: 0
+
+[ERROR] [Terapias] STDOUT BUFFER:
+
+[ERROR] [PDF] STDERR BUFFER:
+<frozen site>:101: RuntimeWarning: Unexpected value in sys.prefix, expected C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources, got C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources\python-embed
+<frozen site>:101: RuntimeWarning: Unexpected value in sys.exec_prefix, expected C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources, got C:\DEV\TODO EN UNO\ControlHub\release\win-unpacked\resources\python-embed
+
+[ERROR] [PDF] STDOUT BUFFER:
+

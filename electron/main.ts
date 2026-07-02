@@ -179,8 +179,9 @@ async function loadInitialConfig(): Promise<void> {
   if (store.get(loadKey)) return;
 
   // Buscar archivo initial-config.json en el directorio de instalación
-  const installDir = app.getAppPath();
-  const initialConfigPath = path.join(installDir, '..', 'initial-config.json');
+  const initialConfigPath = app.isPackaged
+    ? path.join(process.resourcesPath, '..', 'initial-config.json')
+    : path.join(process.cwd(), 'initial-config.json');
   
   if (!fs.existsSync(initialConfigPath)) {
     store.set(loadKey, true);
@@ -224,10 +225,24 @@ async function loadInitialConfig(): Promise<void> {
   store.set(loadKey, true);
 }
 
-process.env.DIST = path.join(__dirname, '../dist');
+const getDistPath = (): string => {
+  if (app?.isPackaged) {
+    return path.join(app.getAppPath(), 'dist');
+  }
+  return path.join(__dirname, '../dist');
+};
+
+process.env.DIST = getDistPath();
 process.env.VITE_PUBLIC = app?.isPackaged
   ? process.env.DIST
-  : path.join(process.env.DIST, '../public');
+  : path.join(getDistPath()
+  return path.join(__dirname, '../dist');
+};
+
+process.env.DIST = getDistPath();
+process.env.VITE_PUBLIC = app?.isPackaged
+  ? process.env.DIST
+  : path.join(getDistPath(), '../public');
 
 let win: BrowserWindowType | null;
 let globalWatcher: FSWatcher | null = null;
@@ -302,6 +317,17 @@ const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 // Evitar que promesas no manejadas terminen el proceso sin traza
 process.on('unhandledRejection', (reason) => {
   logger.warn('[MAIN] Unhandled Promise Rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('[MAIN] Uncaught Exception:', error);
+  try {
+    if (app && !app.isQuiting && app.isReady()) {
+      dialog.showErrorBox('ControlHub - Error inesperado', String(error?.message || error));
+    }
+  } catch {
+    // ignorar errores al mostrar el cuadro de diálogo
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

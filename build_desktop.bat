@@ -9,6 +9,22 @@ cd /d "%~dp0"
 echo [1/3] Cerrando instancias previas de ControlHub...
 taskkill /F /IM "ControlHub.exe" /T >nul 2>&1
 
+echo [1.5/4] Verificando Node.js y npm...
+where node >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] No se encontró Node.js en PATH.
+    echo Instala Node.js y vuelve a ejecutar este script.
+    pause
+    exit /b 1
+)
+where npm >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] No se encontró npm en PATH.
+    echo Instala Node.js (incluye npm) y vuelve a ejecutar este script.
+    pause
+    exit /b 1
+)
+
 echo [2/4] Verificando recursos necesarios...
 if not exist "python-embed\python.exe" (
     echo [ERROR] No se encontró el runtime Python embebido en python-embed\python.exe.

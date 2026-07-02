@@ -65,22 +65,16 @@
   
   ; Crear archivo de configuración inicial con rutas por defecto
   FileOpen $0 "$INSTDIR\initial-config.json" w
-  FileWrite $0 '{'
-  FileWrite $0 '$\r$\n'
-  FileWrite $0 '  "terapiasDir": "$DOCUMENTS\\TERAPIAS\\DOCUMENTOS PARA ARMAR",'
-  FileWrite $0 '$\r$\n'
-  FileWrite $0 '  "terapiasBackup": "$DOCUMENTS\\TERAPIAS\\BACKUP",'
-  FileWrite $0 '$\r$\n'
-  FileWrite $0 '  "terapiasProcessed": "$DOCUMENTS\\TERAPIAS\\PROCESADOS"'
-  FileWrite $0 '$\r$\n'
+  FileWrite $0 "{\r\n"
+  FileWrite $0 "  \"terapiasDir\": \"$DOCUMENTS\\TERAPIAS\\DOCUMENTOS PARA ARMAR\",\r\n"
+  FileWrite $0 "  \"terapiasBackup\": \"$DOCUMENTS\\TERAPIAS\\BACKUP\",\r\n"
+  FileWrite $0 "  \"terapiasProcessed\": \"$DOCUMENTS\\TERAPIAS\\PROCESADOS\"\r\n"
   
   ${If} $R0 != ""
-    FileWrite $0 ', $\r$\n'
-    FileWrite $0 '  "tesseractPath": "$R0"$\r$\n'
+    FileWrite $0 ",\r\n"
+    FileWrite $0 "  \"tesseractPath\": \"$R0\"\r\n"
   ${EndIf}
-  
-  FileWrite $0 '}'
-  FileWrite $0 '$\r$\n'
+  FileWrite $0 "}\r\n"
   FileClose $0
   
   ; Mostrar mensaje final
