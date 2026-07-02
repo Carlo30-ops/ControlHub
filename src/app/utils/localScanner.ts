@@ -8,6 +8,7 @@ import { logger } from "./logger";
 import { handleError, ErrorType, createError } from "./errorHandler";
 import { getOcrFromCache, saveOcrToCache } from "./ocrCache";
 import { createFuzzyEngine, KNOWN_INSURERS } from "./fuzzyMatcher";
+export { createFuzzyEngine };
 
 function simpleHash(str: string): string {
   let hash = 0;
@@ -549,17 +550,40 @@ export async function identifyInvoicePdf(folderPath: string, ocrCache?: Map<stri
 // ─────────────────────────────────────────────────────────────────────────────
 export function parseCOPNumber(raw: string): number {
   let cleaned = raw.trim();
-  const lastComma = cleaned.lastIndexOf(',');
-  const lastDot = cleaned.lastIndexOf('.');
-  
-  if (lastComma > lastDot) {
-    cleaned = cleaned.replace(/\./g, '').replace(',', '.');
-  } else if (lastDot > lastComma) {
-    cleaned = cleaned.replace(/,/g, '');
-  } else if (lastComma !== -1) {
-    cleaned = cleaned.replace(',', '.');
+  const hasComma = cleaned.includes(',');
+  const hasDot = cleaned.includes('.');
+
+  if (hasComma && hasDot) {
+    const lastComma = cleaned.lastIndexOf(',');
+    const lastDot = cleaned.lastIndexOf('.');
+    if (lastComma > lastDot) {
+      // Formato europeo: 123.456,00 → 123456.00
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    } else {
+      // Formato americano: 123,456.00 → 123456.00
+      cleaned = cleaned.replace(/,/g, '');
+    }
+  } else if (hasDot) {
+    const lastDot = cleaned.lastIndexOf('.');
+    const decimals = cleaned.length - lastDot - 1;
+    if (decimals === 3) {
+      // Solo separador de miles: 150.000 → 150000
+      cleaned = cleaned.replace(/\./g, '');
+    }
+    // Si no son 3 decimales, asumimos punto decimal: 12345.67
+  } else if (hasComma) {
+    const lastComma = cleaned.lastIndexOf(',');
+    const decimals = cleaned.length - lastComma - 1;
+    if (decimals === 3) {
+      // Solo separador de miles: 150,000 → 150000
+      cleaned = cleaned.replace(/,/g, '');
+    } else {
+      // Decimal con coma: 12345,67 → 12345.67
+      cleaned = cleaned.replace(',', '.');
+    }
   }
-  return parseFloat(cleaned);
+
+  return parseFloat(cleaned.replace(/\s+/g, ''));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -569,8 +593,8 @@ export function extractAmountFromText(text: string, options?: { maxDistance?: nu
   const maxDistance = options?.maxDistance ?? 500;
   const maxAmount = options?.maxAmount ?? 5000000;
   const customLabels = options?.customLabels ?? [];
-  // 1. Normalizar etiquetas espaciadas: "T O T A L" -> "TOTAL"
-  const normalized = text.replace(/([A-Z])\s+(?=[A-Z]\b)/g, '$1');
+  // 1. Normalizar etiquetas espaciadas: "T O T A L" -> "TOTAL" y pasar todo a mayúsculas
+  const normalized = text.toUpperCase().replace(/([A-Z])\s+(?=[A-Z]\b)/g, '$1');
   
   // 2. Encontrar todos los montos con formato "123,456.00", "123.456,00", "71.190" o "71190"
   const amountRegex = /\b(\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{2})?|\d{4,}(?:[.,]\d{2})?)\b/g;
@@ -587,33 +611,45 @@ export function extractAmountFromText(text: string, options?: { maxDistance?: nu
   if (foundAmounts.length === 0) return 0;
 
   // 3. Buscar etiquetas clave y su posición (incluyendo etiquetas personalizadas)
-  const keys = [
-    'TOTAL VENTA', 'SUBTOTAL', 'COPAGO', 'RETE FUENTE', 
-    'RETENCION DE IVA', 'RETENCION DE ICA', 'VALOR TOTAL',
-    'TOTAL A PAGAR', 'NETO A PAGAR',
-    ...customLabels
+  const keyDefinitions = [
+    { label: 'TOTAL VENTA', priority: 1 },
+    { label: 'VALOR TOTAL', priority: 1 },
+    { label: 'TOTAL A PAGAR', priority: 1 },
+    { label: 'NETO A PAGAR', priority: 1 },
+    { label: 'COPAGO', priority: 2 },
+    { label: 'RETE FUENTE', priority: 2 },
+    { label: 'RETENCION DE IVA', priority: 2 },
+    { label: 'RETENCION DE ICA', priority: 2 },
+    { label: 'SUBTOTAL', priority: 3 },
   ];
 
-  let bestAmount = 0;
-  let minDistance = Infinity;
+  const customKeyDefinitions = customLabels.map(label => ({ label: label.toUpperCase(), priority: 1 }));
+  const keys = [...customKeyDefinitions, ...keyDefinitions];
 
-  keys.forEach(key => {
-    const keyIndex = normalized.indexOf(key);
+  const candidates: Array<{ value: number; priority: number; distance: number; key: string }> = [];
+
+  keys.forEach(({ label, priority }) => {
+    const keyIndex = normalized.indexOf(label);
     if (keyIndex !== -1) {
       foundAmounts.forEach(amt => {
         const dist = amt.index - keyIndex;
-        if (dist > 0 && dist < maxDistance && dist < minDistance) {
-          minDistance = dist;
-          bestAmount = amt.value;
+        if (dist > 0 && dist < maxDistance) {
+          candidates.push({ value: amt.value, priority, distance: dist, key: label });
         }
       });
     }
   });
 
-  if (bestAmount > 0) return bestAmount;
+  if (candidates.length > 0) {
+    candidates.sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      return a.distance - b.distance;
+    });
+    return candidates[0].value;
+  }
 
   const filtered = foundAmounts
-    .filter(a => a.value <= maxAmount) // Re-validación del límite configurable
+    .filter(a => a.value <= maxAmount)
     .sort((a, b) => b.value - a.value);
   
   return filtered.length > 0 ? filtered[0].value : 0;

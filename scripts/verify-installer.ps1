@@ -51,16 +51,23 @@ if ($DryRun) {
 }
 
 # Ejecutar instalador
-Write-Host "Ejecutando instalador (puede pedirse elevación UAC)..."
+Write-Host "Ejecutando instalador..."
 try {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $installerPath
     $psi.Arguments = $args
-    $psi.UseShellExecute = $true
-    $psi.Verb = 'runas'
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.WorkingDirectory = Split-Path $installerPath
     $proc = [System.Diagnostics.Process]::Start($psi)
+    $stdout = $proc.StandardOutput.ReadToEnd()
+    $stderr = $proc.StandardError.ReadToEnd()
     $proc.WaitForExit()
     $code = $proc.ExitCode
+    if ($stdout) { Write-Host $stdout }
+    if ($stderr) { Write-Host $stderr -ForegroundColor Red }
 } catch {
     Write-Error "Fallo al iniciar el instalador: $_"
     exit 3

@@ -674,9 +674,13 @@ También se puede usar `build_desktop.bat` desde la raíz de `ControlHub` para c
 
 > El instalador completo necesita que `python-embed/` exista en la raíz del repositorio y que contenga `python.exe`.
 >
-> Validación: `release/ControlHub Setup 3.2.0.exe` existe y `release/win-unpacked/resources/python-embed/python.exe` está presente después del build.
+> Validación final: `release/ControlHub Setup 3.2.0.exe` se generó correctamente y el instalador fue verificado con éxito.
 >
-> Nota actual: `npm run build:electron` usa NSIS y puede detenerse si `installer.nsh` produce la advertencia 6000 (`unknown variable/constant`) porque electron-builder trata cada warning de NSIS como error. La versión actual del instalador usa un helper PowerShell para generar `initial-config.json` durante la instalación, y la verificación con `scripts/verify-installer.ps1` ha devuelto `Verificacion completada: OK`.
+> Se aplicaron correcciones a `build_desktop.bat` para evitar errores de sintaxis de batch en la comprobación de Node.js/npm, y a `installer.nsh` para incluir correctamente el helper PowerShell `installer-scripts\write-initial-config.ps1` usando `${PROJECT_DIR}`.
+>
+> La verificación con `scripts/verify-installer.ps1` ahora ejecuta el instalador sin forzar elevación UAC y devolvió `Verificacion completada: OK`.
+>
+> El artefacto está listo para compartir con otro PC para instalación.
 
 # Preview del bundle Vite (sin Electron)
 npm run preview

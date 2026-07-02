@@ -29,13 +29,13 @@ describe('localScanner - scoring logic', () => {
 
 describe('localScanner - number parsing', () => {
   it('should parse COP numbers correctly (Colombian format)', () => {
-    expect(parseCOPNumber('150.000')).toBe(150);
+    expect(parseCOPNumber('150.000')).toBe(150000);
     expect(parseCOPNumber('150.000,00')).toBe(150000);
-    expect(parseCOPNumber('71.190')).toBe(71.19);
+    expect(parseCOPNumber('71.190')).toBe(71190);
   });
 
   it('should parse COP numbers correctly (Standard/US format)', () => {
-    expect(parseCOPNumber('150,000')).toBe(150);
+    expect(parseCOPNumber('150,000')).toBe(150000);
     expect(parseCOPNumber('150,000.00')).toBe(150000);
   });
 
@@ -47,18 +47,21 @@ describe('localScanner - number parsing', () => {
 describe('localScanner - amount extraction', () => {
   it('should extract amount near TOTAL VENTA', () => {
     const text = 'DETALLE DE CARGOS...\nSUBTOTAL: 100.000\nTOTAL VENTA: 150.000\nOTRO TEXTO';
-    // parseCOPNumber('150.000') returns 150, which is < 1000 and gets filtered out
-    expect(extractAmountFromText(text)).toBe(0);
+    expect(extractAmountFromText(text)).toBe(150000);
   });
 
   it('should handle spaced labels like T O T A L', () => {
     const text = 'VALOR A PAGAR...\nT O T A L   V E N T A: 125.000';
-    // parseCOPNumber('125.000') returns 125, which is < 1000 and gets filtered out
-    expect(extractAmountFromText(text)).toBe(0);
+    expect(extractAmountFromText(text)).toBe(125000);
   });
 
   it('should return 0 if no amount is found', () => {
     expect(extractAmountFromText('no hay nada aqui')).toBe(0);
+  });
+
+  it('should parse Colombian formatted amounts correctly', () => {
+    expect(extractAmountFromText('TOTAL VENTA: 150.000,00')).toBe(150000);
+    expect(extractAmountFromText('TOTAL VENTA: 150,000.00')).toBe(150000);
   });
 });
 

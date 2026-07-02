@@ -37,14 +37,21 @@ export const KNOWN_INSURERS: Record<string, string[]> = {
  * @returns Instancia de Fuse configurada para matching difuso
  */
 export function createFuzzyEngine(
-  customInsurers?: { name: string; aliases: string[]; amountLabels?: string[] }[]
+  customInsurers?: { name: string; aliases: string[] | string; amountLabels?: string[] }[]
 ): Fuse<{ name: string; alias: string }> {
   const list: { name: string; alias: string }[] = [];
 
   if (customInsurers) {
     customInsurers.forEach(ci => {
-      ci.aliases.forEach(al => {
-        if (al.trim()) list.push({ name: ci.name, alias: al.trim().toLowerCase() });
+      const aliases = Array.isArray(ci.aliases)
+        ? ci.aliases
+        : typeof ci.aliases === 'string'
+          ? ci.aliases.split(',')
+          : [];
+
+      aliases.forEach(al => {
+        const alias = String(al).trim();
+        if (alias) list.push({ name: ci.name, alias: alias.toLowerCase() });
       });
       list.push({ name: ci.name, alias: ci.name.toLowerCase() });
     });

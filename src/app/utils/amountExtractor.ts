@@ -8,19 +8,31 @@
  */
 function parseCOPNumber(str: string): number {
   let cleaned = str.replace(/\s/g, '');
-  const lastComma = cleaned.lastIndexOf(',');
-  const lastDot = cleaned.lastIndexOf('.');
-  
-  if (lastComma === -1 && lastDot === -1) {
-    return parseFloat(cleaned);
-  }
-  
-  if (lastComma > lastDot) {
-    // Formato europeo: 123.456,00 -> 123456.00
-    cleaned = cleaned.replace(/\./g, '').replace(',', '.');
-  } else if (lastDot !== -1) {
-    // Formato americano: 123,456.00 -> 123456.00
-    cleaned = cleaned.replace(/,/g, '');
+  const hasComma = cleaned.includes(',');
+  const hasDot = cleaned.includes('.');
+
+  if (hasComma && hasDot) {
+    const lastComma = cleaned.lastIndexOf(',');
+    const lastDot = cleaned.lastIndexOf('.');
+    if (lastComma > lastDot) {
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    } else {
+      cleaned = cleaned.replace(/,/g, '');
+    }
+  } else if (hasDot) {
+    const lastDot = cleaned.lastIndexOf('.');
+    const decimals = cleaned.length - lastDot - 1;
+    if (decimals === 3) {
+      cleaned = cleaned.replace(/\./g, '');
+    }
+  } else if (hasComma) {
+    const lastComma = cleaned.lastIndexOf(',');
+    const decimals = cleaned.length - lastComma - 1;
+    if (decimals === 3) {
+      cleaned = cleaned.replace(/,/g, '');
+    } else {
+      cleaned = cleaned.replace(',', '.');
+    }
   }
   return parseFloat(cleaned);
 }
@@ -64,32 +76,43 @@ export function extractAmountFromText(text: string, options: AmountExtractorOpti
   if (foundAmounts.length === 0) return 0;
 
   // 3. Buscar etiquetas clave y su posición
-  const keys = [
-    'TOTAL VENTA', 'SUBTOTAL', 'COPAGO', 'RETE FUENTE', 
-    'RETENCION DE IVA', 'RETENCION DE ICA', 'VALOR TOTAL',
-    'TOTAL A PAGAR', 'NETO A PAGAR',
-    ...customLabels
+  const keyDefinitions = [
+    { label: 'TOTAL VENTA', priority: 1 },
+    { label: 'VALOR TOTAL', priority: 1 },
+    { label: 'TOTAL A PAGAR', priority: 1 },
+    { label: 'NETO A PAGAR', priority: 1 },
+    { label: 'COPAGO', priority: 2 },
+    { label: 'RETE FUENTE', priority: 2 },
+    { label: 'RETENCION DE IVA', priority: 2 },
+    { label: 'RETENCION DE ICA', priority: 2 },
+    { label: 'SUBTOTAL', priority: 3 },
   ];
 
-  let bestAmount = 0;
-  let minDistance = Infinity;
+  const customKeyDefinitions = customLabels.map(label => ({ label: label.toUpperCase(), priority: 1 }));
+  const keys = [...customKeyDefinitions, ...keyDefinitions];
 
-  keys.forEach(key => {
-    const keyIndex = normalized.indexOf(key);
+  const candidates: Array<{ value: number; priority: number; distance: number; key: string }> = [];
+
+  keys.forEach(({ label, priority }) => {
+    const keyIndex = normalized.indexOf(label);
     if (keyIndex !== -1) {
       foundAmounts.forEach(amt => {
         const dist = amt.index - keyIndex;
-        if (dist > 0 && dist < maxDistance && dist < minDistance) {
-          minDistance = dist;
-          bestAmount = amt.value;
+        if (dist > 0 && dist < maxDistance) {
+          candidates.push({ value: amt.value, priority, distance: dist, key: label });
         }
       });
     }
   });
 
-  if (bestAmount > 0) return bestAmount;
+  if (candidates.length > 0) {
+    candidates.sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      return a.distance - b.distance;
+    });
+    return candidates[0].value;
+  }
 
-  // Fallback: tomar el monto más grande
   const filtered = foundAmounts
     .filter(a => a.value <= maxAmount)
     .sort((a, b) => b.value - a.value);

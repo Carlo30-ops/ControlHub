@@ -3,7 +3,7 @@ import type { BrowserWindow as BrowserWindowType } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, spawnSync, ChildProcess } from 'child_process';
 import chokidar, { FSWatcher } from 'chokidar';
 import Store from 'electron-store';
 import Tesseract from 'tesseract.js';
@@ -452,8 +452,18 @@ class SidecarManager {
       return;
     }
 
+    const pythonDir = path.dirname(pythonExe);
+    const env = { ...process.env };
+
+    if (app?.isPackaged) {
+      env.PYTHONHOME = pythonDir;
+      env.PYTHONPATH = path.join(pythonDir, 'Lib', 'site-packages');
+    }
+
     this.process = spawn(pythonExe, [this.scriptPath], {
-      stdio: ["pipe", "pipe", "pipe"]
+      stdio: ["pipe", "pipe", "pipe"],
+      cwd: pythonDir,
+      env,
     });
     // Reset restart attempts on successful start
     this.restartAttempts = 0;
@@ -678,6 +688,25 @@ const getSidecarPath = (fileName: string) => {
   return path.join(__dirname, `../electron/sidecar/${fileName}`);
 };
 
+const findSystemPythonExecutable = (): string | null => {
+  const candidates = ['python', 'python3'];
+  for (const candidate of candidates) {
+    try {
+      const result = spawnSync(candidate, ['--version'], {
+        stdio: ['ignore', 'pipe', 'ignore'],
+        encoding: 'utf8',
+      });
+      if (result.status === 0) {
+        logger.debug(`[Sidecar] Python de sistema encontrado: ${candidate}`);
+        return candidate;
+      }
+    } catch {
+      // Ignorar si no existe en PATH
+    }
+  }
+  return null;
+};
+
 const getPythonExecutable = (): string | null => {
   const embeddedPython = path.join(
     app.isPackaged ? process.resourcesPath : process.cwd(),
@@ -693,7 +722,13 @@ const getPythonExecutable = (): string | null => {
     return 'python';
   }
 
-  logger.error(`[Sidecar] Python embebido no encontrado en ${embeddedPython}`);
+  logger.warn(`[Sidecar] Python embebido no encontrado en ${embeddedPython}. Intentando fallback a Python del sistema.`);
+  const systemPython = findSystemPythonExecutable();
+  if (systemPython) {
+    return systemPython;
+  }
+
+  logger.error(`[Sidecar] Python embebido no encontrado y no se encontró Python en PATH.`);
   return null;
 };
 
