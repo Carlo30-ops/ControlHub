@@ -68,7 +68,7 @@
   StrCpy $R3 "$DOCUMENTS\\TERAPIAS\\BACKUP"
   StrCpy $R4 "$DOCUMENTS\\TERAPIAS\\PROCESADOS"
   ; Generar JSON válido usando PowerShell (evita problemas de escape)
-  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$o = @{ terapiasDir = ''$DOCUMENTS\TERAPIAS\DOCUMENTOS PARA ARMAR''; terapiasBackup = ''$DOCUMENTS\TERAPIAS\BACKUP''; terapiasProcessed = ''$DOCUMENTS\TERAPIAS\PROCESADOS'' }; if (''$R0'' -ne '''') { $o.tesseractPath = ''$R0'' }; $o | ConvertTo-Json | Out-File -FilePath ''$INSTDIR\initial-config.json'' -Encoding UTF8"'
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$o = @{ terapiasDir = ''$DOCUMENTS\TERAPIAS\DOCUMENTOS PARA ARMAR''; terapiasBackup = ''$DOCUMENTS\TERAPIAS\BACKUP''; terapiasProcessed = ''$DOCUMENTS\TERAPIAS\PROCESADOS'' }; if (''$R0'' -ne '''') { $o.tesseractPath = ''$R0'' }; $json = $o | ConvertTo-Json -Depth 10; $json = $json -replace ''\\'',''\\\\''; [System.IO.File]::WriteAllText(''$INSTDIR\\initial-config.json'',$json,[System.Text.Encoding]::UTF8)"'
   
   ; Mostrar mensaje final
   ${If} $R0 != ""

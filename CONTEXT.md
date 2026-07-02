@@ -673,8 +673,10 @@ npm run build:electron
 También se puede usar `build_desktop.bat` desde la raíz de `ControlHub` para cerrar instancias abiertas, limpiar builds previos y generar el instalador NSIS.
 
 > El instalador completo necesita que `python-embed/` exista en la raíz del repositorio y que contenga `python.exe`.
-
+>
 > Validación: `release/ControlHub Setup 3.2.0.exe` existe y `release/win-unpacked/resources/python-embed/python.exe` está presente después del build.
+>
+> Nota actual: `npm run build:electron` usa NSIS y puede detenerse si `installer.nsh` produce la advertencia 6000 (`unknown variable/constant`) porque electron-builder trata cada warning de NSIS como error. La versión actual del instalador usa un helper PowerShell para generar `initial-config.json` durante la instalación, y la verificación con `scripts/verify-installer.ps1` ha devuelto `Verificacion completada: OK`.
 
 # Preview del bundle Vite (sin Electron)
 npm run preview
